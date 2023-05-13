@@ -6,6 +6,10 @@ all:
 	g++-12 $(CFLAGS) ./src/*.cpp -I*.h -o ./build/run $(LDFLAGS)
 and_run:
 	$(MAKE) all && ./build/run
+and_debug:
+	$(MAKE) all && $(MAKE) debug
+debug:
+	gdb ./build/run
 clean:
 	rm -f ./build/run
 vertex:
