@@ -1,10 +1,12 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
 #include <string>
 
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
 namespace sigil {
+    
     class Window {
         public:
             Window(int w, int h, std::string t);
@@ -12,12 +14,13 @@ namespace sigil {
             Window(const Window&)            = delete;
             Window& operator=(const Window&) = delete;
 
-            bool should_close() { return glfwWindowShouldClose(window_ptr); };
+            void init();
+            bool should_close() { return glfwWindowShouldClose(ptr); };
+            GLFWwindow* ptr;
+
         private:
-            void init_window();
-            const int width;
-            const int height;
+            const int   width;
+            const int  height;
             std::string title;
-            GLFWwindow* window_ptr;
     };
 }
