@@ -3,10 +3,21 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <iostream>
 
 #include <vulkan/vulkan_core.h>
 
 namespace sigil {
+
+    const std::vector<const char*> validation_layers = {
+        "VK_LAYER_KHRONOS_validation"
+    };
+
+    #ifdef NDEBUG
+        const bool enable_validation_layers = false;
+    #else
+        const bool enable_validation_layers = true;
+    #endif
 
     struct QueueFamilyIndices {
         std::optional<uint32_t>       graphics_family;
@@ -55,6 +66,31 @@ namespace sigil {
             void                         create_command_buffer();
             void record_command_buffer(VkCommandBuffer, uint32_t);
             void                           create_sync_objects();
+
+                         //// VALIDATION LAYERS ////
+            VkResult create_debug_util_messenger_ext(
+                    VkInstance instance, 
+                    const VkDebugUtilsMessengerCreateInfoEXT* p_create_info,
+                    const VkAllocationCallbacks* p_allocator,
+                    VkDebugUtilsMessengerEXT* p_debug_messenger
+                    );
+            void                         setup_debug_messenger();
+            void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
+            bool                check_validation_layer_support();
+            static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+                    VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
+                    VkDebugUtilsMessageTypeFlagsEXT msg_type,
+                    const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
+                    void* p_user_data) {
+                std::cerr << "Validation layer: " << p_callback_data->pMessage << "\n";
+                return VK_FALSE;
+            }
+            VkDebugUtilsMessengerEXT             debug_messenger;
+            void destroy_debug_util_messenger_ext(
+                    VkInstance instance, 
+                    VkDebugUtilsMessengerEXT p_debug_messenger,
+                    const VkAllocationCallbacks* p_allocator
+                    );
 
                               //// VULKAN ////
             VkInstance                                  instance;
