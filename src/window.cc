@@ -1,5 +1,6 @@
 #include "window.hh"
 #include "engine.hh"
+#include "renderer.hh"
 
 #include <GLFW/glfw3.h>
 
@@ -17,8 +18,8 @@ namespace sigil {
     void Window::init() {
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
         ptr = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
+        glfwSetFramebufferSizeCallback(ptr, Renderer::resize_callback);
     }
 }

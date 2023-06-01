@@ -5,6 +5,9 @@
 #include <optional>
 #include <iostream>
 
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
 #include <vulkan/vulkan_core.h>
 
 namespace sigil {
@@ -46,6 +49,7 @@ namespace sigil {
             void                                          init();
             void                                     terminate();
             void                                          draw();
+            static void   resize_callback(GLFWwindow*, int, int);
 
         private:
             void                               create_instance();
@@ -53,6 +57,8 @@ namespace sigil {
             void                        select_physical_device();
             void                         create_logical_device();
             void                             create_swap_chain();
+            void                            cleanup_swap_chain();
+            void                           recreate_swap_chain();
             void                              create_img_views();
             void                              print_extensions();
             std::vector<const char*>   get_required_extensions();
@@ -122,6 +128,7 @@ namespace sigil {
             std::vector<VkSemaphore>    img_available_semaphores;
             std::vector<VkSemaphore>  render_finished_semaphores;
             std::vector<VkFence>                in_flight_fences;
+            bool                     framebuffer_resized = false;
             uint32_t                           current_frame = 0;
     };
 }

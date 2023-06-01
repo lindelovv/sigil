@@ -19,8 +19,8 @@ namespace sigil {
             void run();
                             // OBJECTS //
             Window        window { WIDTH, HEIGHT, "sigil" };
-        private:
             Renderer                            renderer {};
+        private:
             Input                                  input {};
     };
     extern Engine core;

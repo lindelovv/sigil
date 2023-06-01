@@ -38,22 +38,16 @@ namespace sigil {
 
     void Renderer::terminate() {
         vkDeviceWaitIdle(device); // tmp
+        cleanup_swap_chain();
+        vkDestroyPipeline(device, graphics_pipeline, nullptr);
+        vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
+        vkDestroyRenderPass(device, render_pass, nullptr);
         for( size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++ ) {
             vkDestroySemaphore(device, img_available_semaphores[i], nullptr);
             vkDestroySemaphore(device, render_finished_semaphores[i], nullptr);
             vkDestroyFence(device, in_flight_fences[i], nullptr);
         }
         vkDestroyCommandPool(device, command_pool, nullptr);
-        for( auto frambuffer : swap_chain_framebuffers ) {
-            vkDestroyFramebuffer(device, frambuffer, nullptr);
-        }
-        vkDestroyPipeline(device, graphics_pipeline, nullptr);
-        vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
-        vkDestroyRenderPass(device, render_pass, nullptr);
-        for( auto img_view : swap_chain_img_views ) {
-            vkDestroyImageView(device, img_view, nullptr);
-        }
-        vkDestroySwapchainKHR(device, swap_chain, nullptr);
         vkDestroyDevice(device, nullptr);
         if( enable_validation_layers ) {
             destroy_debug_util_messenger_ext(instance, debug_messenger, nullptr);
@@ -375,6 +369,31 @@ namespace sigil {
         swap_chain_extent = extent;
     }
 
+    void Renderer::cleanup_swap_chain() {
+        for( auto frambuffer : swap_chain_framebuffers ) {
+            vkDestroyFramebuffer(device, frambuffer, nullptr);
+        }
+        for( auto img_view : swap_chain_img_views ) {
+            vkDestroyImageView(device, img_view, nullptr);
+        }
+        vkDestroySwapchainKHR(device, swap_chain, nullptr);
+    }
+
+    void Renderer::recreate_swap_chain() {
+        int width = 0, height = 0;
+        glfwGetFramebufferSize(core.window.ptr, &width, &height);
+        while( width == 0 || height == 0 ) {
+            glfwGetFramebufferSize(core.window.ptr, &width, &height);
+            glfwWaitEvents();
+        }
+        vkDeviceWaitIdle(device);
+        cleanup_swap_chain();
+
+        create_swap_chain();
+        create_img_views();
+        create_framebuffers();
+    }
+
     void Renderer::create_img_views() {
         swap_chain_img_views.resize(swap_chain_images.size());
         for( size_t i = 0; i < swap_chain_images.size(); i++ ) {
@@ -692,10 +711,16 @@ namespace sigil {
 
     void Renderer::draw() {
         vkWaitForFences(device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-        vkResetFences(device, 1, &in_flight_fences[current_frame]);
 
         uint32_t img_index;
-        vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, img_available_semaphores[current_frame], VK_NULL_HANDLE, &img_index);
+        VkResult result = vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, img_available_semaphores[current_frame], VK_NULL_HANDLE, &img_index);
+        if( result == VK_ERROR_OUT_OF_DATE_KHR ) {
+            recreate_swap_chain();
+            return;
+        } else if ( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR ) {
+            throw std::runtime_error("\tError: Failed to acquire swap chain image.");
+        }
+        vkResetFences(device, 1, &in_flight_fences[current_frame]);
 
         vkResetCommandBuffer(command_buffers[current_frame], 0);
         record_command_buffer(command_buffers[current_frame], img_index);
@@ -729,7 +754,13 @@ namespace sigil {
         present_info.pSwapchains = swap_chains;
         present_info.pImageIndices = &img_index;
 
-        vkQueuePresentKHR(present_queue, &present_info);
+        result = vkQueuePresentKHR(present_queue, &present_info);
+        if( result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebuffer_resized ) {
+            framebuffer_resized = false;
+            recreate_swap_chain();
+        } else if ( result != VK_SUCCESS ) {
+            throw std::runtime_error("\tError: Failed to present swap chain image.");
+        }
         current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
@@ -786,5 +817,9 @@ namespace sigil {
             if( !layer_found ) return false;
         }
         return true;
+    }
+
+    void Renderer::resize_callback(GLFWwindow* window, int width, int height) {
+        core.renderer.framebuffer_resized = true;
     }
 }
