@@ -32,15 +32,17 @@ namespace sigil {
         create_graphics_pipeline();
         create_framebuffers();
         create_command_pool();
-        create_command_buffer();
+        create_command_buffers();
         create_sync_objects();
     }
 
     void Renderer::terminate() {
         vkDeviceWaitIdle(device); // tmp
-        vkDestroySemaphore(device, img_available_semaphore, nullptr);
-        vkDestroySemaphore(device, render_finished_semaphore, nullptr);
-        vkDestroyFence(device, in_flight_fence, nullptr);
+        for( size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++ ) {
+            vkDestroySemaphore(device, img_available_semaphores[i], nullptr);
+            vkDestroySemaphore(device, render_finished_semaphores[i], nullptr);
+            vkDestroyFence(device, in_flight_fences[i], nullptr);
+        }
         vkDestroyCommandPool(device, command_pool, nullptr);
         for( auto frambuffer : swap_chain_framebuffers ) {
             vkDestroyFramebuffer(device, frambuffer, nullptr);
@@ -76,7 +78,7 @@ namespace sigil {
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         create_info.pApplicationInfo = &engine_info;
 
-        print_extensions();
+        //print_extensions();
         uint32_t glfw_extension_count = 0;
         std::vector<const char*> extensions = get_required_extensions();
 
@@ -131,20 +133,39 @@ namespace sigil {
         std::vector<VkPhysicalDevice> devices(device_count);
         vkEnumeratePhysicalDevices(instance, &device_count, devices.data());
 
-        std::multimap<int, VkPhysicalDevice> candidates;
-
-        for( const VkPhysicalDevice& device : devices ) { // Find best suited compatible device
-            QueueFamilyIndices indices = find_queue_families(device);
-            if( indices.graphics_family.has_value() ) {
-                int score = score_device_suitability(device);
-                candidates.insert(std::make_pair(score, device));
+        for( const VkPhysicalDevice& device : devices ) {
+            if( is_device_suitable(device) ) {
+                physical_device = device;
+                break;
             }
         }
-        if( candidates.rbegin()->first > 0 ) {
-            physical_device = candidates.rbegin()->second;
-        } else {
+        //std::multimap<int, VkPhysicalDevice> candidates;
+
+        //for( const VkPhysicalDevice& device : devices ) { // Find best suited compatible device
+        //    QueueFamilyIndices indices = find_queue_families(device);
+        //    if( indices.graphics_family.has_value() ) {
+        //        int score = score_device_suitability(device);
+        //        candidates.insert(std::make_pair(score, device));
+        //    }
+        //}
+        //if( candidates.rbegin()->first > 0 ) {
+        //    physical_device = candidates.rbegin()->second;
+        //} else {
+        if( physical_device == VK_NULL_HANDLE ) {
             throw std::runtime_error("\tError: Failed to find suitable GPU.");
         }
+    }
+
+    bool Renderer::is_device_suitable(VkPhysicalDevice device) {
+        QueueFamilyIndices indices = find_queue_families(device);
+
+        bool b_extensions_supported = check_device_extension_support(device);
+        bool b_valid_swapchain = false;
+        if( b_extensions_supported ) {
+            SwapChainSupportDetails swap_chain_support = query_swap_chain_support(device);
+            b_valid_swapchain = !swap_chain_support.formats.empty() && !swap_chain_support.present_modes.empty();
+        }
+        return indices.is_complete() && b_extensions_supported && b_valid_swapchain;
     }
 
     int Renderer::score_device_suitability(VkPhysicalDevice device) {
@@ -236,8 +257,12 @@ namespace sigil {
         create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
         create_info.ppEnabledExtensionNames = device_extensions.data();
 
-        create_info.enabledLayerCount = 0; // Validation layers not implemeted
-        
+        if( enable_validation_layers ) {
+            create_info.enabledLayerCount = static_cast<uint32_t>(validation_layers.size());
+            create_info.ppEnabledLayerNames = validation_layers.data();
+        } else {
+            create_info.enabledLayerCount = 0;
+        }
         if( vkCreateDevice(physical_device, &create_info, nullptr, &device) != VK_SUCCESS ) {
             throw std::runtime_error("\tError: Failed to create logical device.");
         }
@@ -266,7 +291,6 @@ namespace sigil {
             details.present_modes.resize(present_mode_count);
             vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, details.present_modes.data());
         }
-
         return details;
     }
 
@@ -326,6 +350,7 @@ namespace sigil {
 
         QueueFamilyIndices indices = find_queue_families(physical_device);
         uint32_t queue_family_indices[] = { indices.graphics_family.value(), indices.present_family.value() };
+
         if( indices.graphics_family != indices.present_family ) {
             create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
             create_info.queueFamilyIndexCount = 2;
@@ -366,7 +391,7 @@ namespace sigil {
             create_info.subresourceRange.baseMipLevel = 0;
             create_info.subresourceRange.levelCount = 1;
             create_info.subresourceRange.baseArrayLayer = 0;
-            create_info.subresourceRange.levelCount = 1;
+            create_info.subresourceRange.layerCount = 1;
             if( vkCreateImageView(device, &create_info, nullptr, &swap_chain_img_views[i]) != VK_SUCCESS ) {
                 throw std::runtime_error("\tError: Failed to create image views.");
             }
@@ -444,7 +469,7 @@ namespace sigil {
         color_blend_attachment.colorWriteMask =
               VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
             | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        color_blend_attachment.blendEnable = VK_TRUE;
+        color_blend_attachment.blendEnable = VK_FALSE;
 
         VkPipelineColorBlendStateCreateInfo color_blending {};
         color_blending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
@@ -585,13 +610,15 @@ namespace sigil {
         }
     }
 
-    void Renderer::create_command_buffer() {
+    void Renderer::create_command_buffers() {
+        command_buffers.resize(MAX_FRAMES_IN_FLIGHT);
+
         VkCommandBufferAllocateInfo alloc_info {};
         alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         alloc_info.commandPool = command_pool;
         alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        alloc_info.commandBufferCount = 1;
-        if( vkAllocateCommandBuffers(device, &alloc_info, &command_buffer) != VK_SUCCESS ) {
+        alloc_info.commandBufferCount = (uint32_t) command_buffers.size();
+        if( vkAllocateCommandBuffers(device, &alloc_info, command_buffers.data()) != VK_SUCCESS ) {
             throw std::runtime_error("\tError: Failed to allocate command buffer.");
         }
     }
@@ -599,6 +626,7 @@ namespace sigil {
     void Renderer::record_command_buffer(VkCommandBuffer command_buffer, uint32_t img_index) {
         VkCommandBufferBeginInfo begin_info {};
         begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
         if( vkBeginCommandBuffer(command_buffer, &begin_info) != VK_SUCCESS ) {
             throw std::runtime_error("\tError: Failed to begin recording command buffer.");
         }
@@ -615,30 +643,37 @@ namespace sigil {
         render_pass_info.pClearValues = &clear_color;
 
         vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+        {
+            vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
-        VkViewport viewport {};
-        viewport.x = 0.f;
-        viewport.y = 0.f;
-        viewport.width = (float) swap_chain_extent.width;
-        viewport.height = (float) swap_chain_extent.height;
-        viewport.minDepth = 0.f;
-        viewport.maxDepth = 1.f;
-        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+            VkViewport viewport {};
+            viewport.x = 0.f;
+            viewport.y = 0.f;
+            viewport.width = (float) swap_chain_extent.width;
+            viewport.height = (float) swap_chain_extent.height;
+            viewport.minDepth = 0.f;
+            viewport.maxDepth = 1.f;
+            vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 
-        VkRect2D scissor {};
-        scissor.offset = { 0, 0 };
-        scissor.extent = swap_chain_extent;
-        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+            VkRect2D scissor {};
+            scissor.offset = { 0, 0 };
+            scissor.extent = swap_chain_extent;
+            vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-        vkCmdDraw(command_buffer, 3, 1, 0, 0);
+            vkCmdDraw(command_buffer, 3, 1, 0, 0);
+        }
         vkCmdEndRenderPass(command_buffer);
+        
         if( vkEndCommandBuffer(command_buffer) != VK_SUCCESS ) {
             throw std::runtime_error("\tError: Failed to record command buffer.");
         }
     }
     
     void Renderer::create_sync_objects() {
+        img_available_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        render_finished_semaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        in_flight_fences.resize(MAX_FRAMES_IN_FLIGHT);
+
         VkSemaphoreCreateInfo semaphore_info {};
         semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -646,38 +681,41 @@ namespace sigil {
         fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-        if( vkCreateSemaphore(device, &semaphore_info, nullptr, &img_available_semaphore) != VK_SUCCESS
-         || vkCreateSemaphore(device, &semaphore_info, nullptr, &render_finished_semaphore) != VK_SUCCESS
-         || vkCreateFence(device, &fence_info, nullptr, &in_flight_fence) != VK_SUCCESS ) {
-            throw std::runtime_error("\tError: Failed to create frame sync objects.");
+        for( size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++ ) {
+            if( vkCreateSemaphore(device, &semaphore_info, nullptr, &img_available_semaphores[i]) != VK_SUCCESS
+             || vkCreateSemaphore(device, &semaphore_info, nullptr, &render_finished_semaphores[i]) != VK_SUCCESS
+             || vkCreateFence(device, &fence_info, nullptr, &in_flight_fences[i]) != VK_SUCCESS ) {
+                throw std::runtime_error("\tError: Failed to create frame sync objects.");
+            }
         }
     }
 
     void Renderer::draw() {
-        vkWaitForFences(device, 1, &in_flight_fence, VK_TRUE, UINT64_MAX);
-        vkResetFences(device, 1, &in_flight_fence);
+        vkWaitForFences(device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
+        vkResetFences(device, 1, &in_flight_fences[current_frame]);
 
         uint32_t img_index;
-        vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, img_available_semaphore, VK_NULL_HANDLE, &img_index);
-        vkResetCommandBuffer(command_buffer, 0);
-        record_command_buffer(command_buffer, img_index);
+        vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, img_available_semaphores[current_frame], VK_NULL_HANDLE, &img_index);
+
+        vkResetCommandBuffer(command_buffers[current_frame], 0);
+        record_command_buffer(command_buffers[current_frame], img_index);
 
         VkSubmitInfo submit_info {};
         submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-        VkSemaphore wait_semaphores[] = { img_available_semaphore };
+        VkSemaphore wait_semaphores[] = { img_available_semaphores[current_frame] };
         VkPipelineStageFlags wait_stages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
         submit_info.waitSemaphoreCount = 1;
         submit_info.pWaitSemaphores = wait_semaphores;
         submit_info.pWaitDstStageMask = wait_stages;
         submit_info.commandBufferCount = 1;
-        submit_info.pCommandBuffers = &command_buffer;
+        submit_info.pCommandBuffers = &command_buffers[current_frame];
 
-        VkSemaphore signal_semaphores[] = { render_finished_semaphore };
+        VkSemaphore signal_semaphores[] = { render_finished_semaphores[current_frame] };
         submit_info.signalSemaphoreCount = 1;
         submit_info.pSignalSemaphores = signal_semaphores;
 
-        if( vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence) != VK_SUCCESS ) {
+        if( vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fences[current_frame]) != VK_SUCCESS ) {
             throw std::runtime_error("\tError: Failed to submit draw command buffer.");
         }
 
@@ -692,6 +730,7 @@ namespace sigil {
         present_info.pImageIndices = &img_index;
 
         vkQueuePresentKHR(present_queue, &present_info);
+        current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
     VkResult Renderer::create_debug_util_messenger_ext(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* p_create_info, const VkAllocationCallbacks* p_allocator, VkDebugUtilsMessengerEXT* p_debug_messenger) {

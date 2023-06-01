@@ -13,6 +13,12 @@ namespace sigil {
         "VK_LAYER_KHRONOS_validation"
     };
 
+    const std::vector<const char*>  device_extensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
+
+    const int MAX_FRAMES_IN_FLIGHT = 2;
+
     #ifdef NDEBUG
         const bool enable_validation_layers = false;
     #else
@@ -50,6 +56,7 @@ namespace sigil {
             void                              create_img_views();
             void                              print_extensions();
             std::vector<const char*>   get_required_extensions();
+            bool            is_device_suitable(VkPhysicalDevice);
             int       score_device_suitability(VkPhysicalDevice);
             bool check_device_extension_support(VkPhysicalDevice);
             QueueFamilyIndices find_queue_families(VkPhysicalDevice);
@@ -63,7 +70,7 @@ namespace sigil {
             void                            create_render_pass();
             void                           create_framebuffers();
             void                           create_command_pool();
-            void                         create_command_buffer();
+            void                        create_command_buffers();
             void record_command_buffer(VkCommandBuffer, uint32_t);
             void                           create_sync_objects();
 
@@ -77,6 +84,11 @@ namespace sigil {
             void                         setup_debug_messenger();
             void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
             bool                check_validation_layer_support();
+            void destroy_debug_util_messenger_ext(
+                    VkInstance instance, 
+                    VkDebugUtilsMessengerEXT p_debug_messenger,
+                    const VkAllocationCallbacks* p_allocator
+                    );
             static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
                     VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
                     VkDebugUtilsMessageTypeFlagsEXT msg_type,
@@ -85,13 +97,6 @@ namespace sigil {
                 std::cerr << "Validation layer: " << p_callback_data->pMessage << "\n";
                 return VK_FALSE;
             }
-            VkDebugUtilsMessengerEXT             debug_messenger;
-            void destroy_debug_util_messenger_ext(
-                    VkInstance instance, 
-                    VkDebugUtilsMessengerEXT p_debug_messenger,
-                    const VkAllocationCallbacks* p_allocator
-                    );
-
                               //// VULKAN ////
             VkInstance                                  instance;
             VkPhysicalDevice    physical_device = VK_NULL_HANDLE;
@@ -99,9 +104,7 @@ namespace sigil {
             VkQueue                               graphics_queue;
             VkQueue                                present_queue;
             VkSurfaceKHR                                 surface;
-            const std::vector<const char*>  device_extensions = {
-                                VK_KHR_SWAPCHAIN_EXTENSION_NAME
-            };
+            VkDebugUtilsMessengerEXT             debug_messenger;
                               // SWAP CHAIN //
             VkSwapchainKHR                            swap_chain;
             std::vector<VkImage>               swap_chain_images;
@@ -115,9 +118,10 @@ namespace sigil {
             VkPipeline                         graphics_pipeline;
                             // RENDER PASS //
             VkCommandPool                           command_pool;
-            VkCommandBuffer                       command_buffer;
-            VkSemaphore                  img_available_semaphore;
-            VkSemaphore                render_finished_semaphore;
-            VkFence                              in_flight_fence;
+            std::vector<VkCommandBuffer>         command_buffers;
+            std::vector<VkSemaphore>    img_available_semaphores;
+            std::vector<VkSemaphore>  render_finished_semaphores;
+            std::vector<VkFence>                in_flight_fences;
+            uint32_t                           current_frame = 0;
     };
 }
