@@ -1,5 +1,7 @@
 #pragma once
 
+#include "renderer.hh"
+
 #include <string>
 
 #define GLFW_INCLUDE_VULKAN
@@ -9,13 +11,28 @@ namespace sigil {
     
     class Window {
         public:
-            Window(int w, int h, std::string t);
-            ~Window();
+            Window(int w, int h, std::string t) : 
+                width(w), height(h), title(t)
+            {}
+
+            ~Window() {
+                glfwDestroyWindow(ptr);
+                glfwTerminate();
+            }
+
+            inline void init() {
+                glfwInit();
+                glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+                ptr = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
+                glfwSetFramebufferSizeCallback(ptr, Renderer::resize_callback);
+            }
+
+            inline bool should_close() { return glfwWindowShouldClose(ptr); };
+
             Window(const Window&)            = delete;
             Window& operator=(const Window&) = delete;
 
-            void init();
-            bool should_close() { return glfwWindowShouldClose(ptr); };
             GLFWwindow* ptr;
 
         private:

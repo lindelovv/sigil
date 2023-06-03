@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <optional>
@@ -9,6 +11,7 @@
 #include <GLFW/glfw3.h>
 
 #include <vulkan/vulkan_core.h>
+#include <glm/glm.hpp>
 
 namespace sigil {
 
@@ -44,6 +47,51 @@ namespace sigil {
         std::vector<VkPresentModeKHR>   present_modes;
     };
 
+    struct Vertex {
+        glm::vec2 pos;
+        glm::vec3 color;
+
+        static VkVertexInputBindingDescription get_binding_description() {
+            VkVertexInputBindingDescription binding_description {};
+            binding_description.binding = 0;
+            binding_description.stride = sizeof(Vertex);
+            binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+            return binding_description;
+        }
+
+        static std::array<VkVertexInputAttributeDescription, 2> get_attribute_descriptions() {
+            std::array<VkVertexInputAttributeDescription, 2> attribute_descriptions {};
+            attribute_descriptions[0].binding = 0;
+            attribute_descriptions[0].location = 0;
+            attribute_descriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+            attribute_descriptions[0].offset = offsetof(Vertex, pos);
+
+            attribute_descriptions[1].binding = 0;
+            attribute_descriptions[1].location = 1;
+            attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attribute_descriptions[1].offset = offsetof(Vertex, color);
+
+            return attribute_descriptions;
+        }
+    };
+
+    const std::vector<Vertex> vertices = {
+        {{ -.5f, -.5f }, { 0.f, 0.f, 1.f }},
+        {{ 0.5f, -.5f }, { 1.f, 0.f, 0.f }},
+        {{  .5f,  .5f }, { 0.f, 1.f, 0.f }},
+        {{ -.5f,  .5f }, { 0.f, 0.f, 1.f }},
+    };
+
+    const std::vector<uint16_t> indices = {
+        0, 1, 2, 2, 3, 0
+    };
+
+    struct UniformBufferObject {
+        alignas(16) glm::mat4 model;
+        alignas(16) glm::mat4 view;
+        alignas(16) glm::mat4 proj;
+    };
+
     class Renderer {
         public:
             void                                          init();
@@ -72,6 +120,16 @@ namespace sigil {
             VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR&);
             VkShaderModule create_shader_module(const std::vector<char>&);
             static std::vector<char> read_file(const std::string& path);
+            void create_buffer(VkDeviceSize, VkBufferUsageFlags, VkMemoryPropertyFlags, VkBuffer&, VkDeviceMemory&);
+            void   copy_buffer(VkBuffer, VkBuffer, VkDeviceSize);
+            void                          create_vertex_buffer();
+            void                           create_index_buffer();
+            void                        create_uniform_buffers();
+            void   update_uniform_buffer(uint32_t current_image);
+            uint32_t find_memory_type(uint32_t, VkMemoryPropertyFlags);
+            void                  create_descriptor_set_layout();
+            void                        create_descriptor_pool();
+            void                        create_descriptor_sets();
             void                      create_graphics_pipeline();
             void                            create_render_pass();
             void                           create_framebuffers();
@@ -120,8 +178,18 @@ namespace sigil {
             std::vector<VkFramebuffer>   swap_chain_framebuffers;
                               // PIPELINE //
             VkRenderPass                             render_pass;
+            VkDescriptorSetLayout          descriptor_set_layout;
+            VkDescriptorPool                     descriptor_pool;
+            std::vector<VkDescriptorSet>         descriptor_sets;
             VkPipelineLayout                     pipeline_layout;
             VkPipeline                         graphics_pipeline;
+            VkBuffer                               vertex_buffer;
+            VkDeviceMemory                  vertex_buffer_memory;
+            VkBuffer                                index_buffer;
+            VkDeviceMemory                   index_buffer_memory;
+            std::vector<VkBuffer>                uniform_buffers;
+            std::vector<VkDeviceMemory>   uniform_buffers_memory;
+            std::vector<void*>            uniform_buffers_mapped;
                             // RENDER PASS //
             VkCommandPool                           command_pool;
             std::vector<VkCommandBuffer>         command_buffers;
