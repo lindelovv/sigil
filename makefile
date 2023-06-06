@@ -3,7 +3,7 @@ LDFLAGS=-lglfw -lvulkan -ldl -lX11 -lXxf86vm -lXrandr -lXi
 NAME=tmp
 
 all:
-	g++-12 $(CFLAGS) ./src/*.cc -I*.hh -o ./build/sigil $(LDFLAGS)
+	g++-13 -Wall -Werror -Wpedantic $(CFLAGS) ./src/*.cc -I*.hh -o ./build/sigil $(LDFLAGS)
 and_run:
 	$(MAKE) all && $(MAKE) run
 and_debug:
