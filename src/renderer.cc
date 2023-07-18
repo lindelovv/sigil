@@ -804,7 +804,7 @@ namespace sigil {
         auto current_time = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
         UniformBufferObject ubo {};
-        ubo.model = glm::rotate(glm::mat4(1.f), time * glm::radians(90.f), glm::vec3(0.f, 0.f, 1.f));
+        ubo.model = glm::rotate(glm::mat4(1.f), time * glm::radians(45.f), glm::vec3(0.f, 0.f, 1.f));
         ubo.view = glm::lookAt(glm::vec3(2.f, 2.f, 2.f), glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 0.f, 1.f));
         ubo.proj = glm::perspective(glm::radians(45.f), swap_chain_extent.width / (float) swap_chain_extent.height, 0.f, 10.f);
         ubo.proj[1][1] *= -1;
