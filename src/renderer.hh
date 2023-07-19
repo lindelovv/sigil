@@ -12,7 +12,11 @@
 #include <GLFW/glfw3.h>
 
 #include <vulkan/vulkan_core.h>
+
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace sigil {
 
@@ -121,7 +125,7 @@ namespace sigil {
             void create_swap_chain();
             void cleanup_swap_chain();
             void recreate_swap_chain();
-            VkImageView create_img_view(VkImage, VkFormat);
+            VkImageView create_img_view(VkImage, VkFormat, VkImageAspectFlags);
             void create_img_views();
             void print_extensions();
             std::vector<const char*> get_required_extensions();
@@ -145,7 +149,16 @@ namespace sigil {
             void create_descriptor_set_layout();
             void create_descriptor_pool();
             void create_descriptor_sets();
-            void create_img(uint32_t, uint32_t, VkFormat, VkImageTiling, VkImageUsageFlags, VkMemoryPropertyFlags, VkImage&, VkDeviceMemory&);
+            void create_img(
+                    uint32_t,
+                    uint32_t,
+                    VkFormat,
+                    VkImageTiling,
+                    VkImageUsageFlags,
+                    VkMemoryPropertyFlags,
+                    VkImage&,
+                    VkDeviceMemory&
+                );
             void create_texture_img();
             void create_texture_img_view();
             void create_texture_sampler();
@@ -160,6 +173,14 @@ namespace sigil {
             void end_single_time_commands(VkCommandBuffer command_buffer);
             void transition_img_layout(VkImage, VkFormat, VkImageLayout, VkImageLayout);
             void copy_buffer_to_img(VkBuffer, VkImage, uint32_t, uint32_t);
+            void create_depth_resources();
+            VkFormat find_supported_format(
+                    const std::vector<VkFormat>& candidates,
+                    VkImageTiling tiling,
+                    VkFormatFeatureFlags features
+                );
+            VkFormat find_depth_format();
+            bool has_stencil_component(VkFormat format);
 
                 //// VALIDATION LAYERS ////
             VkResult create_debug_util_messenger_ext(
@@ -216,6 +237,10 @@ namespace sigil {
             VkDeviceMemory texture_image_memory;
             VkImageView texture_image_view;
             VkSampler texture_sampler;
+                   // DEPTH //
+            VkImage depth_img;
+            VkDeviceMemory depth_img_memory;
+            VkImageView depth_img_view;
                 // RENDER PASS //
             VkCommandPool command_pool;
             std::vector<VkCommandBuffer> command_buffers;
