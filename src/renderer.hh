@@ -89,7 +89,7 @@ namespace sigil {
 
     const std::vector<Vertex> vertices = {
         {{ -.5f, -.5f,  0.f }, { 0.f, 0.f, 1.f }, { 1.f, 0.f }},
-        {{ 0.5f, -.5f,  0.f }, { 1.f, 0.f, 0.f }, { 0.f, 0.f }},
+        {{  .5f, -.5f,  0.f }, { 1.f, 0.f, 0.f }, { 0.f, 0.f }},
         {{  .5f,  .5f,  0.f }, { 0.f, 1.f, 0.f }, { 0.f, 1.f }},
         {{ -.5f,  .5f,  0.f }, { 0.f, 0.f, 1.f }, { 1.f, 1.f }},
 
@@ -125,7 +125,11 @@ namespace sigil {
             void create_swap_chain();
             void cleanup_swap_chain();
             void recreate_swap_chain();
-            VkImageView create_img_view(VkImage, VkFormat, VkImageAspectFlags);
+            VkImageView create_img_view(
+                    VkImage,
+                    VkFormat,
+                    VkImageAspectFlags
+                );
             void create_img_views();
             void print_extensions();
             std::vector<const char*> get_required_extensions();
@@ -139,7 +143,13 @@ namespace sigil {
             VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR&);
             VkShaderModule create_shader_module(const std::vector<char>&);
             static std::vector<char> read_file(const std::string& path);
-            void create_buffer(VkDeviceSize, VkBufferUsageFlags, VkMemoryPropertyFlags, VkBuffer&, VkDeviceMemory&);
+            void create_buffer(
+                    VkDeviceSize,
+                    VkBufferUsageFlags,
+                    VkMemoryPropertyFlags,
+                    VkBuffer&,
+                    VkDeviceMemory&
+                );
             void copy_buffer(VkBuffer, VkBuffer, VkDeviceSize);
             void create_vertex_buffer();
             void create_index_buffer();

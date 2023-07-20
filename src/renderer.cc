@@ -1,17 +1,12 @@
 #include "renderer.hh"
 #include "engine.hh"
 
-#include <array>
-#include <iostream>
 #include <fstream>
-#include <cstdint>
 #include <limits>
 #include <stdexcept>
 #include <utility>
-#include <vector>
 #include <cstring>
 #include <map>
-#include <optional>
 #include <set>
 #include <algorithm>
 #include <chrono>
@@ -383,7 +378,7 @@ namespace sigil {
         create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         create_info.presentMode = present_mode;
         create_info.clipped = VK_TRUE;
-        create_info.oldSwapchain = VK_NULL_HANDLE;
+        //create_info.oldSwapchain = VK_NULL_HANDLE;
 
         if( vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain) != VK_SUCCESS ) {
             throw std::runtime_error("\tError: Failed to create swap chain.");
@@ -448,7 +443,7 @@ namespace sigil {
     void Renderer::create_img_views() {
         swap_chain_img_views.resize(swap_chain_images.size());
 
-        for( size_t i = 0; i < swap_chain_images.size(); i++ ) {
+        for( uint32_t i = 0; i < swap_chain_images.size(); i++ ) {
             swap_chain_img_views[i] = create_img_view(
                                         swap_chain_images[i],
                                         swap_chain_img_format,
@@ -568,7 +563,6 @@ namespace sigil {
         pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipeline_layout_info.setLayoutCount = 1;
         pipeline_layout_info.pSetLayouts = &descriptor_set_layout;
-        pipeline_layout_info.pushConstantRangeCount = 0;
 
         if( vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &pipeline_layout) != VK_SUCCESS ) {
             throw std::runtime_error("\tError: Failed to create pipeline layout.");
@@ -583,7 +577,7 @@ namespace sigil {
         pipeline_info.pViewportState = &viewport_state;
         pipeline_info.pRasterizationState = &rasterizer;
         pipeline_info.pMultisampleState = &multisampling;
-        pipeline_info.pDepthStencilState = nullptr;//&depth_stencil;
+        pipeline_info.pDepthStencilState = &depth_stencil;
         pipeline_info.pColorBlendState = &color_blending;
         pipeline_info.pDynamicState = &dynamic_state;
         pipeline_info.layout = pipeline_layout;
@@ -989,16 +983,6 @@ namespace sigil {
             VkPipelineStageFlags source_stage;
             VkPipelineStageFlags destination_stage;
 
-            if( new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL ) {
-                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-                if( has_stencil_component(format) ) {
-                    barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-                }
-            } else {
-                barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            }
-
             if( old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL ) {
                 barrier.srcAccessMask = 0;
                 barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -1011,12 +995,6 @@ namespace sigil {
 
                 source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
                 destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            } else if( old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL ) {
-                barrier.srcAccessMask = 0;
-                barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-                source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                destination_stage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
             } else {
                 throw std::runtime_error("\tError: Unsupported layout transition.");
             }
@@ -1047,7 +1025,7 @@ namespace sigil {
             region.imageSubresource.layerCount = 1;
 
             region.imageOffset = { 0, 0, 0 };
-            region. imageExtent = { width, height, 1 };
+            region.imageExtent = { width, height, 1 };
 
             vkCmdCopyBufferToImage(
                 command_buffer,
@@ -1154,10 +1132,6 @@ namespace sigil {
         color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        VkAttachmentReference color_attachment_ref {};
-        color_attachment_ref.attachment = 0;
-        color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
         VkAttachmentDescription deapth_attachment {};
         deapth_attachment.format = find_depth_format();
         deapth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -1168,6 +1142,10 @@ namespace sigil {
         deapth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         deapth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
+        VkAttachmentReference color_attachment_ref {};
+        color_attachment_ref.attachment = 0;
+        color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
         VkAttachmentReference depth_attachment_ref {};
         depth_attachment_ref.attachment = 1;
         depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
@@ -1176,7 +1154,7 @@ namespace sigil {
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &color_attachment_ref;
-        subpass.pDepthStencilAttachment = nullptr;//&depth_attachment_ref;
+        subpass.pDepthStencilAttachment = &depth_attachment_ref;
 
         VkSubpassDependency dependency {};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -1269,8 +1247,8 @@ namespace sigil {
         render_pass_info.renderArea.extent = swap_chain_extent;
 
         std::array<VkClearValue, 2> clear_values {};
-        clear_values[0].color = {{ 0.f, 0.f, 0.f, 1.f }};
-        //clear_values[1].depthStencil = { 1.f, 0 };
+        clear_values[0].color = {{ .015f, .015f, .015f, 1.f }};
+        clear_values[1].depthStencil = { 1.f, 0 };
 
         render_pass_info.clearValueCount = static_cast<uint32_t>(clear_values.size());
         render_pass_info.pClearValues = clear_values.data();
@@ -1284,8 +1262,8 @@ namespace sigil {
             viewport.y = 0.f;
             viewport.width = (float) swap_chain_extent.width;
             viewport.height = (float) swap_chain_extent.height;
-            viewport.minDepth = 0.f;
-            viewport.maxDepth = 1.f;
+            viewport.minDepth = 1.f;  // Temp Fix: Flipping these two values
+            viewport.maxDepth = 0.f;  // Otherwise geometry is not rendered, likely problem elsewhere
             vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 
             VkRect2D scissor {};
@@ -1340,12 +1318,12 @@ namespace sigil {
         } else if ( result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR ) {
             throw std::runtime_error("\tError: Failed to acquire swap chain image.");
         }
+        update_uniform_buffer(current_frame);
+
         vkResetFences(device, 1, &in_flight_fences[current_frame]);
 
         vkResetCommandBuffer(command_buffers[current_frame], 0);
         record_command_buffer(command_buffers[current_frame], img_index);
-
-        update_uniform_buffer(current_frame);
 
         VkSubmitInfo submit_info {};
         submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
