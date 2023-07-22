@@ -17,6 +17,8 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
 
 namespace sigil {
 
@@ -35,6 +37,9 @@ namespace sigil {
     #else
         const bool enable_validation_layers = true;
     #endif
+
+    const std::string MODEL_PATH = "models/model.obj";
+    const std::string TEXTURE_PATH = "textures/model_texture.png";
 
     struct QueueFamilyIndices {
         std::optional<uint32_t> graphics_family;
@@ -85,23 +90,12 @@ namespace sigil {
 
             return attribute_descriptions;
         }
-    };
 
-    const std::vector<Vertex> vertices = {
-        {{ -.5f, -.5f,  0.f }, { 0.f, 0.f, 1.f }, { 1.f, 0.f }},
-        {{  .5f, -.5f,  0.f }, { 1.f, 0.f, 0.f }, { 0.f, 0.f }},
-        {{  .5f,  .5f,  0.f }, { 0.f, 1.f, 0.f }, { 0.f, 1.f }},
-        {{ -.5f,  .5f,  0.f }, { 0.f, 0.f, 1.f }, { 1.f, 1.f }},
-
-        {{ -.5f, -.5f, -.5f }, { 0.f, 0.f, 1.f }, { 1.f, 0.f }},
-        {{ 0.5f, -.5f, -.5f }, { 1.f, 0.f, 0.f }, { 0.f, 0.f }},
-        {{  .5f,  .5f, -.5f }, { 0.f, 1.f, 0.f }, { 0.f, 1.f }},
-        {{ -.5f,  .5f, -.5f }, { 0.f, 0.f, 1.f }, { 1.f, 1.f }},
-    };
-
-    const std::vector<uint16_t> indices = {
-        0, 1, 2, 2, 3, 0,
-        4, 5, 6, 6, 7, 4
+        bool operator==(const Vertex& other) const {
+            return pos == other.pos
+                && color == other.color
+                && texture_coords == other.texture_coords;
+        }
     };
 
     struct UniformBufferObject {
@@ -191,6 +185,7 @@ namespace sigil {
                 );
             VkFormat find_depth_format();
             bool has_stencil_component(VkFormat format);
+            void load_model();
 
                 //// VALIDATION LAYERS ////
             VkResult create_debug_util_messenger_ext(
@@ -214,7 +209,7 @@ namespace sigil {
                     void* p_user_data
                     );
 
-                //// VULKAN ////
+                   //// VULKAN ////
             VkInstance instance;
             VkPhysicalDevice physical_device = VK_NULL_HANDLE;
             VkDevice device;
@@ -222,20 +217,23 @@ namespace sigil {
             VkQueue present_queue;
             VkSurfaceKHR surface;
             VkDebugUtilsMessengerEXT debug_messenger;
-                // SWAP CHAIN //
+                  // SWAP CHAIN //
             VkSwapchainKHR swap_chain;
             std::vector<VkImage> swap_chain_images;
             VkFormat swap_chain_img_format;
             VkExtent2D swap_chain_extent;
             std::vector<VkImageView> swap_chain_img_views;
             std::vector<VkFramebuffer> swap_chain_framebuffers;
-                // PIPELINE //
+                   // PIPELINE //
             VkRenderPass render_pass;
             VkDescriptorSetLayout descriptor_set_layout;
             VkDescriptorPool descriptor_pool;
             std::vector<VkDescriptorSet> descriptor_sets;
             VkPipelineLayout pipeline_layout;
             VkPipeline graphics_pipeline;
+               // VERTEX & INDICES //
+            std::vector<Vertex> vertices;
+            std::vector<uint32_t> indices;
             VkBuffer vertex_buffer;
             VkDeviceMemory vertex_buffer_memory;
             VkBuffer index_buffer;
@@ -259,5 +257,15 @@ namespace sigil {
             std::vector<VkFence> in_flight_fences;
             bool framebuffer_resized = false;
             uint32_t current_frame = 0;
+    };
+}
+
+namespace std {
+    template<> struct hash<sigil::Vertex> {
+        size_t operator()(sigil::Vertex const& vertex) const {
+            return ((hash<glm::vec3>()(vertex.pos) ^
+                    (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
+                    (hash<glm::vec2>()(vertex.texture_coords) << 1);
+        }
     };
 }

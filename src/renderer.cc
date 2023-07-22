@@ -4,6 +4,7 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
+#include <unordered_map>
 #include <utility>
 #include <cstring>
 #include <map>
@@ -13,6 +14,9 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tinyobjloader/tinyobj.h>
 
 namespace sigil {
 
@@ -33,6 +37,7 @@ namespace sigil {
         create_texture_img();
         create_texture_img_view();
         create_texture_sampler();
+        load_model();
         create_vertex_buffer();
         create_index_buffer();
         create_uniform_buffers();
@@ -43,7 +48,7 @@ namespace sigil {
     }
 
     void Renderer::terminate() {
-        vkDeviceWaitIdle(device); // tmp
+        vkDeviceWaitIdle(device);
         cleanup_swap_chain();
         vkDestroyPipeline(device, graphics_pipeline, nullptr);
         vkDestroyPipelineLayout(device, pipeline_layout, nullptr);
@@ -516,7 +521,7 @@ namespace sigil {
         rasterizer.rasterizerDiscardEnable = VK_FALSE;
         rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
         rasterizer.lineWidth = 1.f;
-        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+        rasterizer.cullMode = VK_CULL_MODE_NONE;
         rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
         rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -808,7 +813,7 @@ namespace sigil {
         UniformBufferObject ubo {};
         ubo.model = glm::rotate(glm::mat4(1.f), time * glm::radians(45.f), glm::vec3(0.f, 0.f, 1.f));
         ubo.view = glm::lookAt(glm::vec3(2.f, 2.f, 2.f), glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 0.f, 1.f));
-        ubo.proj = glm::perspective(glm::radians(45.f), swap_chain_extent.width / (float) swap_chain_extent.height, 0.f, 10.f);
+        ubo.proj = glm::perspective(glm::radians(45.f), swap_chain_extent.width / (float) swap_chain_extent.height, 0.1f, 256.f);
         ubo.proj[1][1] *= -1;
         memcpy(uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
     }
@@ -838,7 +843,7 @@ namespace sigil {
 
     void Renderer::create_texture_img() {
         int t_width, t_height, t_channels;
-        stbi_uc* pixels = stbi_load("textures/missing_texture.jpg", &t_width, &t_height, &t_channels, STBI_rgb_alpha);
+        stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &t_width, &t_height, &t_channels, STBI_rgb_alpha);
         VkDeviceSize img_size = t_width * t_height * 4;
         if( !pixels ) {
             throw std::runtime_error("\tError: Failed to load texture image.");
@@ -1089,6 +1094,37 @@ namespace sigil {
             );
     }
 
+    void Renderer::load_model() {
+        tinyobj::attrib_t attrib;
+        std::vector<tinyobj::shape_t> shapes;
+        std::vector<tinyobj::material_t> materials;
+        std::string warn, err;
+        if( !tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str()) ) {
+            throw std::runtime_error("\tError: Failed loading model.\n" + warn + err);
+        }
+        std::unordered_map<Vertex, uint32_t> unique_vertices {};
+        for( const tinyobj::shape_t& shape : shapes ) {
+            for( const tinyobj::index_t& index : shape.mesh.indices ) {
+                Vertex vertex {};
+                vertex.pos = {
+                    attrib.vertices[3 * index.vertex_index + 0],
+                    attrib.vertices[3 * index.vertex_index + 1],
+                    attrib.vertices[3 * index.vertex_index + 2],
+                };
+                vertex.texture_coords = {
+                    attrib.texcoords[2 * index.texcoord_index + 0],
+                    1.f - attrib.texcoords[2 * index.texcoord_index + 1],
+                };
+                vertex.color = { 1.f, 1.f, 1.f };
+                if( unique_vertices.count(vertex) == 0 ) {
+                    unique_vertices[vertex] = static_cast<uint32_t>(vertices.size());
+                    vertices.push_back(vertex);
+                }
+                indices.push_back(unique_vertices[vertex]);
+            }
+        }
+    }
+
     VkCommandBuffer Renderer::begin_single_time_commands() {
         VkCommandBufferAllocateInfo alloc_info {};
         alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -1262,8 +1298,8 @@ namespace sigil {
             viewport.y = 0.f;
             viewport.width = (float) swap_chain_extent.width;
             viewport.height = (float) swap_chain_extent.height;
-            viewport.minDepth = 1.f;  // Temp Fix: Flipping these two values
-            viewport.maxDepth = 0.f;  // Otherwise geometry is not rendered, likely problem elsewhere
+            viewport.minDepth = 0.f;
+            viewport.maxDepth = 1.f;
             vkCmdSetViewport(command_buffer, 0, 1, &viewport);
 
             VkRect2D scissor {};
@@ -1274,7 +1310,7 @@ namespace sigil {
             VkBuffer vertex_buffers[] = { vertex_buffer };
             VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
-            vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+            vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT32);
             vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[current_frame], 0, nullptr);
 
             vkCmdDrawIndexed(command_buffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
