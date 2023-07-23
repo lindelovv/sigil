@@ -11,6 +11,7 @@
 #include <set>
 #include <algorithm>
 #include <chrono>
+#include <vulkan/vulkan_core.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
@@ -32,6 +33,7 @@ namespace sigil {
         create_descriptor_set_layout();
         create_graphics_pipeline();
         create_command_pool();
+        create_color_resources();
         create_depth_resources();
         create_framebuffers();
         create_texture_img();
@@ -154,6 +156,7 @@ namespace sigil {
         for( const VkPhysicalDevice& device : devices ) {
             if( is_device_suitable(device) ) {
                 physical_device = device;
+                msaa_samples = get_max_usable_sample_count();
                 break;
             }
         }
@@ -172,6 +175,21 @@ namespace sigil {
         if( physical_device == VK_NULL_HANDLE ) {
             throw std::runtime_error("\tError: Failed to find suitable GPU.");
         }
+    }
+
+    VkSampleCountFlagBits Renderer::get_max_usable_sample_count() {
+        VkPhysicalDeviceProperties properties;
+        vkGetPhysicalDeviceProperties(physical_device, &properties);
+
+        VkSampleCountFlags counts = properties.limits.framebufferColorSampleCounts 
+                                  & properties.limits.framebufferDepthSampleCounts;
+        return counts & VK_SAMPLE_COUNT_64_BIT ? VK_SAMPLE_COUNT_64_BIT :
+               counts & VK_SAMPLE_COUNT_32_BIT ? VK_SAMPLE_COUNT_32_BIT :
+               counts & VK_SAMPLE_COUNT_16_BIT ? VK_SAMPLE_COUNT_16_BIT :
+               counts & VK_SAMPLE_COUNT_8_BIT  ? VK_SAMPLE_COUNT_8_BIT  :
+               counts & VK_SAMPLE_COUNT_4_BIT  ? VK_SAMPLE_COUNT_4_BIT  :
+               counts & VK_SAMPLE_COUNT_2_BIT  ? VK_SAMPLE_COUNT_2_BIT  :
+                                                 VK_SAMPLE_COUNT_1_BIT;
     }
 
     bool Renderer::is_device_suitable(VkPhysicalDevice device) {
@@ -269,6 +287,7 @@ namespace sigil {
 
         VkPhysicalDeviceFeatures device_features {};
         device_features.samplerAnisotropy = VK_TRUE;
+        device_features.sampleRateShading = VK_TRUE;
 
         VkDeviceCreateInfo create_info {};
         create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -397,6 +416,9 @@ namespace sigil {
     }
 
     void Renderer::cleanup_swap_chain() {
+        vkDestroyImageView(device, color_img_view, nullptr);
+        vkDestroyImage(device, color_img, nullptr);
+        vkFreeMemory(device, color_img_memory, nullptr);
         vkDestroyImageView(device, depth_img_view, nullptr);
         vkDestroyImage(device, depth_img, nullptr);
         vkFreeMemory(device, depth_img_memory, nullptr);
@@ -422,11 +444,12 @@ namespace sigil {
 
         create_swap_chain();
         create_img_views();
+        create_color_resources();
         create_depth_resources();
         create_framebuffers();
     }
 
-    VkImageView Renderer::create_img_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags) {
+    VkImageView Renderer::create_img_view(VkImage image, VkFormat format, VkImageAspectFlags aspect_flags, uint32_t mip_levels) {
         VkImageViewCreateInfo view_info {};
         view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
         view_info.image = image;
@@ -434,7 +457,7 @@ namespace sigil {
         view_info.format = format;
         view_info.subresourceRange.aspectMask = aspect_flags;
         view_info.subresourceRange.baseMipLevel = 0;
-        view_info.subresourceRange.levelCount = 1;
+        view_info.subresourceRange.levelCount = mip_levels;
         view_info.subresourceRange.baseArrayLayer = 0;
         view_info.subresourceRange.layerCount = 1;
 
@@ -452,7 +475,8 @@ namespace sigil {
             swap_chain_img_views[i] = create_img_view(
                                         swap_chain_images[i],
                                         swap_chain_img_format,
-                                        VK_IMAGE_ASPECT_COLOR_BIT
+                                        VK_IMAGE_ASPECT_COLOR_BIT,
+                                        1
                                     );
         }
     }
@@ -527,8 +551,9 @@ namespace sigil {
 
         VkPipelineMultisampleStateCreateInfo multisampling {};
         multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-        multisampling.sampleShadingEnable = VK_FALSE;
-        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        multisampling.sampleShadingEnable = VK_TRUE;
+        multisampling.minSampleShading = .2f;
+        multisampling.rasterizationSamples = msaa_samples;
 
         VkPipelineDepthStencilStateCreateInfo depth_stencil {};
         depth_stencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
@@ -865,12 +890,16 @@ namespace sigil {
         vkUnmapMemory(device, staging_buffer_memory);
         stbi_image_free(pixels);
 
+        mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(t_width, t_height)))) + 1;
+
         create_img(
             t_width, 
             t_height, 
+            mip_levels,
+            VK_SAMPLE_COUNT_1_BIT,
             VK_FORMAT_R8G8B8A8_SRGB,
             VK_IMAGE_TILING_OPTIMAL,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
             texture_image,
             texture_image_memory
@@ -879,7 +908,8 @@ namespace sigil {
             texture_image,
             VK_FORMAT_R8G8B8A8_SRGB,
             VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            mip_levels
         );
         copy_buffer_to_img(
             staging_buffer,
@@ -887,21 +917,17 @@ namespace sigil {
             static_cast<uint32_t>(t_width),
             static_cast<uint32_t>(t_width)
         );
-        transition_img_layout(
-            texture_image,
-            VK_FORMAT_R8G8B8A8_SRGB,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-        );
         vkDestroyBuffer(device, staging_buffer, nullptr);
         vkFreeMemory(device, staging_buffer_memory, nullptr);
+        generate_mipmaps(texture_image, VK_FORMAT_R8G8B8A8_SRGB, t_width, t_height, mip_levels);
     }
 
     void Renderer::create_texture_img_view() {
         texture_image_view = create_img_view(
                                 texture_image,
                                 VK_FORMAT_R8G8B8A8_SRGB,
-                                VK_IMAGE_ASPECT_COLOR_BIT
+                                VK_IMAGE_ASPECT_COLOR_BIT,
+                                mip_levels
                             );
     }
 
@@ -923,6 +949,9 @@ namespace sigil {
         sampler_info.compareEnable = VK_FALSE;
         sampler_info.compareOp = VK_COMPARE_OP_ALWAYS;
         sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        sampler_info.minLod = 0.f;
+        sampler_info.maxLod = static_cast<float>(mip_levels);
+        sampler_info.mipLodBias = 0.f;
 
         if( vkCreateSampler(device, &sampler_info, nullptr, &texture_sampler) != VK_SUCCESS ) {
             throw std::runtime_error("\tError: Failed to create texture sampler.");
@@ -932,6 +961,8 @@ namespace sigil {
     void Renderer::create_img(
             uint32_t width,
             uint32_t height,
+            uint32_t mip_levels,
+            VkSampleCountFlagBits num_samples,
             VkFormat format,
             VkImageTiling tiling,
             VkImageUsageFlags usage,
@@ -945,14 +976,14 @@ namespace sigil {
         image_info.extent.width = width;
         image_info.extent.height = height;
         image_info.extent.depth = 1;
-        image_info.mipLevels = 1;
+        image_info.mipLevels = mip_levels;
         image_info.arrayLayers = 1;
         image_info.format = format;
         image_info.tiling = tiling;
         image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         image_info.usage = usage;
         image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+        image_info.samples = num_samples;
         if( vkCreateImage(device, &image_info, nullptr, &image) != VK_SUCCESS ) {
             throw std::runtime_error("\tError: Failed to create image.");
         }
@@ -969,7 +1000,13 @@ namespace sigil {
         vkBindImageMemory(device, image, image_memory, 0);
     }
 
-    void Renderer::transition_img_layout(VkImage img, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) {
+    void Renderer::transition_img_layout(
+        VkImage img,
+        VkFormat format,
+        VkImageLayout old_layout,
+        VkImageLayout new_layout,
+        uint32_t mip_levels
+    ) {
         VkCommandBuffer command_buffer = begin_single_time_commands();
         {
             VkImageMemoryBarrier barrier {};
@@ -981,7 +1018,7 @@ namespace sigil {
             barrier.image = img;
             barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             barrier.subresourceRange.baseMipLevel = 0;
-            barrier.subresourceRange.levelCount = 1;
+            barrier.subresourceRange.levelCount = mip_levels;
             barrier.subresourceRange.baseArrayLayer = 0;
             barrier.subresourceRange.layerCount = 1;
 
@@ -1044,11 +1081,102 @@ namespace sigil {
         end_single_time_commands(command_buffer);
     }
 
+    void Renderer::generate_mipmaps(
+        VkImage image,
+        VkFormat image_format,
+        int32_t t_width,
+        int32_t t_height,
+        uint32_t mip_levels
+    ) {
+        VkFormatProperties format_properties {};
+        vkGetPhysicalDeviceFormatProperties(physical_device, image_format, &format_properties);
+        if( !(format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) ) {
+            throw std::runtime_error("\tError: Texture image format does not support linear blitting.");
+        }
+        VkCommandBuffer command_buffer = begin_single_time_commands();
+        {
+            VkImageMemoryBarrier barrier {};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.image = image;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            barrier.subresourceRange.baseArrayLayer = 0;
+            barrier.subresourceRange.layerCount = 1;
+            barrier.subresourceRange.levelCount = 1;
+
+            int32_t mip_w = t_width;
+            int32_t mip_h = t_height;
+            for( uint32_t i = 1; i < mip_levels; i++ ) {
+                barrier.subresourceRange.baseMipLevel = i - 1;
+                barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+                barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                vkCmdPipelineBarrier(
+                        command_buffer,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                        0, nullptr,
+                        0, nullptr,
+                        1, &barrier
+                    );
+                VkImageBlit blit {};
+                blit.srcOffsets[0] = { 0, 0, 0 };
+                blit.srcOffsets[1] = { mip_w, mip_h, 1 };
+                blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blit.srcSubresource.mipLevel = i - 1;
+                blit.srcSubresource.baseArrayLayer = 0;
+                blit.srcSubresource.layerCount = 1;
+                blit.dstOffsets[0] = { 0, 0, 0 };
+                blit.dstOffsets[1] = { mip_w > 1 ? mip_w / 2 : 1, mip_h > 1 ? mip_h / 2 : 1, 1 };
+                blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                blit.dstSubresource.mipLevel = i;
+                blit.dstSubresource.baseArrayLayer = 0;
+                blit.dstSubresource.layerCount = 1;
+                vkCmdBlitImage(
+                        command_buffer,
+                        image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        1, &blit,
+                        VK_FILTER_LINEAR
+                    );
+                barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+                barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+                vkCmdPipelineBarrier(
+                        command_buffer,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+                        0, nullptr,
+                        0, nullptr,
+                        1, &barrier
+                    );
+                if( mip_w > 1 ) mip_w /= 2;
+                if( mip_h > 1 ) mip_h /= 2;
+            }
+            barrier.subresourceRange.baseMipLevel = mip_levels - 1;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            vkCmdPipelineBarrier(
+                    command_buffer,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+                    0, nullptr,
+                    0, nullptr,
+                    1, &barrier
+                );
+        }
+        end_single_time_commands(command_buffer);
+    }
+
     void Renderer::create_depth_resources() {
         VkFormat depth_format = find_depth_format();
         create_img(
                 swap_chain_extent.width,
                 swap_chain_extent.height,
+                1,
+                msaa_samples,
                 depth_format,
                 VK_IMAGE_TILING_OPTIMAL,
                 VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
@@ -1059,7 +1187,8 @@ namespace sigil {
         depth_img_view = create_img_view(
                                     depth_img,
                                     depth_format,
-                                    VK_IMAGE_ASPECT_DEPTH_BIT
+                                    VK_IMAGE_ASPECT_DEPTH_BIT,
+                                    1
                                 );
     }
     
@@ -1091,6 +1220,28 @@ namespace sigil {
                 {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT},
                 VK_IMAGE_TILING_OPTIMAL,
                 VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+            );
+    }
+
+    void Renderer::create_color_resources() {
+        VkFormat color_format = swap_chain_img_format;
+        create_img(
+                swap_chain_extent.width,
+                swap_chain_extent.height,
+                1,
+                msaa_samples,
+                color_format,
+                VK_IMAGE_TILING_OPTIMAL,
+                VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                color_img,
+                color_img_memory
+            );
+        color_img_view = create_img_view(
+                color_img,
+                color_format,
+                VK_IMAGE_ASPECT_COLOR_BIT,
+                1
             );
     }
 
@@ -1160,23 +1311,33 @@ namespace sigil {
     void Renderer::create_render_pass() {
         VkAttachmentDescription color_attachment {};
         color_attachment.format = swap_chain_img_format;
-        color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        color_attachment.samples = msaa_samples;
         color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        color_attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentDescription deapth_attachment {};
         deapth_attachment.format = find_depth_format();
-        deapth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        deapth_attachment.samples = msaa_samples;
         deapth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         deapth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         deapth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         deapth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
         deapth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         deapth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+        VkAttachmentDescription color_attachment_resolve {};
+        color_attachment_resolve.format = swap_chain_img_format;
+        color_attachment_resolve.samples = VK_SAMPLE_COUNT_1_BIT;
+        color_attachment_resolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color_attachment_resolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        color_attachment_resolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        color_attachment_resolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        color_attachment_resolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        color_attachment_resolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
         VkAttachmentReference color_attachment_ref {};
         color_attachment_ref.attachment = 0;
@@ -1186,11 +1347,16 @@ namespace sigil {
         depth_attachment_ref.attachment = 1;
         depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
+        VkAttachmentReference color_attachment_resolve_ref {};
+        color_attachment_resolve_ref.attachment = 2;
+        color_attachment_resolve_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
         VkSubpassDescription subpass {};
         subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
         subpass.colorAttachmentCount = 1;
         subpass.pColorAttachments = &color_attachment_ref;
         subpass.pDepthStencilAttachment = &depth_attachment_ref;
+        subpass.pResolveAttachments = &color_attachment_resolve_ref;
 
         VkSubpassDependency dependency {};
         dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -1203,9 +1369,10 @@ namespace sigil {
         dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
                                  | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
 
-        std::array<VkAttachmentDescription, 2> attachments = {
+        std::array<VkAttachmentDescription, 3> attachments = {
             color_attachment,
-            deapth_attachment
+            deapth_attachment,
+            color_attachment_resolve
         };
 
         VkRenderPassCreateInfo render_pass_info {};
@@ -1225,9 +1392,10 @@ namespace sigil {
     void Renderer::create_framebuffers() {
         swap_chain_framebuffers.resize(swap_chain_img_views.size());
         for( size_t i = 0; i < swap_chain_img_views.size(); i++ ) {
-            std::array<VkImageView, 2> attachments = {
+            std::array<VkImageView, 3> attachments = {
+                color_img_view,
+                depth_img_view,
                 swap_chain_img_views[i],
-                depth_img_view
             };
             VkFramebufferCreateInfo framebuffer_info {};
             framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;

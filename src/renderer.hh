@@ -109,7 +109,11 @@ namespace sigil {
             void init();
             void terminate();
             void draw();
-            static void resize_callback(GLFWwindow*, int, int);
+            static void resize_callback(
+                    GLFWwindow* window,
+                    int width,
+                    int height
+                );
 
         private:
             void create_instance();
@@ -120,23 +124,44 @@ namespace sigil {
             void cleanup_swap_chain();
             void recreate_swap_chain();
             VkImageView create_img_view(
-                    VkImage,
-                    VkFormat,
-                    VkImageAspectFlags
+                    VkImage image,
+                    VkFormat format,
+                    VkImageAspectFlags aspect_flags,
+                    uint32_t mip_levels
                 );
             void create_img_views();
             void print_extensions();
             std::vector<const char*> get_required_extensions();
-            bool is_device_suitable(VkPhysicalDevice);
-            int score_device_suitability(VkPhysicalDevice);
-            bool check_device_extension_support(VkPhysicalDevice);
-            QueueFamilyIndices find_queue_families(VkPhysicalDevice);
-            SwapChainSupportDetails query_swap_chain_support(VkPhysicalDevice);
-            VkSurfaceFormatKHR choose_swap_surface_format(const std::vector<VkSurfaceFormatKHR>&);
-            VkPresentModeKHR choose_swap_present_mode(const std::vector<VkPresentModeKHR>&);
-            VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR&);
-            VkShaderModule create_shader_module(const std::vector<char>&);
-            static std::vector<char> read_file(const std::string& path);
+            bool is_device_suitable(
+                    VkPhysicalDevice physical_device
+                );
+            int score_device_suitability(
+                    VkPhysicalDevice physical_device
+                );
+            bool check_device_extension_support(
+                    VkPhysicalDevice physical_device
+                );
+            QueueFamilyIndices find_queue_families(
+                    VkPhysicalDevice physical_device
+                );
+            SwapChainSupportDetails query_swap_chain_support(
+                    VkPhysicalDevice physical_device
+                );
+            VkSurfaceFormatKHR choose_swap_surface_format(
+                    const std::vector<VkSurfaceFormatKHR>&
+                );
+            VkPresentModeKHR choose_swap_present_mode(
+                    const std::vector<VkPresentModeKHR>&
+                );
+            VkExtent2D choose_swap_extent(
+                    const VkSurfaceCapabilitiesKHR&
+                );
+            VkShaderModule create_shader_module(
+                    const std::vector<char>&
+                );
+            static std::vector<char> read_file(
+                    const std::string& path
+                );
             void create_buffer(
                     VkDeviceSize,
                     VkBufferUsageFlags,
@@ -144,24 +169,35 @@ namespace sigil {
                     VkBuffer&,
                     VkDeviceMemory&
                 );
-            void copy_buffer(VkBuffer, VkBuffer, VkDeviceSize);
+            void copy_buffer(
+                    VkBuffer,
+                    VkBuffer,
+                    VkDeviceSize
+                );
             void create_vertex_buffer();
             void create_index_buffer();
             void create_uniform_buffers();
-            void update_uniform_buffer(uint32_t current_image);
-            uint32_t find_memory_type(uint32_t, VkMemoryPropertyFlags);
+            void update_uniform_buffer(
+                    uint32_t current_image
+                );
+            uint32_t find_memory_type(
+                    uint32_t,
+                    VkMemoryPropertyFlags
+                );
             void create_descriptor_set_layout();
             void create_descriptor_pool();
             void create_descriptor_sets();
             void create_img(
-                    uint32_t,
-                    uint32_t,
-                    VkFormat,
-                    VkImageTiling,
-                    VkImageUsageFlags,
-                    VkMemoryPropertyFlags,
-                    VkImage&,
-                    VkDeviceMemory&
+                    uint32_t width,
+                    uint32_t height,
+                    uint32_t mip_levels,
+                    VkSampleCountFlagBits num_samples,
+                    VkFormat format,
+                    VkImageTiling tiling,
+                    VkImageUsageFlags usage,
+                    VkMemoryPropertyFlags properties,
+                    VkImage& image,
+                    VkDeviceMemory& image_memory
                 );
             void create_texture_img();
             void create_texture_img_view();
@@ -171,12 +207,28 @@ namespace sigil {
             void create_framebuffers();
             void create_command_pool();
             void create_command_buffers();
-            void record_command_buffer(VkCommandBuffer, uint32_t);
+            void record_command_buffer(
+                    VkCommandBuffer,
+                    uint32_t
+                );
             void create_sync_objects();
             VkCommandBuffer begin_single_time_commands();
-            void end_single_time_commands(VkCommandBuffer command_buffer);
-            void transition_img_layout(VkImage, VkFormat, VkImageLayout, VkImageLayout);
-            void copy_buffer_to_img(VkBuffer, VkImage, uint32_t, uint32_t);
+            void end_single_time_commands(
+                    VkCommandBuffer command_buffer
+                );
+            void transition_img_layout(
+                    VkImage image,
+                    VkFormat format,
+                    VkImageLayout old_layout,
+                    VkImageLayout new_layout,
+                    uint32_t mip_levels
+                );
+            void copy_buffer_to_img(
+                    VkBuffer,
+                    VkImage,
+                    uint32_t,
+                    uint32_t
+                );
             void create_depth_resources();
             VkFormat find_supported_format(
                     const std::vector<VkFormat>& candidates,
@@ -186,6 +238,15 @@ namespace sigil {
             VkFormat find_depth_format();
             bool has_stencil_component(VkFormat format);
             void load_model();
+            void generate_mipmaps(
+                    VkImage image,
+                    VkFormat image_format,
+                    int32_t t_width,
+                    int32_t t_height,
+                    uint32_t mip_levels
+                );
+            VkSampleCountFlagBits get_max_usable_sample_count();
+            void create_color_resources();
 
                 //// VALIDATION LAYERS ////
             VkResult create_debug_util_messenger_ext(
@@ -193,21 +254,23 @@ namespace sigil {
                     const VkDebugUtilsMessengerCreateInfoEXT* p_create_info,
                     const VkAllocationCallbacks* p_allocator,
                     VkDebugUtilsMessengerEXT* p_debug_messenger
-                    );
+                );
             void setup_debug_messenger();
-            void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
+            void populate_debug_messenger_create_info(
+                    VkDebugUtilsMessengerCreateInfoEXT& create_info
+                );
             bool check_validation_layer_support();
             void destroy_debug_util_messenger_ext(
                     VkInstance instance, 
                     VkDebugUtilsMessengerEXT p_debug_messenger,
                     const VkAllocationCallbacks* p_allocator
-                    );
+                );
             static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
                     VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
                     VkDebugUtilsMessageTypeFlagsEXT msg_type,
                     const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
                     void* p_user_data
-                    );
+                );
 
                    //// VULKAN ////
             VkInstance instance;
@@ -241,10 +304,14 @@ namespace sigil {
             std::vector<VkBuffer> uniform_buffers;
             std::vector<VkDeviceMemory> uniform_buffers_memory;
             std::vector<void*> uniform_buffers_mapped;
+            uint32_t mip_levels;
             VkImage texture_image;
             VkDeviceMemory texture_image_memory;
             VkImageView texture_image_view;
             VkSampler texture_sampler;
+            VkImage color_img;
+            VkDeviceMemory color_img_memory;
+            VkImageView color_img_view;
                    // DEPTH //
             VkImage depth_img;
             VkDeviceMemory depth_img_memory;
@@ -257,6 +324,7 @@ namespace sigil {
             std::vector<VkFence> in_flight_fences;
             bool framebuffer_resized = false;
             uint32_t current_frame = 0;
+            VkSampleCountFlagBits msaa_samples = VK_SAMPLE_COUNT_1_BIT;
     };
 }
 
