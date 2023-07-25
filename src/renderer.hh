@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 #include <optional>
@@ -11,7 +12,10 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <vulkan/vulkan_core.h>
+#define VULKAN_HPP_NO_EXCEPTIONS
+#define VULKAN_HPP_NO_CONSTRUCTORS
+#define VULKAN_HPP_ASSERT
+#include <vulkan/vulkan.hpp>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -23,7 +27,8 @@
 namespace sigil {
 
     const std::vector<const char*> validation_layers = {
-        "VK_LAYER_KHRONOS_validation"
+        "VK_LAYER_KHRONOS_validation",
+        //"VK_LAYER_LUNARG_api_dump",
     };
 
     const std::vector<const char*>  device_extensions = {
@@ -52,9 +57,9 @@ namespace sigil {
     };
 
     struct SwapChainSupportDetails {
-        VkSurfaceCapabilitiesKHR capabilities;
-        std::vector<VkSurfaceFormatKHR> formats;
-        std::vector<VkPresentModeKHR> present_modes;
+        vk::SurfaceCapabilitiesKHR capabilities;
+        std::vector<vk::SurfaceFormatKHR> formats;
+        std::vector<vk::PresentModeKHR> present_modes;
     };
 
     struct Vertex {
@@ -62,30 +67,30 @@ namespace sigil {
         glm::vec3 color;
         glm::vec2 texture_coords;
 
-        static VkVertexInputBindingDescription get_binding_description() {
-            VkVertexInputBindingDescription binding_description {};
+        static vk::VertexInputBindingDescription get_binding_description() {
+            vk::VertexInputBindingDescription binding_description {};
             binding_description.binding = 0;
             binding_description.stride = sizeof(Vertex);
-            binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+            binding_description.inputRate = vk::VertexInputRate::eVertex;
 
             return binding_description;
         }
 
-        static std::array<VkVertexInputAttributeDescription, 3> get_attribute_descriptions() {
-            std::array<VkVertexInputAttributeDescription, 3> attribute_descriptions {};
+        static std::array<vk::VertexInputAttributeDescription, 3> get_attribute_descriptions() {
+            std::array<vk::VertexInputAttributeDescription, 3> attribute_descriptions {};
             attribute_descriptions[0].binding = 0;
             attribute_descriptions[0].location = 0;
-            attribute_descriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attribute_descriptions[0].format = vk::Format::eR32G32B32Sfloat;
             attribute_descriptions[0].offset = offsetof(Vertex, pos);
 
             attribute_descriptions[1].binding = 0;
             attribute_descriptions[1].location = 1;
-            attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+            attribute_descriptions[1].format = vk::Format::eR32G32B32Sfloat;
             attribute_descriptions[1].offset = offsetof(Vertex, color);
 
             attribute_descriptions[2].binding = 0;
             attribute_descriptions[2].location = 2;
-            attribute_descriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+            attribute_descriptions[2].format = vk::Format::eR32G32Sfloat;
             attribute_descriptions[2].offset = offsetof(Vertex, texture_coords);
 
             return attribute_descriptions;
@@ -123,66 +128,43 @@ namespace sigil {
             void create_swap_chain();
             void cleanup_swap_chain();
             void recreate_swap_chain();
-            VkImageView create_img_view(
-                    VkImage image,
-                    VkFormat format,
-                    VkImageAspectFlags aspect_flags,
+            vk::ImageView create_img_view(
+                    vk::Image image,
+                    vk::Format format,
+                    vk::ImageAspectFlags aspect_flags,
                     uint32_t mip_levels
                 );
             void create_img_views();
             void print_extensions();
             std::vector<const char*> get_required_extensions();
-            bool is_device_suitable(
-                    VkPhysicalDevice physical_device
-                );
-            int score_device_suitability(
-                    VkPhysicalDevice physical_device
-                );
-            bool check_device_extension_support(
-                    VkPhysicalDevice physical_device
-                );
-            QueueFamilyIndices find_queue_families(
-                    VkPhysicalDevice physical_device
-                );
-            SwapChainSupportDetails query_swap_chain_support(
-                    VkPhysicalDevice physical_device
-                );
-            VkSurfaceFormatKHR choose_swap_surface_format(
-                    const std::vector<VkSurfaceFormatKHR>&
-                );
-            VkPresentModeKHR choose_swap_present_mode(
-                    const std::vector<VkPresentModeKHR>&
-                );
-            VkExtent2D choose_swap_extent(
-                    const VkSurfaceCapabilitiesKHR&
-                );
-            VkShaderModule create_shader_module(
-                    const std::vector<char>&
-                );
-            static std::vector<char> read_file(
-                    const std::string& path
-                );
+            bool is_device_suitable(vk::PhysicalDevice phys_device);
+            int score_device_suitability(vk::PhysicalDevice phys_device);
+            bool check_device_extension_support(vk::PhysicalDevice phys_device);
+            QueueFamilyIndices find_queue_families(vk::PhysicalDevice phys_device);
+            vk::SurfaceFormatKHR choose_swap_surface_format(const std::vector<vk::SurfaceFormatKHR>&);
+            vk::PresentModeKHR choose_swap_present_mode(const std::vector<vk::PresentModeKHR>&);
+            vk::Extent2D choose_swap_extent(const vk::SurfaceCapabilitiesKHR&);
+            vk::ShaderModule create_shader_module(const std::vector<char>&);
+            static std::vector<char> read_file(const std::string& path);
             void create_buffer(
-                    VkDeviceSize,
-                    VkBufferUsageFlags,
-                    VkMemoryPropertyFlags,
-                    VkBuffer&,
-                    VkDeviceMemory&
+                    vk::DeviceSize,
+                    vk::BufferUsageFlags,
+                    vk::MemoryPropertyFlags,
+                    vk::Buffer&,
+                    vk::DeviceMemory&
                 );
             void copy_buffer(
-                    VkBuffer,
-                    VkBuffer,
-                    VkDeviceSize
+                    vk::Buffer,
+                    vk::Buffer,
+                    vk::DeviceSize
                 );
             void create_vertex_buffer();
             void create_index_buffer();
             void create_uniform_buffers();
-            void update_uniform_buffer(
-                    uint32_t current_image
-                );
+            void update_uniform_buffer(uint32_t current_image);
             uint32_t find_memory_type(
                     uint32_t,
-                    VkMemoryPropertyFlags
+                    vk::MemoryPropertyFlags
                 );
             void create_descriptor_set_layout();
             void create_descriptor_pool();
@@ -191,13 +173,13 @@ namespace sigil {
                     uint32_t width,
                     uint32_t height,
                     uint32_t mip_levels,
-                    VkSampleCountFlagBits num_samples,
-                    VkFormat format,
-                    VkImageTiling tiling,
-                    VkImageUsageFlags usage,
-                    VkMemoryPropertyFlags properties,
-                    VkImage& image,
-                    VkDeviceMemory& image_memory
+                    vk::SampleCountFlagBits num_samples,
+                    vk::Format format,
+                    vk::ImageTiling tiling,
+                    vk::ImageUsageFlags usage,
+                    vk::MemoryPropertyFlags properties,
+                    vk::Image& image,
+                    vk::DeviceMemory& image_memory
                 );
             void create_texture_img();
             void create_texture_img_view();
@@ -208,44 +190,42 @@ namespace sigil {
             void create_command_pool();
             void create_command_buffers();
             void record_command_buffer(
-                    VkCommandBuffer,
+                    vk::CommandBuffer,
                     uint32_t
                 );
             void create_sync_objects();
-            VkCommandBuffer begin_single_time_commands();
-            void end_single_time_commands(
-                    VkCommandBuffer command_buffer
-                );
+            vk::CommandBuffer begin_single_time_commands();
+            void end_single_time_commands(vk::CommandBuffer command_buffer);
             void transition_img_layout(
-                    VkImage image,
-                    VkFormat format,
-                    VkImageLayout old_layout,
-                    VkImageLayout new_layout,
+                    vk::Image image,
+                    vk::Format format,
+                    vk::ImageLayout old_layout,
+                    vk::ImageLayout new_layout,
                     uint32_t mip_levels
                 );
             void copy_buffer_to_img(
-                    VkBuffer,
-                    VkImage,
+                    vk::Buffer,
+                    vk::Image,
                     uint32_t,
                     uint32_t
                 );
             void create_depth_resources();
-            VkFormat find_supported_format(
-                    const std::vector<VkFormat>& candidates,
-                    VkImageTiling tiling,
-                    VkFormatFeatureFlags features
+            vk::Format find_supported_format(
+                    const std::vector<vk::Format>& candidates,
+                    vk::ImageTiling tiling,
+                    vk::FormatFeatureFlags features
                 );
-            VkFormat find_depth_format();
-            bool has_stencil_component(VkFormat format);
+            vk::Format find_depth_format();
+            bool has_stencil_component(vk::Format format);
             void load_model();
             void generate_mipmaps(
-                    VkImage image,
-                    VkFormat image_format,
+                    vk::Image image,
+                    vk::Format image_format,
                     int32_t t_width,
                     int32_t t_height,
                     uint32_t mip_levels
                 );
-            VkSampleCountFlagBits get_max_usable_sample_count();
+            vk::SampleCountFlagBits get_max_usable_sample_count();
             void create_color_resources();
 
                 //// VALIDATION LAYERS ////
@@ -256,16 +236,14 @@ namespace sigil {
                     VkDebugUtilsMessengerEXT* p_debug_messenger
                 );
             void setup_debug_messenger();
-            void populate_debug_messenger_create_info(
-                    VkDebugUtilsMessengerCreateInfoEXT& create_info
-                );
+            void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
             bool check_validation_layer_support();
             void destroy_debug_util_messenger_ext(
                     VkInstance instance, 
                     VkDebugUtilsMessengerEXT p_debug_messenger,
                     const VkAllocationCallbacks* p_allocator
                 );
-            static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(
+            static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(
                     VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
                     VkDebugUtilsMessageTypeFlagsEXT msg_type,
                     const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
@@ -273,58 +251,58 @@ namespace sigil {
                 );
 
                    //// VULKAN ////
-            VkInstance instance;
-            VkPhysicalDevice physical_device = VK_NULL_HANDLE;
-            VkDevice device;
-            VkQueue graphics_queue;
-            VkQueue present_queue;
-            VkSurfaceKHR surface;
+            vk::Instance instance;
+            vk::PhysicalDevice physical_device;
+            vk::Device device;
+            vk::Queue graphics_queue;
+            vk::Queue present_queue;
+            vk::SurfaceKHR surface;
             VkDebugUtilsMessengerEXT debug_messenger;
                   // SWAP CHAIN //
-            VkSwapchainKHR swap_chain;
-            std::vector<VkImage> swap_chain_images;
-            VkFormat swap_chain_img_format;
-            VkExtent2D swap_chain_extent;
-            std::vector<VkImageView> swap_chain_img_views;
-            std::vector<VkFramebuffer> swap_chain_framebuffers;
+            vk::SwapchainKHR swap_chain;
+            std::vector<vk::Image> swap_chain_images;
+            vk::Format swap_chain_img_format;
+            vk::Extent2D swap_chain_extent;
+            std::vector<vk::ImageView> swap_chain_img_views;
+            std::vector<vk::Framebuffer> swap_chain_framebuffers;
                    // PIPELINE //
-            VkRenderPass render_pass;
-            VkDescriptorSetLayout descriptor_set_layout;
-            VkDescriptorPool descriptor_pool;
-            std::vector<VkDescriptorSet> descriptor_sets;
-            VkPipelineLayout pipeline_layout;
-            VkPipeline graphics_pipeline;
+            vk::RenderPass render_pass;
+            vk::DescriptorSetLayout descriptor_set_layout;
+            vk::DescriptorPool descriptor_pool;
+            std::vector<vk::DescriptorSet> descriptor_sets;
+            vk::PipelineLayout pipeline_layout;
+            vk::Pipeline graphics_pipeline;
                // VERTEX & INDICES //
             std::vector<Vertex> vertices;
             std::vector<uint32_t> indices;
-            VkBuffer vertex_buffer;
-            VkDeviceMemory vertex_buffer_memory;
-            VkBuffer index_buffer;
-            VkDeviceMemory index_buffer_memory;
-            std::vector<VkBuffer> uniform_buffers;
-            std::vector<VkDeviceMemory> uniform_buffers_memory;
+            vk::Buffer vertex_buffer;
+            vk::DeviceMemory vertex_buffer_memory;
+            vk::Buffer index_buffer;
+            vk::DeviceMemory index_buffer_memory;
+            std::vector<vk::Buffer> uniform_buffers;
+            std::vector<vk::DeviceMemory> uniform_buffers_memory;
             std::vector<void*> uniform_buffers_mapped;
             uint32_t mip_levels;
-            VkImage texture_image;
-            VkDeviceMemory texture_image_memory;
-            VkImageView texture_image_view;
-            VkSampler texture_sampler;
-            VkImage color_img;
-            VkDeviceMemory color_img_memory;
-            VkImageView color_img_view;
+            vk::Image texture_image;
+            vk::DeviceMemory texture_image_memory;
+            vk::ImageView texture_image_view;
+            vk::Sampler texture_sampler;
+            vk::Image color_img;
+            vk::DeviceMemory color_img_memory;
+            vk::ImageView color_img_view;
                    // DEPTH //
-            VkImage depth_img;
-            VkDeviceMemory depth_img_memory;
-            VkImageView depth_img_view;
+            vk::Image depth_img;
+            vk::DeviceMemory depth_img_memory;
+            vk::ImageView depth_img_view;
                 // RENDER PASS //
-            VkCommandPool command_pool;
-            std::vector<VkCommandBuffer> command_buffers;
-            std::vector<VkSemaphore> img_available_semaphores;
-            std::vector<VkSemaphore> render_finished_semaphores;
-            std::vector<VkFence> in_flight_fences;
+            vk::CommandPool command_pool;
+            std::vector<vk::CommandBuffer> command_buffers;
+            std::vector<vk::Semaphore> img_available_semaphores;
+            std::vector<vk::Semaphore> render_finished_semaphores;
+            std::vector<vk::Fence> in_flight_fences;
             bool framebuffer_resized = false;
             uint32_t current_frame = 0;
-            VkSampleCountFlagBits msaa_samples = VK_SAMPLE_COUNT_1_BIT;
+            vk::SampleCountFlagBits msaa_samples = vk::SampleCountFlagBits::e1;
     };
 }
 
@@ -337,3 +315,4 @@ namespace std {
         }
     };
 }
+

@@ -33,7 +33,7 @@ namespace sigil {
             Window(const Window&)            = delete;
             Window& operator=(const Window&) = delete;
 
-            GLFWwindow* ptr;
+            GLFWwindow*   ptr;
 
         private:
             const int   width;
@@ -41,3 +41,4 @@ namespace sigil {
             std::string title;
     };
 }
+

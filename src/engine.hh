@@ -7,8 +7,6 @@
 #include <vector>
 #include <optional>
 
-#include <vulkan/vulkan_core.h>
-
 namespace sigil {    
 
     static constexpr int                       WIDTH = 1920;

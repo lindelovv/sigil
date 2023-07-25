@@ -64,10 +64,10 @@ namespace sigil {
         public:
             void init();
             static void callback(GLFWwindow* window, int key, int scancode, int action, int mods);
-            void setup_standard_bindings(GLFWwindow* window);
         private:
+            void setup_standard_bindings();
             static std::unordered_map<KeyInfo, std::function<void()>> callbacks;
-            void bind(KeyInfo key_info, std::function<void()> callback_fn) {
+            inline void bind(KeyInfo key_info, std::function<void()> callback_fn) {
                 callbacks.insert({ key_info, callback_fn });
             }
     };
