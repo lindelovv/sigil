@@ -26,6 +26,14 @@
 
 namespace sigil {
 
+    const vk::ApplicationInfo engine_info = {
+        .pApplicationName               = "sigil",
+        .applicationVersion             = VK_MAKE_VERSION(0, 0, 1),
+        .pEngineName                    = "sigil",
+        .engineVersion                  = VK_MAKE_VERSION(0, 0, 1),
+        .apiVersion                     = VK_API_VERSION_1_3,
+    };
+
     const std::vector<const char*> validation_layers = {
         "VK_LAYER_KHRONOS_validation",
         //"VK_LAYER_LUNARG_api_dump",
@@ -43,7 +51,7 @@ namespace sigil {
         const bool enable_validation_layers = true;
     #endif
 
-    const std::string MODEL_PATH = "models/model.obj";
+    const std::string MODEL_PATH   = "models/model.obj";
     const std::string TEXTURE_PATH = "textures/model_texture.png";
 
     struct QueueFamilyIndices {
@@ -52,7 +60,7 @@ namespace sigil {
 
         bool is_complete() {
             return graphics_family.has_value()
-                && present_family.has_value();
+                && present_family .has_value();
         }
     };
 
@@ -65,12 +73,12 @@ namespace sigil {
     struct Vertex {
         glm::vec3 pos;
         glm::vec3 color;
-        glm::vec2 texture_coords;
+        glm::vec2 uvs;
 
         static vk::VertexInputBindingDescription get_binding_description() {
             vk::VertexInputBindingDescription binding_description {};
-            binding_description.binding = 0;
-            binding_description.stride = sizeof(Vertex);
+            binding_description.binding   = 0;
+            binding_description.stride    = sizeof(Vertex);
             binding_description.inputRate = vk::VertexInputRate::eVertex;
 
             return binding_description;
@@ -78,28 +86,28 @@ namespace sigil {
 
         static std::array<vk::VertexInputAttributeDescription, 3> get_attribute_descriptions() {
             std::array<vk::VertexInputAttributeDescription, 3> attribute_descriptions {};
-            attribute_descriptions[0].binding = 0;
+            attribute_descriptions[0].binding  = 0;
             attribute_descriptions[0].location = 0;
-            attribute_descriptions[0].format = vk::Format::eR32G32B32Sfloat;
-            attribute_descriptions[0].offset = offsetof(Vertex, pos);
+            attribute_descriptions[0].format   = vk::Format::eR32G32B32Sfloat;
+            attribute_descriptions[0].offset   = offsetof(Vertex, pos);
 
-            attribute_descriptions[1].binding = 0;
+            attribute_descriptions[1].binding  = 0;
             attribute_descriptions[1].location = 1;
-            attribute_descriptions[1].format = vk::Format::eR32G32B32Sfloat;
-            attribute_descriptions[1].offset = offsetof(Vertex, color);
+            attribute_descriptions[1].format   = vk::Format::eR32G32B32Sfloat;
+            attribute_descriptions[1].offset   = offsetof(Vertex, color);
 
-            attribute_descriptions[2].binding = 0;
+            attribute_descriptions[2].binding  = 0;
             attribute_descriptions[2].location = 2;
-            attribute_descriptions[2].format = vk::Format::eR32G32Sfloat;
-            attribute_descriptions[2].offset = offsetof(Vertex, texture_coords);
+            attribute_descriptions[2].format   = vk::Format::eR32G32Sfloat;
+            attribute_descriptions[2].offset   = offsetof(Vertex, uvs);
 
             return attribute_descriptions;
         }
 
         bool operator==(const Vertex& other) const {
-            return pos == other.pos
+            return pos   == other.pos
                 && color == other.color
-                && texture_coords == other.texture_coords;
+                && uvs   == other.uvs;
         }
     };
 
@@ -136,7 +144,6 @@ namespace sigil {
                 );
             void create_img_views();
             void print_extensions();
-            std::vector<const char*> get_required_extensions();
             bool is_device_suitable(vk::PhysicalDevice phys_device);
             int score_device_suitability(vk::PhysicalDevice phys_device);
             bool check_device_extension_support(vk::PhysicalDevice phys_device);
@@ -236,8 +243,7 @@ namespace sigil {
                     VkDebugUtilsMessengerEXT* p_debug_messenger
                 );
             void setup_debug_messenger();
-            void populate_debug_messenger_create_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
-            bool check_validation_layer_support();
+            vk::ResultValue<std::vector<VkLayerProperties>> check_validation_layer_support();
             void destroy_debug_util_messenger_ext(
                     VkInstance instance, 
                     VkDebugUtilsMessengerEXT p_debug_messenger,
@@ -311,7 +317,7 @@ namespace std {
         size_t operator()(sigil::Vertex const& vertex) const {
             return ((hash<glm::vec3>()(vertex.pos) ^
                     (hash<glm::vec3>()(vertex.color) << 1)) >> 1) ^
-                    (hash<glm::vec2>()(vertex.texture_coords) << 1);
+                    (hash<glm::vec2>()(vertex.uvs)   << 1);
         }
     };
 }

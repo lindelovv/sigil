@@ -1,9 +1,12 @@
 #include "input.hh"
 #include "engine.hh"
+
 #include <GLFW/glfw3.h>
 #include <functional>
 #include <map>
 #include <any>
+#include <chrono>
+#include <iostream>
 
 namespace sigil {
 
