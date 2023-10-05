@@ -1,6 +1,7 @@
 #pragma once
 
-#include "renderer.hh"
+#include "engine.hh"
+#include "system.hh"
 
 #include <string>
 
@@ -9,36 +10,30 @@
 
 namespace sigil {
     
-    class Window {
+    class Window : public System {
         public:
-            Window(int w, int h, std::string t) : 
-                width(w), height(h), title(t)
-            {}
+            Window() : width(1920), height(1080), title("sigil") {}
 
-            ~Window() {
-                glfwDestroyWindow(ptr);
-                glfwTerminate();
-            }
+            Window(int w, int h, std::string t) : width(w), height(h), title(t) {}
 
-            inline void init() {
-                glfwInit();
-                glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+            virtual void init() override;
 
-                ptr = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
-                glfwSetFramebufferSizeCallback(ptr, Renderer::resize_callback);
-            }
+            virtual void terminate() override;
 
-            inline bool should_close() { return glfwWindowShouldClose(ptr); };
+            virtual void tick() override;
+
+            bool should_close();
 
             Window(const Window&)            = delete;
             Window& operator=(const Window&) = delete;
 
-            GLFWwindow*   ptr;
+            GLFWwindow* main_window;
 
         private:
             const int   width;
             const int  height;
             std::string title;
     };
+    extern Window* window;
 }
 

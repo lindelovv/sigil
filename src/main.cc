@@ -1,14 +1,21 @@
 #include "engine.hh"
+#include "renderer.hh"
+#include "window.hh"
+#include "input.hh"
 
 #include <cstdlib>
 #include <iostream>
 #include <exception>
 
+using sigil::Window,
+      sigil::Renderer,
+      sigil::Input;
+
 int main() {
-    try { sigil::core.run(); } catch(const std::exception &error) {
-                                 std::cerr << error.what() << '\n';
-                                 return EXIT_FAILURE;
-                             };
-    return EXIT_SUCCESS;
+    sigil::core
+        .add_system<Window>()
+        .add_system<Renderer>()
+        .add_system<Input>()
+        .run();
 }
 

@@ -14,7 +14,7 @@ namespace sigil {
 
     void Input::init() {
         setup_standard_bindings();
-        glfwSetKeyCallback(core.window.ptr, callback);
+        glfwSetKeyCallback(window->main_window, callback);
     }
 
     void Input::callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -24,9 +24,9 @@ namespace sigil {
     }
 
     void Input::setup_standard_bindings() {
-        bind({ GLFW_KEY_T,      GLFW_PRESS, 0 }, []{     std::cout << "test\n";                           });
-        bind({ GLFW_KEY_Q,      GLFW_PRESS, 0 }, []{     glfwSetWindowShouldClose(core.window.ptr, true); });
-        bind({ GLFW_KEY_ESCAPE, GLFW_PRESS, 0 }, []{     glfwSetWindowShouldClose(core.window.ptr, true); });
+        bind({ GLFW_KEY_T,      GLFW_PRESS, 0 }, [this]{     std::cout << "test\n";                           });
+        bind({ GLFW_KEY_Q,      GLFW_PRESS, 0 }, [this]{     glfwSetWindowShouldClose(window->main_window, true); });
+        bind({ GLFW_KEY_ESCAPE, GLFW_PRESS, 0 }, [this]{     glfwSetWindowShouldClose(window->main_window, true); });
     }
 }
 

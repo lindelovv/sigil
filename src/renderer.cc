@@ -1,5 +1,5 @@
 #include "renderer.hh"
-#include "engine.hh"
+#include "window.hh"
 #include "util.hh"
 
 #include <GLFW/glfw3.h>
@@ -29,11 +29,13 @@
 
 namespace sigil {
 
+    Renderer renderer;
+
     void Renderer::init() {
         // done
         create_instance();
-        expect( "Failed to create main window surface",
-            glfwCreateWindowSurface(instance, core.window.ptr, nullptr, (VkSurfaceKHR*)&surface)
+        expect("Failed to create main window surface.",
+            glfwCreateWindowSurface(instance, window->main_window, nullptr, (VkSurfaceKHR*)&surface)
         );
         select_physical_device();
         create_logical_device();
@@ -267,7 +269,7 @@ namespace sigil {
             return capabilities.currentExtent;
         } else {
             int width, height;
-            glfwGetFramebufferSize(core.window.ptr, &width, &height);
+            glfwGetFramebufferSize(window->main_window, &width, &height);
             
             vk::Extent2D actual_extent = {
                 static_cast<uint32_t>(width),
@@ -305,9 +307,9 @@ namespace sigil {
 
     void Renderer::recreate_swap_chain() {
         int width = 0, height = 0;
-        glfwGetFramebufferSize(core.window.ptr, &width, &height);
+        glfwGetFramebufferSize(window->main_window, &width, &height);
         while( width == 0 || height == 0 ) {
-            glfwGetFramebufferSize(core.window.ptr, &width, &height);
+            glfwGetFramebufferSize(window->main_window, &width, &height);
             glfwWaitEvents();
         }
         expect("Device wait idle failed.", device.waitIdle());
@@ -947,7 +949,6 @@ namespace sigil {
                         nullptr,
                         barrier
                     );
-
                 vk::ImageBlit blit {
                     .srcSubresource {
                         .aspectMask     = vk::ImageAspectFlagBits::eColor,
@@ -987,8 +988,8 @@ namespace sigil {
                         nullptr,
                         barrier
                     );
-                if( mip_w > 1 ) mip_w /= 2;
-                if( mip_h > 1 ) mip_h /= 2;
+                if( mip_w > 1 ) { mip_w /= 2; }
+                if( mip_h > 1 ) { mip_h /= 2; }
             }
             barrier.subresourceRange.baseMipLevel = mip_levels - 1;
             barrier.oldLayout                     = vk::ImageLayout::eTransferDstOptimal;
@@ -1419,7 +1420,7 @@ namespace sigil {
     }
 
     void Renderer::resize_callback(GLFWwindow* window, int width, int height) {
-        core.renderer.framebuffer_resized = true;
+        renderer.framebuffer_resized = true;
     }
 
     void Renderer::terminate() {

@@ -1,25 +1,29 @@
 #pragma once
 
-#include "window.hh"
-#include "renderer.hh"
-#include "input.hh"
-
 #include <vector>
 #include <optional>
 
-namespace sigil {    
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
-    static constexpr int                       WIDTH = 1920;
-    static constexpr int                      HEIGHT = 1080;
+
+namespace sigil {    
+    class System;
 
     class Engine {
         public:
             void run();
-                            // OBJECTS //
-            Window        window { WIDTH, HEIGHT, "sigil" };
-            Renderer                            renderer {};
+
+        template <typename S>
+        inline Engine& add_system() {
+            auto system = new S();
+            systems.push_back(system);
+            return *this;
+        }
+
         private:
-            Input                                  input {};
+            std::vector<System*> systems;
+            bool should_close = false;
     };
     extern Engine core;
 }

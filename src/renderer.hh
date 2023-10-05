@@ -1,5 +1,8 @@
 #pragma once
 
+#include "engine.hh"
+#include "system.hh"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +24,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
 
@@ -117,10 +121,11 @@ namespace sigil {
         alignas(16) glm::mat4 proj;
     };
 
-    class Renderer {
+    class Renderer : public System {
         public:
-            void init();
-            void terminate();
+            virtual void init() override;
+            virtual void terminate() override;
+            virtual void tick() override { draw(); };
             void draw();
             static void resize_callback(
                     GLFWwindow* window,
@@ -310,6 +315,7 @@ namespace sigil {
             uint32_t current_frame = 0;
             vk::SampleCountFlagBits msaa_samples = vk::SampleCountFlagBits::e1;
     };
+    extern Renderer renderer;
 }
 
 namespace std {

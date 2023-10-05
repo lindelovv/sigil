@@ -1,6 +1,8 @@
 #pragma once
 
+#include "engine.hh"
 #include "window.hh"
+
 #include <iostream>
 #include <map>
 #include <sstream>
@@ -59,10 +61,12 @@ namespace std {
 
 namespace sigil {
 
-    class Input {
+    class Input : public System {
 
         public:
-            void init();
+            virtual void init() override;
+            virtual void terminate() override {};
+            virtual void tick() override {};
             static void callback(GLFWwindow* window, int key, int scancode, int action, int mods);
         private:
             void setup_standard_bindings();
