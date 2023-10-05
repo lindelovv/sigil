@@ -1,5 +1,9 @@
 #pragma once
 
+#include "system.hh"
+
+#include <concepts>
+#include <memory>
 #include <vector>
 #include <optional>
 
@@ -14,17 +18,21 @@ namespace sigil {
         public:
             void run();
 
-        template <typename S>
-        inline Engine& add_system() {
-            auto system = new S();
-            systems.push_back(system);
-            return *this;
-        }
+            template <std::derived_from<System> SystemType>
+            inline Engine& add_system() {
+                auto system = new SystemType;
+                system->link(this);
+                systems.push_back(std::unique_ptr<System>(system));
+                return *this;
+            }
 
-        private:
-            std::vector<System*> systems;
+            std::vector<std::unique_ptr<System>> systems;
             bool should_close = false;
     };
-    extern Engine core;
+
+    inline Engine& init() {
+        auto core = new Engine();
+        return *core;
+    }
 }
 

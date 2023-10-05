@@ -7,21 +7,19 @@
 
 namespace sigil {
     
-    Engine core;
-
     void Engine::run() {
-        for( auto system : systems ) {
+        for( auto& system : systems ) {
             system->init();
         }
         while( !should_close ) {
             glfwPollEvents();
-            for( auto system : systems ) {
-                if( system->can_tick ) {
+            for( auto& system : systems ) {
+                if( system->can_tick() ) {
                     system->tick();
                 }
             }
         }
-        for( auto system : systems ) {
+        for( auto& system : systems ) {
             system->terminate();
         }
     }

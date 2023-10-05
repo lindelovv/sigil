@@ -2,6 +2,7 @@
 
 #include "engine.hh"
 #include "system.hh"
+#include "window.hh"
 
 #include <array>
 #include <cstddef>
@@ -124,8 +125,10 @@ namespace sigil {
     class Renderer : public System {
         public:
             virtual void init() override;
+            virtual void link(Engine* engine) override;
             virtual void terminate() override;
-            virtual void tick() override { draw(); };
+            inline virtual bool can_tick() override { return true; };
+            inline virtual void tick() override { draw(); };
             void draw();
             static void resize_callback(
                     GLFWwindow* window,
@@ -314,6 +317,7 @@ namespace sigil {
             bool framebuffer_resized = false;
             uint32_t current_frame = 0;
             vk::SampleCountFlagBits msaa_samples = vk::SampleCountFlagBits::e1;
+            Window* window;
     };
     extern Renderer renderer;
 }

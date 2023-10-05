@@ -65,6 +65,15 @@ namespace sigil {
         create_sync_objects();
     }
 
+    void Renderer::link(Engine* core) {
+        for( auto& system : core->systems ) {
+            if( Window* win = dynamic_cast<Window*>(system.get()) ) {
+                window = win;
+                break;
+            }
+        }
+    }
+
     void Renderer::create_instance() {
 #ifdef DEBUG
         for( auto requsted_layer : validation_layers ) {

@@ -12,7 +12,7 @@ using sigil::Window,
       sigil::Input;
 
 int main() {
-    sigil::core
+    sigil::init()
         .add_system<Window>()
         .add_system<Renderer>()
         .add_system<Input>()

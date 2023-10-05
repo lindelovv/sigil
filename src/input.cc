@@ -17,6 +17,15 @@ namespace sigil {
         glfwSetKeyCallback(window->main_window, callback);
     }
 
+    void Input::link(Engine* core) {
+        for( auto& system : core->systems ) {
+            if( Window* win = dynamic_cast<Window*>(system.get()) ) {
+                window = win;
+                break;
+            }
+        }
+    }
+
     void Input::callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
         if( callbacks.contains({ key, action, mods }) ) {
             callbacks.at({ key, action, mods })();

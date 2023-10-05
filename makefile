@@ -1,22 +1,18 @@
 CFLAGS=-std=c++20 -g -O2 -D_GLFW_WAYLAND -D_GLFW_EGL
 LDFLAGS=-lglfw -lvulkan -ldl -lX11 -lXxf86vm -lXrandr -lXi
-NAME=tmp
+NAME=simple_shader
 
-all:
+compile c:
 	g++-13 -Wall -Wpedantic $(CFLAGS) $(EXFLAGS) ./src/*.cc -I*.hh -o ./build/sigil $(LDFLAGS)
-and_run:
-	$(MAKE) all && $(MAKE) run
-and_debug:
-	$(MAKE) all && $(MAKE) debug
-run:
+run r:
 	./build/sigil
-debug:
+debug d:
 	gdb ./build/sigil
-clean:
+clean cln:
 	rm -f ./build/sigil
-vertex:
+vertexc:
 	glslc ./shaders/$(NAME).vert -o ./shaders/$(NAME).vert.spv
-fragment:
+fragmentc:
 	glslc ./shaders/$(NAME).frag -o ./shaders/$(NAME).frag.spv
-shaderc:
+shaderc sc:
 	$(MAKE) vertex && $(MAKE) fragment

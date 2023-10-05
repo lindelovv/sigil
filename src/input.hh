@@ -65,7 +65,9 @@ namespace sigil {
 
         public:
             virtual void init() override;
+            virtual void link(Engine* engine) override;
             virtual void terminate() override {};
+            inline virtual bool can_tick() override { return false; };
             virtual void tick() override {};
             static void callback(GLFWwindow* window, int key, int scancode, int action, int mods);
         private:
@@ -74,6 +76,7 @@ namespace sigil {
             inline void bind(KeyInfo key_info, std::function<void()> callback_fn) {
                 callbacks.insert({ key_info, callback_fn });
             }
+            Window* window;
     };
 }
 
