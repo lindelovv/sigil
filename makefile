@@ -3,16 +3,17 @@ LDFLAGS=-lglfw -lvulkan -ldl -lX11 -lXxf86vm -lXrandr -lXi
 NAME=simple_shader
 
 compile c:
-	g++-13 -Wall -Wpedantic $(CFLAGS) $(EXFLAGS) ./src/*.cc -I*.hh -o ./build/sigil $(LDFLAGS)
+	g++-13 -Wall -Wpedantic $(CFLAGS) $(EXFLAGS) $(shell find . -name "*.cc") $(shell find ./src/* -type d | sed s/^/-I/) -o ./build/sigil $(LDFLAGS)
 run r:
 	./build/sigil
 debug d:
 	gdb ./build/sigil
 clean cln:
 	rm -f ./build/sigil
-vertexc:
+vertexc scv:
 	glslc ./shaders/$(NAME).vert -o ./shaders/$(NAME).vert.spv
-fragmentc:
+fragmentc scf:
 	glslc ./shaders/$(NAME).frag -o ./shaders/$(NAME).frag.spv
 shaderc sc:
 	$(MAKE) vertex && $(MAKE) fragment
+

@@ -4,6 +4,8 @@
 namespace sigil {
 
     void Window::init() {
+        can_tick = true;
+
         glfwInit();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 

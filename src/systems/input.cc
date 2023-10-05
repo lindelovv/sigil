@@ -13,17 +13,14 @@ namespace sigil {
     std::unordered_map<KeyInfo, std::function<void()>> Input::callbacks;
 
     void Input::init() {
-        setup_standard_bindings();
-        glfwSetKeyCallback(window->main_window, callback);
-    }
-
-    void Input::link(Engine* core) {
         for( auto& system : core->systems ) {
             if( Window* win = dynamic_cast<Window*>(system.get()) ) {
                 window = win;
                 break;
             }
         }
+        setup_standard_bindings();
+        glfwSetKeyCallback(window->main_window, callback);
     }
 
     void Input::callback(GLFWwindow* window, int key, int scancode, int action, int mods) {

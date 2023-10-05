@@ -125,9 +125,7 @@ namespace sigil {
     class Renderer : public System {
         public:
             virtual void init() override;
-            virtual void link(Engine* engine) override;
             virtual void terminate() override;
-            inline virtual bool can_tick() override { return true; };
             inline virtual void tick() override { draw(); };
             void draw();
             static void resize_callback(

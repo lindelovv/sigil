@@ -3,13 +3,7 @@
 #include "window.hh"
 #include "input.hh"
 
-#include <cstdlib>
-#include <iostream>
-#include <exception>
-
-using sigil::Window,
-      sigil::Renderer,
-      sigil::Input;
+using namespace sigil;
 
 int main() {
     sigil::init()

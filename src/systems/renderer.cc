@@ -32,6 +32,13 @@ namespace sigil {
     Renderer renderer;
 
     void Renderer::init() {
+        can_tick = true;
+        for( auto& system : core->systems ) {
+            if( Window* win = dynamic_cast<Window*>(system.get()) ) {
+                window = win;
+                break;
+            }
+        }
         // done
         create_instance();
         expect("Failed to create main window surface.",
@@ -63,15 +70,6 @@ namespace sigil {
         create_descriptor_sets();
         create_command_buffers();
         create_sync_objects();
-    }
-
-    void Renderer::link(Engine* core) {
-        for( auto& system : core->systems ) {
-            if( Window* win = dynamic_cast<Window*>(system.get()) ) {
-                window = win;
-                break;
-            }
-        }
     }
 
     void Renderer::create_instance() {
