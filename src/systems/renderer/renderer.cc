@@ -1,6 +1,5 @@
 #include "renderer.hh"
-#include "window.hh"
-#include "util.hh"
+#include "system.hh"
 
 #include <GLFW/glfw3.h>
 #include <cstdint>
@@ -34,15 +33,15 @@ namespace sigil {
     void Renderer::init() {
         can_tick = true;
         for( auto& system : core->systems ) {
-            if( Window* win = dynamic_cast<Window*>(system.get()) ) {
-                window = win;
+            if( Glfw* glfw = dynamic_cast<Glfw*>(system.get()) ) {
+                window = glfw->window;
                 break;
             }
         }
         // done
         create_instance();
         expect("Failed to create main window surface.",
-            glfwCreateWindowSurface(instance, window->main_window, nullptr, (VkSurfaceKHR*)&surface)
+            glfwCreateWindowSurface(instance, window, nullptr, (VkSurfaceKHR*)&surface)
         );
         select_physical_device();
         create_logical_device();
@@ -70,6 +69,10 @@ namespace sigil {
         create_descriptor_sets();
         create_command_buffers();
         create_sync_objects();
+    }
+
+    void Renderer::tick() {
+        draw();
     }
 
     void Renderer::create_instance() {
@@ -276,7 +279,7 @@ namespace sigil {
             return capabilities.currentExtent;
         } else {
             int width, height;
-            glfwGetFramebufferSize(window->main_window, &width, &height);
+            glfwGetFramebufferSize(window, &width, &height);
             
             vk::Extent2D actual_extent = {
                 static_cast<uint32_t>(width),
@@ -314,9 +317,9 @@ namespace sigil {
 
     void Renderer::recreate_swap_chain() {
         int width = 0, height = 0;
-        glfwGetFramebufferSize(window->main_window, &width, &height);
+        glfwGetFramebufferSize(window, &width, &height);
         while( width == 0 || height == 0 ) {
-            glfwGetFramebufferSize(window->main_window, &width, &height);
+            glfwGetFramebufferSize(window, &width, &height);
             glfwWaitEvents();
         }
         expect("Device wait idle failed.", device.waitIdle());
@@ -1343,9 +1346,9 @@ namespace sigil {
     }
 
     void Renderer::draw() {
-        if( device.waitForFences(in_flight_fences, true, UINT64_MAX) != vk::Result::eSuccess ) {
-            throw std::runtime_error("\tError: Wait for fences failed.");
-        }
+        expect("Renderer; Wait for fences failed.",
+            device.waitForFences(in_flight_fences, true, UINT64_MAX)
+        );
         vk::ResultValue<uint32_t> next_img = device.acquireNextImageKHR(swap_chain, UINT64_MAX, img_available_semaphores[current_frame]);
         uint32_t img_index = next_img.value;
         if( next_img.result == vk::Result::eErrorOutOfDateKHR ) {

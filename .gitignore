@@ -2,5 +2,6 @@
 /models/model.obj
 /textures/model_texture.png
 /.cache
-./core
+core
+!/src/core
 

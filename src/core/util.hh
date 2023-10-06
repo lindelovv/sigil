@@ -11,7 +11,7 @@
 namespace sigil {
     
     template <typename T>
-    static T unwrap(vk::ResultValue<T> result) {
+    inline static T unwrap(vk::ResultValue<T> result) {
         if( result.result != vk::Result::eSuccess ) {
             throw std::runtime_error("Error: "
                                       + static_cast<std::string>(typeid(result.value).name())
@@ -22,7 +22,7 @@ namespace sigil {
     };
 
     template <typename T>
-    static T expect(std::string msg, vk::ResultValue<T> result) {
+    inline static T expect(std::string msg, vk::ResultValue<T> result) {
         if( result.result != vk::Result::eSuccess ) {
             throw std::runtime_error( "Error: "
                                       + msg 
@@ -34,7 +34,7 @@ namespace sigil {
         }
     };
 
-    static void expect(std::string msg, vk::Result result) {
+    inline static void expect(std::string msg, vk::Result result) {
         if( result != vk::Result::eSuccess ) {
             throw std::runtime_error( "tError: "
                                       + msg 
@@ -44,7 +44,7 @@ namespace sigil {
         }
     };
 
-    static void expect(std::string msg, VkResult result) {
+    inline static void expect(std::string msg, VkResult result) {
         if( result != VK_SUCCESS ) {
             throw std::runtime_error( "Error: "
                                       + msg 
@@ -55,7 +55,7 @@ namespace sigil {
     };
     
     template <typename T>
-    static void expect(std::string msg, T value) {
+    inline static void expect(std::string msg, T value) {
         if( value == nullptr ) {
             throw std::runtime_error( "Error: "
                                       + msg 
@@ -65,7 +65,7 @@ namespace sigil {
         }
     };
 
-    static void expect(std::string msg, bool value) {
+    inline static void expect(std::string msg, bool value) {
         if( !value ) {
             throw std::runtime_error( "Error: "
                                       + msg 

@@ -1,29 +1,27 @@
 #pragma once
 
 #include "engine.hh"
-#include "window.hh"
+#include "system.hh"
 
-#include <iostream>
-#include <map>
-#include <sstream>
-#include <vector>
-#include <functional>
-#include <optional>
+#include <string>
+
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
 
 namespace sigil {
 
     struct KeyInfo {
-        int key;
-        int action;
-        int mods;
+        uint16_t key;
+        uint16_t action;
+        uint16_t mods;
 
-        KeyInfo(int key, int action, int mods) {
+        KeyInfo(uint16_t key, uint16_t action, uint16_t mods) {
             this->key = key;
             this->action = action;
             this->mods = mods;
         }
 
-        int operator[](int i) {
+        uint16_t operator[](uint16_t i) {
             std::hash<std::string> hsh;
             std::stringstream ss;
             ss << key << action << mods;
@@ -52,29 +50,40 @@ namespace std {
     template <>
     struct hash<sigil::KeyInfo> {
         size_t operator()(const sigil::KeyInfo& o) const {
-            return ((hash<int>()(o.key)
-                    ^ (hash<int>()(o.action) << 1) >> 1)
-                    ^ (hash<int>()(o.mods) << 1));
+            return ((hash<uint16_t>()(o.key)
+                    ^ (hash<uint16_t>()(o.action) << 1) >> 1)
+                    ^ (hash<uint16_t>()(o.mods) << 1));
         }
     };
 }
 
 namespace sigil {
-
-    class Input : public System {
-
+    
+    class Glfw : public System {
         public:
+            Glfw()                                      : width(1920), height(1080), title("sigil") {}
+            Glfw(uint16_t w, uint16_t h, std::string t) : width(w),    height(h),    title(t)       {}
+
             virtual void init() override;
-            virtual void terminate() override {};
-            virtual void tick() override {};
+            virtual void terminate() override;
+            virtual void tick() override;
+
+            Glfw(const Glfw&)            = delete;
+            Glfw& operator=(const Glfw&) = delete;
+
+            GLFWwindow* window;
+
             static void callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+
         private:
-            void setup_standard_bindings();
+            void setup_standard_input_bindings();
+            inline void bind_input(KeyInfo key_info, std::function<void()> callback_fn);
+
+            const uint16_t   width;
+            const uint16_t  height;
+            std::string title;
+
             static std::unordered_map<KeyInfo, std::function<void()>> callbacks;
-            inline void bind(KeyInfo key_info, std::function<void()> callback_fn) {
-                callbacks.insert({ key_info, callback_fn });
-            }
-            Window* window;
     };
 }
 

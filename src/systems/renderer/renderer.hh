@@ -2,7 +2,8 @@
 
 #include "engine.hh"
 #include "system.hh"
-#include "window.hh"
+#include "glfw.hh"
+#include "components.hh"
 
 #include <array>
 #include <cstddef>
@@ -122,11 +123,16 @@ namespace sigil {
         alignas(16) glm::mat4 proj;
     };
 
+    union RendererComponents {
+        struct Transform transform;
+        struct Lens      lens;
+    };
+
     class Renderer : public System {
         public:
             virtual void init() override;
             virtual void terminate() override;
-            inline virtual void tick() override { draw(); };
+            virtual void tick() override;
             void draw();
             static void resize_callback(
                     GLFWwindow* window,
@@ -315,9 +321,8 @@ namespace sigil {
             bool framebuffer_resized = false;
             uint32_t current_frame = 0;
             vk::SampleCountFlagBits msaa_samples = vk::SampleCountFlagBits::e1;
-            Window* window;
+            GLFWwindow* window;
     };
-    extern Renderer renderer;
 }
 
 namespace std {

@@ -1,15 +1,11 @@
 #include "engine.hh"
 #include "renderer.hh"
-#include "window.hh"
-#include "input.hh"
-
-using namespace sigil;
+#include "glfw.hh"
 
 int main() {
-    sigil::init()
-        .add_system<Window>()
-        .add_system<Renderer>()
-        .add_system<Input>()
+    sigil::core
+        .add_system<sigil::Glfw>()
+        .add_system<sigil::Renderer>()
         .run();
 }
 
