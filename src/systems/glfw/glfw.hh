@@ -1,9 +1,12 @@
 #pragma once
 
-#include "engine.hh"
-#include "system.hh"
+#include "sigil.hh"
 
+#include <cassert>
+#include <functional>
 #include <string>
+#include <sstream>
+#include <unordered_map>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -16,9 +19,9 @@ namespace sigil {
         uint16_t mods;
 
         KeyInfo(uint16_t key, uint16_t action, uint16_t mods) {
-            this->key = key;
+            this->key    = key;
             this->action = action;
-            this->mods = mods;
+            this->mods   = mods;
         }
 
         uint16_t operator[](uint16_t i) {
@@ -58,31 +61,48 @@ namespace std {
 }
 
 namespace sigil {
+
+    struct Window : SharedResource {
+        using SharedResource::SharedResource;
+        Window() {
+            instance = glfwCreateWindow(1920, 1080, ((std::string)"sigil").c_str(), nullptr, nullptr);
+            assert(instance != nullptr);
+        }
+        Window(std::size_t id) {
+            instance = glfwCreateWindow(1920, 1080, ((std::string)"sigil").c_str(), nullptr, nullptr);
+            assert(instance != nullptr);
+        }
+        Window(uint16_t width, uint16_t height, std::string title) {
+            instance = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
+            assert(instance != nullptr);
+        }
+        GLFWwindow* instance;
+    };
     
-    class Glfw : public System {
+    class Windowing : public System {
         public:
-            Glfw()                                      : width(1920), height(1080), title("sigil") {}
-            Glfw(uint16_t w, uint16_t h, std::string t) : width(w),    height(h),    title(t)       {}
+            using System::System;
+            virtual void init()              override;
+            virtual void terminate()         override;
+            virtual void tick()              override;
 
-            virtual void init() override;
-            virtual void terminate() override;
-            virtual void tick() override;
-
-            Glfw(const Glfw&)            = delete;
-            Glfw& operator=(const Glfw&) = delete;
+            Windowing(const Windowing&)            = delete;
+            Windowing& operator=(const Windowing&) = delete;
 
             GLFWwindow* window;
+    };
+
+    class Input : public System {
+        public:
+            using System::System;
+            virtual void init()              override;
 
             static void callback(GLFWwindow* window, int key, int scancode, int action, int mods);
-
         private:
-            void setup_standard_input_bindings();
-            inline void bind_input(KeyInfo key_info, std::function<void()> callback_fn);
-
-            const uint16_t   width;
-            const uint16_t  height;
-            std::string title;
-
+            void setup_standard_bindings();
+            inline void bind(KeyInfo key_info, std::function<void()> callback_fn);
+            
+            GLFWwindow* window;
             static std::unordered_map<KeyInfo, std::function<void()>> callbacks;
     };
 }

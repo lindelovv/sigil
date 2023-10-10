@@ -55,7 +55,7 @@ namespace sigil {
     };
     
     template <typename T>
-    inline static void expect(std::string msg, T value) {
+    inline static void expect(std::string msg, T* value) {
         if( value == nullptr ) {
             throw std::runtime_error( "Error: "
                                       + msg 

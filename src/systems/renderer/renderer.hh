@@ -1,9 +1,8 @@
 #pragma once
 
-#include "engine.hh"
-#include "system.hh"
+#include "sigil.hh"
 #include "glfw.hh"
-#include "components.hh"
+#include "data.hh"
 
 #include <array>
 #include <cstddef>
@@ -130,6 +129,7 @@ namespace sigil {
 
     class Renderer : public System {
         public:
+            using System::System;
             virtual void init() override;
             virtual void terminate() override;
             virtual void tick() override;

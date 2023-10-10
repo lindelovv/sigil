@@ -1,11 +1,18 @@
-#include "engine.hh"
+#include "sigil.hh"
+
 #include "renderer.hh"
 #include "glfw.hh"
 
+using namespace sigil;
+
 int main() {
-    sigil::core
-        .add_system<sigil::Glfw>()
-        .add_system<sigil::Renderer>()
-        .run();
+    sigil::init()
+          .add<System, Windowing>()
+          .add<System, Input>()
+          .add<System, Renderer> ()
+          .add<Component, Transform>()
+          .add<Component, Lens>()
+          .add<Component, Lens>()
+          .run();
 }
 
