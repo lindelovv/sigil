@@ -62,8 +62,7 @@ namespace std {
 
 namespace sigil {
 
-    struct Window : SharedResource {
-        using SharedResource::SharedResource;
+    struct Window {
         Window() {
             instance = glfwCreateWindow(1920, 1080, ((std::string)"sigil").c_str(), nullptr, nullptr);
             assert(instance != nullptr);
@@ -79,22 +78,17 @@ namespace sigil {
         GLFWwindow* instance;
     };
     
-    class Windowing : public System {
+    class Windowing : public system_t {
         public:
-            using System::System;
             virtual void init()              override;
             virtual void terminate()         override;
             virtual void tick()              override;
 
-            Windowing(const Windowing&)            = delete;
-            Windowing& operator=(const Windowing&) = delete;
-
             GLFWwindow* window;
     };
 
-    class Input : public System {
+    class Input : public system_t {
         public:
-            using System::System;
             virtual void init()              override;
 
             static void callback(GLFWwindow* window, int key, int scancode, int action, int mods);

@@ -31,7 +31,7 @@ namespace sigil {
     Renderer renderer;
 
     void Renderer::init() {
-        window = core->get<SharedResource, Window>()->instance;
+        window = core->get<Window>()->instance;
         // done
         create_instance();
         expect("Failed to create main window surface.",
@@ -715,7 +715,7 @@ namespace sigil {
         int t_width, t_height, t_channels;
         stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &t_width, &t_height, &t_channels, STBI_rgb_alpha);
         vk::DeviceSize img_size = t_width * t_height * 4;
-        expect("Failed to load texture image.", pixels);
+        //expect("Failed to load texture image.", pixels);
 
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_buffer_memory;

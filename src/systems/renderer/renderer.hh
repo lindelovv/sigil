@@ -2,7 +2,6 @@
 
 #include "sigil.hh"
 #include "glfw.hh"
-#include "data.hh"
 
 #include <array>
 #include <cstddef>
@@ -122,14 +121,8 @@ namespace sigil {
         alignas(16) glm::mat4 proj;
     };
 
-    union RendererComponents {
-        struct Transform transform;
-        struct Lens      lens;
-    };
-
-    class Renderer : public System {
+    class Renderer : public system_t {
         public:
-            using System::System;
             virtual void init() override;
             virtual void terminate() override;
             virtual void tick() override;

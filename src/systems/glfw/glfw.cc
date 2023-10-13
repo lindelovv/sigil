@@ -16,9 +16,15 @@ namespace sigil {
     void Windowing::init() {
         glfwInit();
         glfwSetErrorCallback([](int i, const char* c){ std::cout << i << ", " << c << "\n"; });
-        window = core->create<SharedResource, Window>()->instance;
+        //window = core->create<Window>()->instance;
+        window = glfwCreateWindow(1920, 1080, ((std::string)"sigil").c_str(), nullptr, nullptr);
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwSetFramebufferSizeCallback(window, Renderer::resize_callback);
+        if( auto tst = core->get<test>() ) {
+            std::cout << tst->s;
+        } else {
+            std::cout << "nullptr";
+        }
     }
 
     void Windowing::terminate() {
@@ -37,7 +43,7 @@ namespace sigil {
 /** INPUT **/
 
     void Input::init() {
-        window = core->get<SharedResource, Window>()->instance;
+        window = core->get<Window>()->instance;
         setup_standard_bindings();
         glfwSetKeyCallback(window, callback);
     }
