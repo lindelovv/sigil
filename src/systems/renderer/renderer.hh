@@ -1,7 +1,6 @@
 #pragma once
 
-#include "engine.hh"
-#include "system.hh"
+#include "sigil.hh"
 #include "window.hh"
 
 #include <array>
@@ -122,7 +121,7 @@ namespace sigil {
         alignas(16) glm::mat4 proj;
     };
 
-    class Renderer : public System {
+    class Renderer : public system_t {
         public:
             virtual void init() override;
             virtual void terminate() override;

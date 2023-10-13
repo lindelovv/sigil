@@ -11,6 +11,11 @@ namespace sigil {
 
         main_window = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
         glfwSetFramebufferSizeCallback(main_window, Renderer::resize_callback);
+        if( auto tst = core->get<test>() ) {
+            std::cout << tst->s;
+        } else {
+            std::cout << "nullptr";
+        }
     }
 
     void Window::terminate() {
@@ -19,9 +24,9 @@ namespace sigil {
     };
 
     void Window::tick() {
+        glfwPollEvents();
         if( glfwWindowShouldClose(main_window) ) {
             core->should_close = true;
         }
-        glfwPollEvents();
     };
 }

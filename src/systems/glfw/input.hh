@@ -1,6 +1,6 @@
 #pragma once
 
-#include "engine.hh"
+#include "sigil.hh"
 #include "window.hh"
 
 #include <iostream>
@@ -61,7 +61,7 @@ namespace std {
 
 namespace sigil {
 
-    class Input : public System {
+    class Input : public system_t {
 
         public:
             virtual void init() override;

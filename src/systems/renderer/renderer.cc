@@ -172,8 +172,8 @@ namespace sigil {
             queue_info_vec.push_back(queue_info);
         }
         vk::PhysicalDeviceFeatures device_features {
-            .sampleRateShading              = vk::True,
-            .samplerAnisotropy              = vk::True,
+            .sampleRateShading              = true,
+            .samplerAnisotropy              = true,
         };
         vk::DeviceCreateInfo device_info {
             .queueCreateInfoCount           = static_cast<uint32_t>(queue_info_vec.size()),
@@ -230,7 +230,7 @@ namespace sigil {
             .preTransform       = swap_chain_support.capabilities.currentTransform,
             .compositeAlpha     = vk::CompositeAlphaFlagBitsKHR::eOpaque,
             .presentMode        = present_mode,
-            .clipped            = vk::True,
+            .clipped            = true,
         };
         QueueFamilyIndices indices = find_queue_families(physical_device);
         uint32_t queue_family_indices[] = {
@@ -404,40 +404,40 @@ namespace sigil {
         };
         vk::PipelineInputAssemblyStateCreateInfo input_assembly {
             .topology                = vk::PrimitiveTopology::eTriangleList,
-            .primitiveRestartEnable  = vk::False,
+            .primitiveRestartEnable  = false,
         };
         vk::PipelineViewportStateCreateInfo viewport_state {
             .viewportCount           = 1,
             .scissorCount            = 1,
         };
         vk::PipelineRasterizationStateCreateInfo rasterizer {
-            .depthClampEnable        = vk::False,
-            .rasterizerDiscardEnable = vk::False,
+            .depthClampEnable        = false,
+            .rasterizerDiscardEnable = false,
             .polygonMode             = vk::PolygonMode::eFill,
             .cullMode                = vk::CullModeFlagBits::eBack,
             .frontFace               = vk::FrontFace::eCounterClockwise,
-            .depthBiasEnable         = vk::False,
+            .depthBiasEnable         = false,
             .lineWidth               = 1.f,
         };
         vk::PipelineMultisampleStateCreateInfo multisampling {
             .rasterizationSamples    = msaa_samples,
-            .sampleShadingEnable     = vk::True,
+            .sampleShadingEnable     = true,
             .minSampleShading        = .2f,
         };
         vk::PipelineDepthStencilStateCreateInfo depth_stencil {
-            .depthTestEnable         = vk::True,
-            .depthWriteEnable        = vk::True,
+            .depthTestEnable         = true,
+            .depthWriteEnable        = true,
             .depthCompareOp          = vk::CompareOp::eLess,
-            .depthBoundsTestEnable   = vk::False,
-            .stencilTestEnable       = vk::False,
+            .depthBoundsTestEnable   = false,
+            .stencilTestEnable       = false,
         };
         vk::PipelineColorBlendAttachmentState color_blend_attachment {
-            .blendEnable             = vk::False,
+            .blendEnable             = false,
             .colorWriteMask          = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
                                      | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
         };
         vk::PipelineColorBlendStateCreateInfo color_blending {
-            .logicOpEnable           = vk::False,
+            .logicOpEnable           = false,
             .logicOp                 = vk::LogicOp::eCopy,
             .attachmentCount         = 1,
             .pAttachments            = &color_blend_attachment,
@@ -718,7 +718,7 @@ namespace sigil {
         int t_width, t_height, t_channels;
         stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &t_width, &t_height, &t_channels, STBI_rgb_alpha);
         vk::DeviceSize img_size = t_width * t_height * 4;
-        expect("Failed to load texture image.", pixels);
+        //expect("Failed to load texture image.", pixels);
 
         vk::Buffer staging_buffer;
         vk::DeviceMemory staging_buffer_memory;
@@ -787,14 +787,14 @@ namespace sigil {
                     .addressModeV            = vk::SamplerAddressMode::eRepeat,
                     .addressModeW            = vk::SamplerAddressMode::eRepeat,
                     .mipLodBias              = 0.f,
-                    .anisotropyEnable        = vk::True,
+                    .anisotropyEnable        = true,
                     .maxAnisotropy           = physical_device.getProperties().limits.maxSamplerAnisotropy,
-                    .compareEnable           = vk::False,
+                    .compareEnable           = false,
                     .compareOp               = vk::CompareOp::eAlways,
                     .minLod                  = 0.f,
                     .maxLod                  = static_cast<float>(mip_levels),
                     .borderColor             = vk::BorderColor::eIntOpaqueBlack,
-                    .unnormalizedCoordinates = vk::False,
+                    .unnormalizedCoordinates = false,
         }   )  );
     }
 
@@ -1423,7 +1423,7 @@ namespace sigil {
             void* p_user_data
     ) {
         std::cerr << "Validation layer: " << p_callback_data->pMessage << "\n";
-        return vk::False;
+        return false;
     }
 
     void Renderer::resize_callback(GLFWwindow* window, int width, int height) {

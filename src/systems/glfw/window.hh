@@ -1,7 +1,6 @@
 #pragma once
 
-#include "engine.hh"
-#include "system.hh"
+#include "sigil.hh"
 
 #include <string>
 
@@ -10,7 +9,7 @@
 
 namespace sigil {
     
-    class Window : public System {
+    class Window : public system_t {
         public:
             Window() : width(1920), height(1080), title("sigil") {}
 

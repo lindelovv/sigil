@@ -13,7 +13,7 @@ namespace sigil {
     template <typename T>
     static T unwrap(vk::ResultValue<T> result) {
         if( result.result != vk::Result::eSuccess ) {
-            throw std::runtime_error("Error: "
+            throw std::runtime_error("\nError: "
                                       + static_cast<std::string>(typeid(result.value).name())
                                       + "\n");
         } else {
@@ -24,7 +24,7 @@ namespace sigil {
     template <typename T>
     static T expect(std::string msg, vk::ResultValue<T> result) {
         if( result.result != vk::Result::eSuccess ) {
-            throw std::runtime_error( "Error: "
+            throw std::runtime_error( "\nError: "
                                       + msg 
                                       + " :: " 
                                       + static_cast<std::string>(typeid(result.value).name())
@@ -36,7 +36,7 @@ namespace sigil {
 
     static void expect(std::string msg, vk::Result result) {
         if( result != vk::Result::eSuccess ) {
-            throw std::runtime_error( "tError: "
+            throw std::runtime_error( "\nError: "
                                       + msg 
                                       + " :: " 
                                       + static_cast<std::string>(typeid(result).name())
@@ -46,7 +46,7 @@ namespace sigil {
 
     static void expect(std::string msg, VkResult result) {
         if( result != VK_SUCCESS ) {
-            throw std::runtime_error( "Error: "
+            throw std::runtime_error( "\nError: "
                                       + msg 
                                       + " :: " 
                                       + static_cast<std::string>(typeid(result).name())
@@ -55,9 +55,9 @@ namespace sigil {
     };
     
     template <typename T>
-    static void expect(std::string msg, T value) {
-        if( value == nullptr ) {
-            throw std::runtime_error( "Error: "
+    static void expect(std::string msg, T* value) {
+        if( value != nullptr ) {
+            throw std::runtime_error( "\nError: "
                                       + msg 
                                       + " :: " 
                                       + static_cast<std::string>(typeid(value).name())
@@ -67,7 +67,7 @@ namespace sigil {
 
     static void expect(std::string msg, bool value) {
         if( !value ) {
-            throw std::runtime_error( "Error: "
+            throw std::runtime_error( "\nError: "
                                       + msg 
                                       + " :: " 
                                       + static_cast<std::string>(typeid(value).name())
