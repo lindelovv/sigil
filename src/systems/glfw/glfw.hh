@@ -63,18 +63,15 @@ namespace std {
 namespace sigil {
 
     struct Window {
-        Window() {
-            instance = glfwCreateWindow(1920, 1080, ((std::string)"sigil").c_str(), nullptr, nullptr);
-            assert(instance != nullptr);
-        }
-        Window(std::size_t id) {
-            instance = glfwCreateWindow(1920, 1080, ((std::string)"sigil").c_str(), nullptr, nullptr);
-            assert(instance != nullptr);
-        }
-        Window(uint16_t width, uint16_t height, std::string title) {
+        Window( uint16_t width = 1920, uint16_t height = 1080, std::string title = std::string("sigil") ) {
             instance = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
             assert(instance != nullptr);
+            glfwSetWindowUserPointer(instance, this);
+            glfwSetFramebufferSizeCallback(instance, [](GLFWwindow* win, int w, int h){
+                static_cast<Window*>(glfwGetWindowUserPointer(win))->resized = true;
+            });
         }
+        bool resized = false;
         GLFWwindow* instance;
     };
     
@@ -84,7 +81,7 @@ namespace sigil {
             virtual void terminate()         override;
             virtual void tick()              override;
 
-            GLFWwindow* window;
+            Window* main_window;
     };
 
     class Input : public system_t {

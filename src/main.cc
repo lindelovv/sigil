@@ -1,7 +1,7 @@
 
 #include "sigil.hh"
-#include "renderer.hh"
 #include "glfw.hh"
+#include "renderer.hh"
 
 using namespace sigil;
 
@@ -10,7 +10,6 @@ int main() {
         .add_system<Windowing>()
         .add_system<Renderer>()
         .add_system<Input>()
-        .add<test>()
         .run();
 }
 

@@ -4,6 +4,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -31,24 +32,23 @@ namespace sigil {
             virtual void init()       {};
             virtual void terminate()  {};
             virtual void tick()       {};
-            inline virtual void link(class sigil_t* engine ) {
-                core = engine;
-            }
             bool can_tick = false;
-            sigil_t* core;
     };
 
     template <typename resource_t>
     class sparse_set_t {
         public:
+            template <typename insert_t>
             resource_t* insert(entity_t id) {
-                std::size_t dense_id = dense.emplace_back(id);
+                entity_t dense_id = dense.emplace_back(id);
                 sparse.emplace(sparse.begin() + id, dense_id);
-                return &components.emplace_back(resource_t {});
+                return &components.emplace_back(insert_t {});
             }
+
             resource_t* at(entity_t id) {
                 return &components.at(sparse.at(id));
             }
+
         private:
             std::vector<entity_t> sparse;
             std::vector<entity_t> dense;
@@ -57,6 +57,7 @@ namespace sigil {
 
     class sigil_t {
         public:
+            sigil_t() {}
             inline void run() {
                 for( auto& system : systems ) {
                     system->init();
@@ -75,54 +76,49 @@ namespace sigil {
 
             template <std::derived_from<system_t> SystemType>
             inline sigil_t& add_system() {
-                auto system = new SystemType;
-                system->core = this;
-                systems.push_back(std::unique_ptr<SystemType>(system));
-                return *this;
+                systems.push_back(std::shared_ptr<SystemType>(new SystemType));
+                return get_core();
             }
 
-            template <typename resource_t>
-            inline sigil_t& add(entity_t id = 0) {
-                create<resource_t>();
-                return *this;
+            inline static sigil_t& get_core() {
+                static sigil_t core;
+                return core;
             }
 
-            template <typename resource_t>
-            inline resource_t* create(entity_t id = 0) {
-                auto resource_id = id_t::type<resource_t>();
-                sparse_set_t<void*>* pool;
-                if( pools.size() <= resource_id ) {
-                    pools.insert(pools.begin() + resource_id, new sparse_set_t<void*>());
-                }
-                pool = pools.at(resource_id);
-                void* instance = *pool->insert(id);
-                resource_t* resource {};
-                memcpy(&instance, &resource, sizeof(resource_t));
-                return resource;
-            }
-
-            template <typename resource_t>
-            inline resource_t* get(entity_t id = 0) {
-                auto resource_id = id_t::type<resource_t>();
-                void* instance = pools.at(resource_id)->at(id);
-                resource_t* resource {};
-                memcpy(&instance, &resource, sizeof(resource_t));
-                return resource;
-            }
-
-            std::vector<std::unique_ptr<system_t>> systems;
+            std::vector<std::shared_ptr<system_t>> systems;
             std::vector<sparse_set_t<void*>*> pools;
             bool request_exit = false;
     };
 
-    struct test {
-        test() { s = "test"; }
-        std::string s;
-    };
-
     inline sigil_t& init() {
-        auto core = new sigil_t();
-        return *core;
+        return sigil_t::get_core();
+    }
+
+    template <typename resource_t>
+    inline resource_t* get(entity_t id = 0) {
+        auto resource_id = id_t::type<resource_t>();
+        void* resource = sigil_t::get_core().pools.at(resource_id)->at(id);
+        return (resource_t*)resource;
+    }
+
+    template <typename resource_t>
+    inline resource_t* create(entity_t id = 0) {
+        auto sigil_core = sigil_t::get_core();
+        auto resource_id = id_t::type<resource_t>();
+        sparse_set_t<void*>* pool;
+        std::cout << resource_id << " \n";
+        if( sigil_core.pools.size() <= resource_id ) {
+            sigil_core.pools.insert(sigil_core.pools.begin() + resource_id, new sparse_set_t<void*>());
+        }
+        pool = sigil_core.pools.at(resource_id);
+        void* instance = *pool->insert(id);
+        resource_t* resource {};
+        memcpy(&instance, &resource, sizeof(resource_t));
+        return resource;
+    }
+
+    inline void request_exit() {
+        sigil_t::get_core().request_exit = true;
     }
 }
 

@@ -10,6 +10,10 @@ namespace sigil {
 
     std::unordered_map<KeyInfo, std::function<void()>>  Input::callbacks;
 
+    struct test {
+        test() { s = "test"; }
+        std::string s;
+    };
 
 /** WINDOW HANLDER **/
 
@@ -17,10 +21,10 @@ namespace sigil {
         glfwInit();
         glfwSetErrorCallback([](int i, const char* c){ std::cout << i << ", " << c << "\n"; });
         //window = core->create<Window>()->instance;
-        window = glfwCreateWindow(1920, 1080, ((std::string)"sigil").c_str(), nullptr, nullptr);
+        main_window = new Window();
+        create<test>();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwSetFramebufferSizeCallback(window, Renderer::resize_callback);
-        if( auto tst = core->get<test>() ) {
+        if( auto tst = get<test>() ) {
             std::cout << tst->s;
         } else {
             std::cout << "nullptr";
@@ -28,13 +32,13 @@ namespace sigil {
     }
 
     void Windowing::terminate() {
-        glfwDestroyWindow(window);
+        glfwDestroyWindow(main_window->instance);
         glfwTerminate();
     };
 
     void Windowing::tick() {
-        if( glfwWindowShouldClose(window) ) {
-            core->request_exit = true;
+        if( glfwWindowShouldClose(main_window->instance) ) {
+            request_exit();
         }
         glfwPollEvents();
     };
@@ -43,7 +47,7 @@ namespace sigil {
 /** INPUT **/
 
     void Input::init() {
-        window = core->get<Window>()->instance;
+        window = get<Window>()->instance;
         setup_standard_bindings();
         glfwSetKeyCallback(window, callback);
     }

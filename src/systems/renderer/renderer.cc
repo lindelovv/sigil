@@ -28,14 +28,12 @@ namespace vk {
 
 namespace sigil {
 
-    Renderer renderer;
-
     void Renderer::init() {
-        window = core->get<Window>()->instance;
+        window = get<Window>();
         // done
         create_instance();
         expect("Failed to create main window surface.",
-            glfwCreateWindowSurface(instance, window, nullptr, (VkSurfaceKHR*)&surface)
+            glfwCreateWindowSurface(instance, window->instance, nullptr, (VkSurfaceKHR*)&surface)
         );
         select_physical_device();
         create_logical_device();
@@ -273,7 +271,7 @@ namespace sigil {
             return capabilities.currentExtent;
         } else {
             int width, height;
-            glfwGetFramebufferSize(window, &width, &height);
+            glfwGetFramebufferSize(window->instance, &width, &height);
             
             vk::Extent2D actual_extent = {
                 static_cast<uint32_t>(width),
@@ -311,9 +309,9 @@ namespace sigil {
 
     void Renderer::recreate_swap_chain() {
         int width = 0, height = 0;
-        glfwGetFramebufferSize(window, &width, &height);
+        glfwGetFramebufferSize(window->instance, &width, &height);
         while( width == 0 || height == 0 ) {
-            glfwGetFramebufferSize(window, &width, &height);
+            glfwGetFramebufferSize(window->instance, &width, &height);
             glfwWaitEvents();
         }
         expect("Device wait idle failed.", device.waitIdle());
@@ -1381,8 +1379,8 @@ namespace sigil {
             .pImageIndices        = &img_index,
         };
         vk::Result result = present_queue.presentKHR(present_info);
-        if( result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || framebuffer_resized ) {
-            framebuffer_resized = false;
+        if( result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || window->resized ) {
+            window->resized = false;
             recreate_swap_chain();
         } else if ( result != vk::Result::eSuccess ) {
             throw std::runtime_error("\tError: Failed to present swap chain image.");
@@ -1421,10 +1419,6 @@ namespace sigil {
     ) {
         std::cerr << "Validation layer: " << p_callback_data->pMessage << "\n";
         return false;
-    }
-
-    void Renderer::resize_callback(GLFWwindow* window, int width, int height) {
-        renderer.framebuffer_resized = true;
     }
 
     void Renderer::terminate() {

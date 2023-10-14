@@ -28,6 +28,9 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
 
+#define unwrap_result(val) \
+    if( val.result != vk::Result::eSuccess ) return val.value;
+
 namespace sigil {
 
     const vk::ApplicationInfo engine_info = {
@@ -127,11 +130,6 @@ namespace sigil {
             virtual void terminate() override;
             virtual void tick() override;
             void draw();
-            static void resize_callback(
-                    GLFWwindow* window,
-                    int width,
-                    int height
-                );
 
         private:
             void create_instance();
@@ -314,7 +312,7 @@ namespace sigil {
             bool framebuffer_resized = false;
             uint32_t current_frame = 0;
             vk::SampleCountFlagBits msaa_samples = vk::SampleCountFlagBits::e1;
-            GLFWwindow* window;
+            Window* window;
     };
 }
 
