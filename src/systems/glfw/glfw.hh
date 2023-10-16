@@ -63,9 +63,8 @@ namespace std {
 namespace sigil {
 
     struct Window {
-        Window( uint16_t width = 1920, uint16_t height = 1080, std::string title = std::string("sigil") ) {
-            instance = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
-            assert(instance != nullptr);
+        Window( int width = 1920, int height = 1080, const char* title = "sigil" ) {
+            instance = glfwCreateWindow(width, height, title, nullptr, nullptr);
             glfwSetWindowUserPointer(instance, this);
             glfwSetFramebufferSizeCallback(instance, [](GLFWwindow* win, int w, int h){
                 static_cast<Window*>(glfwGetWindowUserPointer(win))->resized = true;

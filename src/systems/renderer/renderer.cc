@@ -29,11 +29,12 @@ namespace vk {
 namespace sigil {
 
     void Renderer::init() {
-        window = get<Window>();
+        can_tick = true;
+        assert(window = &world->get<Window>());
         // done
         create_instance();
         expect("Failed to create main window surface.",
-            glfwCreateWindowSurface(instance, window->instance, nullptr, (VkSurfaceKHR*)&surface)
+            glfwCreateWindowSurface(vk_instance, window->instance, nullptr, (VkSurfaceKHR*)&surface)
         );
         select_physical_device();
         create_logical_device();
@@ -104,7 +105,7 @@ namespace sigil {
 #ifdef DEBUG
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
-        instance = expect("Failed to create instance.",
+        vk_instance = expect("Failed to create instance.",
             vk::createInstance(
                 vk::InstanceCreateInfo {
 #ifdef DEBUG
@@ -125,7 +126,7 @@ namespace sigil {
     }
     
     void Renderer::select_physical_device() {
-        for( const vk::PhysicalDevice& phys_device : instance.enumeratePhysicalDevices().value ) {
+        for( const vk::PhysicalDevice& phys_device : vk_instance.enumeratePhysicalDevices().value ) {
             std::set<std::string> required_extensions(device_extensions.begin(), device_extensions.end());
             for( const auto& extension : phys_device.enumerateDeviceExtensionProperties().value ) {
                 required_extensions.erase(extension.extensionName);
@@ -1451,8 +1452,8 @@ namespace sigil {
 #ifdef DEBUG
         instance.destroyDebugUtilsMessengerEXT(debug_messenger);
 #endif
-        instance.destroySurfaceKHR(surface);
-        instance.destroy();
+        vk_instance.destroySurfaceKHR(surface);
+        vk_instance.destroy();
     }
 }
 

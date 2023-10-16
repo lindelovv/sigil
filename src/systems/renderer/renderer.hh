@@ -260,7 +260,7 @@ namespace sigil {
                 );
 
                    //// VULKAN ////
-            vk::Instance instance;
+            vk::Instance vk_instance;
             vk::PhysicalDevice physical_device;
             vk::Device device;
             vk::Queue graphics_queue;

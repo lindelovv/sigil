@@ -4,8 +4,6 @@
 #include <stdexcept>
 #include <vector>
 
-#include <GLFW/glfw3.h>
-
 namespace sigil {
 
     std::unordered_map<KeyInfo, std::function<void()>>  Input::callbacks;
@@ -18,17 +16,19 @@ namespace sigil {
 /** WINDOW HANLDER **/
 
     void Windowing::init() {
+        can_tick = true;
         glfwInit();
-        glfwSetErrorCallback([](int i, const char* c){ std::cout << i << ", " << c << "\n"; });
-        //window = core->create<Window>()->instance;
-        main_window = new Window();
-        create<test>();
+        glfwSetErrorCallback([](int i, const char* c){ std::cout << "Error code " << i << " :: " << c << "\n"; });
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        if( auto tst = get<test>() ) {
-            std::cout << tst->s;
-        } else {
-            std::cout << "nullptr";
-        }
+        main_window = &world->create<Window>();
+        assert(main_window);
+        //main_window = new Window();
+        //world->create<test>();
+        //if( auto tst = &world->get<test>() ) {
+        //    std::cout << tst->s;
+        //} else {
+        //    std::cout << "nullptr";
+        //}
     }
 
     void Windowing::terminate() {
@@ -37,17 +37,17 @@ namespace sigil {
     };
 
     void Windowing::tick() {
-        if( glfwWindowShouldClose(main_window->instance) ) {
-            request_exit();
-        }
         glfwPollEvents();
+        if( glfwWindowShouldClose(main_window->instance) ) {
+            world->request_exit = true;
+        }
     };
 
 
 /** INPUT **/
 
     void Input::init() {
-        window = get<Window>()->instance;
+        window = world->get<Window>().instance;
         setup_standard_bindings();
         glfwSetKeyCallback(window, callback);
     }
