@@ -1,5 +1,4 @@
 #include "renderer.hh"
-#include "window.hh"
 #include "util.hh"
 
 #include <GLFW/glfw3.h>
@@ -32,8 +31,8 @@ namespace sigil {
     Renderer renderer;
 
     void Renderer::init() {
-        can_tick = true;
-        for( auto& system : core->systems ) {
+        window = world->get_system<Window>();
+        for( auto& system : world->systems ) {
             if( Window* win = dynamic_cast<Window*>(system.get()) ) {
                 window = win;
                 break;

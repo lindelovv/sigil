@@ -1,7 +1,6 @@
-#include "engine.hh"
+#include "sigil.hh"
 #include "renderer.hh"
-#include "window.hh"
-#include "input.hh"
+#include "glfw.hh"
 
 using namespace sigil;
 
