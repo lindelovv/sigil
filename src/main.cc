@@ -1,4 +1,3 @@
-
 #include "sigil.hh"
 #include "glfw.hh"
 #include "renderer.hh"

@@ -2,11 +2,13 @@
 
 #include "sigil.hh"
 
-#include <cassert>
-#include <functional>
 #include <string>
+#include <iostream>
+#include <map>
 #include <sstream>
-#include <unordered_map>
+#include <vector>
+#include <functional>
+#include <optional>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -14,11 +16,11 @@
 namespace sigil {
 
     struct KeyInfo {
-        uint16_t key;
-        uint16_t action;
-        uint16_t mods;
+        int key;
+        int action;
+        int mods;
 
-        KeyInfo(uint16_t key, uint16_t action, uint16_t mods) {
+        KeyInfo(int key, int action, int mods) {
             this->key    = key;
             this->action = action;
             this->mods   = mods;
@@ -53,9 +55,9 @@ namespace std {
     template <>
     struct hash<sigil::KeyInfo> {
         size_t operator()(const sigil::KeyInfo& o) const {
-            return ((hash<uint16_t>()(o.key)
-                    ^ (hash<uint16_t>()(o.action) << 1) >> 1)
-                    ^ (hash<uint16_t>()(o.mods) << 1));
+            return ((hash<int>()(o.key)
+                    ^ (hash<int>()(o.action) << 1) >> 1)
+                    ^ (hash<int>()(o.mods) << 1));
         }
     };
 }
@@ -65,7 +67,6 @@ namespace sigil {
     struct Window {
         Window( uint16_t width = 1920, uint16_t height = 1080, std::string title = std::string("sigil") ) {
             instance = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
-            assert(instance != nullptr);
             glfwSetWindowUserPointer(instance, this);
             glfwSetFramebufferSizeCallback(instance, [](GLFWwindow* win, int w, int h){
                 static_cast<Window*>(glfwGetWindowUserPointer(win))->resized = true;
@@ -91,10 +92,12 @@ namespace sigil {
             static void callback(GLFWwindow* window, int key, int scancode, int action, int mods);
         private:
             void setup_standard_bindings();
-            inline void bind(KeyInfo key_info, std::function<void()> callback_fn);
             
             GLFWwindow* window;
             static std::unordered_map<KeyInfo, std::function<void()>> callbacks;
+            inline void bind(KeyInfo key_info, std::function<void()> callback_fn) {
+                callbacks.insert({ key_info, callback_fn });
+            }
     };
 }
 

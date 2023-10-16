@@ -29,7 +29,7 @@ namespace vk {
 namespace sigil {
 
     void Renderer::init() {
-        window = get<Window>();
+        window = world->get_system<Windowing>()->main_window;
         // done
         create_instance();
         expect("Failed to create main window surface.",
