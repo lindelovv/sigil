@@ -2,13 +2,10 @@
 
 #include "sigil.hh"
 
-namespace sigil {
+class Motion : sigil::Module {
 
-    class Motion : System {
-
-        virtual void tick() override {
-            
-        }
-    };
-}
+    virtual void tick() override {
+        
+    }
+};
 

@@ -6,9 +6,9 @@ using namespace sigil;
 
 int main() {
     sigil::init()
-        .add_system<Windowing>()
-        .add_system<Renderer>()
-        .add_system<Input>()
-        .run();
+          .add_module<Windowing>()
+          .add_module<Renderer>()
+          .add_module<Input>()
+          .run();
 }
 

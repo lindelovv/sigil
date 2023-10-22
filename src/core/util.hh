@@ -8,7 +8,6 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
 
-namespace sigil {
     
     template <typename T>
     inline static T unwrap(vk::ResultValue<T> result) {
@@ -74,5 +73,4 @@ namespace sigil {
                                       + "\n");
         }
     };
-}
 
