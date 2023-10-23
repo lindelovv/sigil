@@ -22,6 +22,13 @@
 
 namespace sigil {
 
+    struct Sigil {
+        void run();
+        template <std::derived_from<struct Module> T> Sigil& add_module();
+        std::vector<std::unique_ptr<Module>> modules;
+        bool should_close = false;
+    };
+
     class Id {
         inline static std::size_t identifier {};
     public:
@@ -35,46 +42,14 @@ namespace sigil {
         virtual void init()      {};
         virtual void terminate() {};
         virtual void tick()      {};
+        Sigil* core;
+        template <std::derived_from<Module> T> T* get_module();
+        void request_exit();
     };
 
-    struct Sigil {
-        inline void run() {
-            for( auto& module : modules ) {
-                module->init();
-            }
-            while( !should_close ) {
-                for( auto& module : modules ) {
-                    module->tick();
-                }
-            }
-            for( auto& module : modules ) {
-                module->terminate();
-            }
-        }
-
-        template <std::derived_from<Module> T>
-        inline auto& add_module() {
-            auto module = new T;
-            ALLOW_UNUSED(Id::of_type<T>); // generate id (and thus index) for module
-            modules.push_back(std::unique_ptr<Module>(module));
-            return *this;
-        }
-
-        bool should_close = false;
-        std::vector<std::unique_ptr<Module>> modules;
-    } static inline core;
-
-    template <std::derived_from<Module> T>
-    inline T* get_module() {
-        return dynamic_cast<T*>(core.modules.at(Id::of_type<T>).get());
-    }
-
     inline auto& init() {
-        return core;
-    }
-
-    inline void request_exit() {
-        core.should_close = true;
+        Sigil* core = new Sigil;
+        return *core;
     }
 }
 

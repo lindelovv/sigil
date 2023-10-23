@@ -22,7 +22,7 @@ void Windowing::terminate() {
 
 void Windowing::tick() {
     if( glfwWindowShouldClose(main_window->instance) ) {
-        sigil::request_exit();
+        request_exit();
     }
     glfwPollEvents();
 };
@@ -30,7 +30,7 @@ void Windowing::tick() {
 //    INPUT    //
 
 void Input::init() {
-    window = sigil::get_module<Windowing>()->main_window->instance;
+    window = get_module<Windowing>()->main_window->instance;
     setup_standard_bindings();
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     glfwSetKeyCallback(window, key_callback);
