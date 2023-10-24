@@ -110,7 +110,7 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 proj;
 };
 
-class Renderer : public sigil::Module {
+struct Renderer : public sigil::Module {
     public:
         virtual void init() override;
         virtual void terminate() override;

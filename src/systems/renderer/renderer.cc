@@ -35,8 +35,10 @@ void Renderer::init() {
     //_____________________________________
     // Setup cross-module requirements
     {  
-        window = sigil::get_module<Windowing>()->main_window;
-        input = sigil::get_module<Input>();
+        if( sigil == nullptr ) throw std::runtime_error("null");
+        if( sigil->get_module<Input>() == nullptr ) throw std::runtime_error("null2");
+        window = sigil->get_module<Windowing>()->main_window;
+        input  = sigil->get_module<Input>();
     }
 
     //____________________________________

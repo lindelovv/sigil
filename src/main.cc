@@ -5,10 +5,10 @@
 using namespace sigil;
 
 int main() {
-    sigil::init()
-          .add_module<Windowing>()
-          .add_module<Renderer>()
-          .add_module<Input>()
-          .run();
+    Sigil { /*    سيجيل    */  }
+        .add_module<Windowing>()
+        .add_module<Renderer> ()
+        .add_module<Input>    ()
+        .run();
 }
 
