@@ -1,9 +1,9 @@
 #include "renderer.hh"
 #include "util.hh"
 
-#include <GLFW/glfw3.h>
 #include <cstdint>
 #include <fstream>
+#include <glm/fwd.hpp>
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
@@ -46,43 +46,49 @@ void Renderer::init() {
     {
         input->bind(GLFW_KEY_W,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity.y += 1.f * camera.movement_speed; },
-                    .release = [&]{ camera.velocity.y = 0; }
-            }   )
-            ->bind(GLFW_KEY_A,
-                KeyCallback {
-                    .press   = [&]{ camera.velocity.x += -1.f * camera.movement_speed; },
-                    .release = [&]{ camera.velocity.x = 0; }
+                    .press   = [&]{ camera.velocity += camera.forward_vector; },
+                    .release = [&]{ camera.velocity -= camera.forward_vector; }
             }   )
             ->bind(GLFW_KEY_S,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity.y += -1.f * camera.movement_speed; },
-                    .release = [&]{ camera.velocity.y = 0; }
+                    .press   = [&]{ camera.velocity += -camera.forward_vector; },
+                    .release = [&]{ camera.velocity -= -camera.forward_vector; }
+            }   )
+            ->bind(GLFW_KEY_A,
+                KeyCallback {
+                    .press   = [&]{ camera.velocity += camera.right_vector; },
+                    .release = [&]{ camera.velocity -= camera.right_vector; }
             }   )
             ->bind(GLFW_KEY_D,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity.x += 1.f * camera.movement_speed; },
-                    .release = [&]{ camera.velocity.x = 0; }
+                    .press   = [&]{ camera.velocity += -camera.right_vector; },
+                    .release = [&]{ camera.velocity -= -camera.right_vector; }
             }   )
             ->bind(GLFW_KEY_Q,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity.z += -1.f * camera.movement_speed; },
-                    .release = [&]{ camera.velocity.z = 0; }
+                    .press   = [&]{ camera.velocity += -camera.up_vector; },
+                    .release = [&]{ camera.velocity -= -camera.up_vector; }
             }   )
             ->bind(GLFW_KEY_E,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity.z += 1.f * camera.movement_speed; },
-                    .release = [&]{ camera.velocity.z = 0; }
+                    .press   = [&]{ camera.velocity += camera.up_vector; },
+                    .release = [&]{ camera.velocity -= camera.up_vector; }
             }   )
             ->bind(GLFW_KEY_LEFT_SHIFT,
                 KeyCallback {
-                    .press   = [&]{ camera.movement_speed = 5.f; },
+                    .press   = [&]{ camera.movement_speed = 2.f; },
                     .release = [&]{ camera.movement_speed = 1.f; }
             }   )
             ->bind(GLFW_MOUSE_BUTTON_2,
                 KeyCallback {
-                    .press   = [&]{ camera.follow_mouse = true; },
-                    .release = [&]{ camera.follow_mouse = false; }
+                    .press   = [&]{
+                        glfwSetInputMode(window->instance, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                        camera.follow_mouse = true;
+                    },
+                    .release = [&]{
+                        glfwSetInputMode(window->instance, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                        camera.follow_mouse = false;
+                    }
             }   );
     }
 
@@ -1413,6 +1419,9 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
 }
 
 void Renderer::tick() {
+    camera.transform.position += camera.velocity * camera.movement_speed * sigil->delta_time;
+    std::cout << "Pitch: " << camera.pitch << "\n";
+    std::cout << "Yaw: " << camera.yaw << "\n";
     std::cout << "Position: " << camera.transform.position.x << ", " << camera.transform.position.y << ", " << camera.transform.position.z << "\n";
     std::cout << "Rotation: " << camera.transform.rotation.x << ", " << camera.transform.rotation.y << ", " << camera.transform.rotation.z << "\n";
     expect("Renderer; Wait for fences failed.",

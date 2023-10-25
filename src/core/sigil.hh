@@ -38,11 +38,11 @@ namespace sigil {
     // @TODO: Research/test if there is a better way to call each system each tick. 
     //        Alternativly, even better, if there is an elegant way to not need inheritance.
     struct Module {
-        virtual ~Module()        {};
+        virtual ~Module()        {}
 
-        virtual void init()      {};
-        virtual void terminate() {};
-        virtual void tick()      {};
+        virtual void init()      {}
+        virtual void terminate() {}
+        virtual void tick()      {}
 
         struct Sigil* sigil;
     };
@@ -55,6 +55,9 @@ namespace sigil {
                 module->init();
             }
             while( !should_close ) {
+                float current_frame = glfwGetTime();
+                delta_time = current_frame - last_frame;
+                last_frame = current_frame;
                 for( auto& module : modules ) {
                     module->tick();
                 }
@@ -78,6 +81,8 @@ namespace sigil {
             return dynamic_cast<T*>(modules.at(Id::of_type<T>).get());
         }
 
+        float delta_time;
+        float last_frame;
         bool should_close = false;
         std::vector<std::shared_ptr<Module>> modules;
     };

@@ -1,7 +1,6 @@
 #include "glfw.hh"
 #include "renderer.hh"
 
-#include <GLFW/glfw3.h>
 #include <iostream>
 #include <stdexcept>
 #include <tuple>
@@ -12,7 +11,7 @@
 void Windowing::init() {
     glfwInit();
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    main_window = new Window;
+    main_window = new WindowHandle;
 }
 
 void Windowing::terminate() {

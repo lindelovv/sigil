@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <glm/ext/quaternion_geometric.hpp>
 #include <glm/fwd.hpp>
+#include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
 #include <math.h>
 #include <memory>
@@ -104,17 +105,124 @@ struct Vertex {
     }
 };
 
+struct Ui {
+    glm::vec2 position = glm::vec2(0);
+    glm::vec2 rotation = glm::vec2(0);
+    glm::vec2 scale    = glm::vec2(1);
+    std::vector<Vertex> vertecies;
+};
+
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
     alignas(16) glm::mat4 view;
     alignas(16) glm::mat4 proj;
 };
 
-struct Renderer : public sigil::Module {
-    public:
+struct Renderer : sigil::Module {
         virtual void init() override;
         virtual void terminate() override;
         virtual void tick() override;
+
+               //// VULKAN ////
+        vk::Instance instance;
+        vk::PhysicalDevice physical_device;
+        vk::Device device;
+        vk::Queue graphics_queue;
+        vk::Queue present_queue;
+        vk::SurfaceKHR surface;
+        VkDebugUtilsMessengerEXT debug_messenger;
+              // SWAP CHAIN //
+        struct {
+            vk::SwapchainKHR handle;
+            std::vector<vk::Image> images;
+            vk::Format img_format;
+            vk::Extent2D extent;
+            std::vector<vk::ImageView> img_views;
+            std::vector<vk::Framebuffer> framebuffers;
+        } swapchain;
+               // PIPELINE //
+        vk::RenderPass render_pass;
+        vk::DescriptorSetLayout descriptor_set_layout;
+        vk::DescriptorPool descriptor_pool;
+        std::vector<vk::DescriptorSet> descriptor_sets;
+        vk::PipelineLayout pipeline_layout;
+        vk::Pipeline graphics_pipeline;
+           // VERTEX & INDICES //
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+        vk::Buffer vertex_buffer;
+        vk::DeviceMemory vertex_buffer_memory;
+        vk::Buffer index_buffer;
+        vk::DeviceMemory index_buffer_memory;
+        std::vector<vk::Buffer> uniform_buffers;
+        std::vector<vk::DeviceMemory> uniform_buffers_memory;
+        std::vector<void*> uniform_buffers_mapped;
+        uint32_t mip_levels;
+        vk::Image texture_image;
+        vk::DeviceMemory texture_image_memory;
+        vk::ImageView texture_image_view;
+        vk::Sampler texture_sampler;
+        vk::Image color_img;
+        vk::DeviceMemory color_img_memory;
+        vk::ImageView color_img_view;
+               // DEPTH //
+        vk::Image depth_img;
+        vk::DeviceMemory depth_img_memory;
+        vk::ImageView depth_img_view;
+            // RENDER PASS //
+        vk::CommandPool command_pool;
+        std::vector<vk::CommandBuffer> command_buffers;
+        std::vector<vk::Semaphore> img_available_semaphores;
+        std::vector<vk::Semaphore> render_finished_semaphores;
+        std::vector<vk::Fence> in_flight_fences;
+        bool framebuffer_resized = false;
+        uint32_t current_frame = 0;
+        vk::SampleCountFlagBits msaa_samples = vk::SampleCountFlagBits::e1;
+
+                // WORLD //
+        inline static glm::vec3 world_up = glm::vec3(0.f, 0.f, 1.f);
+
+          // FIRST PERSON CAMERA //
+        struct {
+            struct {
+                glm::vec3 position = glm::vec3(-2, 0, .5f);
+                glm::vec3 rotation = glm::vec3( 0, 0,  0 );
+                glm::vec3 scale    = glm::vec3( 0 );
+            } transform;
+            glm::vec3 velocity;
+            glm::vec3 forward_vector = glm::vec3(1.f, 0.f, 0.f);
+            glm::vec3 up_vector      = world_up;
+            glm::vec3 right_vector = -glm::cross(forward_vector, world_up);
+            float fov =  90.f;
+            float yaw = -90.f;
+            float pitch = 0.f;
+            struct {
+                float near;
+                float far;
+            } clip_plane;
+            float movement_speed = 1.f;
+            bool follow_mouse = false;
+
+            inline glm::mat4 get_view(Input* input) {
+                if( follow_mouse ) {
+                    glm::dvec2 offset = input->get_mouse_movement();
+                    yaw += offset.x;
+                    pitch = ( pitch + offset.y >  89.f ?  89.f
+                            : pitch + offset.y < -89.f ? -89.f
+                            : pitch + offset.y);
+                    forward_vector.y = cos(glm::radians(pitch)) * cos(glm::radians(yaw));
+                    forward_vector.x = cos(glm::radians(pitch)) * sin(glm::radians(yaw));
+                    forward_vector.z = sin(cos(glm::radians(pitch)));
+                    forward_vector = glm::normalize(forward_vector);
+                    right_vector = -glm::cross(forward_vector, world_up);
+                    up_vector = glm::cross(forward_vector, up_vector);
+                    //transform.rotation = glm::qrot(transform.rotation, forward_vector);
+                }
+                return glm::lookAt(transform.position,
+                                   transform.position + forward_vector,
+                                   up_vector);
+            }
+        } camera;
 
     private:
         void create_swap_chain();
@@ -231,97 +339,7 @@ struct Renderer : public sigil::Module {
                                                                const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
                                                                void* p_user_data
             );
-
-               //// VULKAN ////
-        vk::Instance instance;
-        vk::PhysicalDevice physical_device;
-        vk::Device device;
-        vk::Queue graphics_queue;
-        vk::Queue present_queue;
-        vk::SurfaceKHR surface;
-        VkDebugUtilsMessengerEXT debug_messenger;
-              // SWAP CHAIN //
-        struct {
-            vk::SwapchainKHR handle;
-            std::vector<vk::Image> images;
-            vk::Format img_format;
-            vk::Extent2D extent;
-            std::vector<vk::ImageView> img_views;
-            std::vector<vk::Framebuffer> framebuffers;
-        } swapchain;
-               // PIPELINE //
-        vk::RenderPass render_pass;
-        vk::DescriptorSetLayout descriptor_set_layout;
-        vk::DescriptorPool descriptor_pool;
-        std::vector<vk::DescriptorSet> descriptor_sets;
-        vk::PipelineLayout pipeline_layout;
-        vk::Pipeline graphics_pipeline;
-           // VERTEX & INDICES //
-        std::vector<Vertex> vertices;
-        std::vector<uint32_t> indices;
-        vk::Buffer vertex_buffer;
-        vk::DeviceMemory vertex_buffer_memory;
-        vk::Buffer index_buffer;
-        vk::DeviceMemory index_buffer_memory;
-        std::vector<vk::Buffer> uniform_buffers;
-        std::vector<vk::DeviceMemory> uniform_buffers_memory;
-        std::vector<void*> uniform_buffers_mapped;
-        uint32_t mip_levels;
-        vk::Image texture_image;
-        vk::DeviceMemory texture_image_memory;
-        vk::ImageView texture_image_view;
-        vk::Sampler texture_sampler;
-        vk::Image color_img;
-        vk::DeviceMemory color_img_memory;
-        vk::ImageView color_img_view;
-               // DEPTH //
-        vk::Image depth_img;
-        vk::DeviceMemory depth_img_memory;
-        vk::ImageView depth_img_view;
-            // RENDER PASS //
-        vk::CommandPool command_pool;
-        std::vector<vk::CommandBuffer> command_buffers;
-        std::vector<vk::Semaphore> img_available_semaphores;
-        std::vector<vk::Semaphore> render_finished_semaphores;
-        std::vector<vk::Fence> in_flight_fences;
-        bool framebuffer_resized = false;
-        uint32_t current_frame = 0;
-        vk::SampleCountFlagBits msaa_samples = vk::SampleCountFlagBits::e1;
-
-              // CAMERA //
-        struct {
-            float fov = 90.f;
-            struct {
-                glm::vec3 position;
-                glm::vec3 rotation;
-                glm::vec3 scale;
-            } transform;
-            glm::vec3 velocity;
-            glm::mat4 view;
-            glm::vec3 forward_vector = glm::vec3(0.f, 1.f, 0.f);
-            glm::vec3 up_vector = glm::vec3(0.f, 0.f, 1.f);
-            struct {
-                float near;
-                float far;
-            } clip_plane;
-            float movement_speed = .2f;
-            bool follow_mouse = false;
-
-            inline glm::mat4 get_view(Input* input) {
-                transform.position += velocity;
-                if( follow_mouse ) {
-                    glm::dvec2 offset = input->get_mouse_movement();
-                    transform.rotation.x += offset.x * movement_speed;
-                    transform.rotation.z += offset.y * movement_speed;
-                    forward_vector = glm::normalize(transform.rotation);
-                }
-                return glm::lookAt(transform.position,
-                                   transform.position + forward_vector,
-                                   up_vector);
-            }
-        } camera;
-
-        Window* window;
+        WindowHandle* window;
         Input* input;
 };
 

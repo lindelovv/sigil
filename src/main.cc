@@ -5,7 +5,7 @@
 using namespace sigil;
 
 int main() {
-    Sigil { /*    سيجيل    */  }
+    Sigil { /*    سيجيل    */ }
         .add_module<Windowing>()
         .add_module<Renderer> ()
         .add_module<Input>    ()

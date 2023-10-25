@@ -65,12 +65,12 @@ namespace std {
 
 //_________________________________________
 // Per window info and instancing
-struct Window {
-    Window( uint16_t width = 1920, uint16_t height = 1080, std::string title = std::string("sigil") ) {
+struct WindowHandle {
+    WindowHandle( uint16_t width = 1920, uint16_t height = 1080, std::string title = std::string("sigil") ) {
         instance = glfwCreateWindow(width, height, title.c_str(), nullptr, nullptr);
         glfwSetWindowUserPointer(instance, this);
         glfwSetFramebufferSizeCallback(instance, [](GLFWwindow* win, int w, int h){
-            static_cast<Window*>(glfwGetWindowUserPointer(win))->resized = true;
+            static_cast<WindowHandle*>(glfwGetWindowUserPointer(win))->resized = true;
         });
     }
     bool resized = false;
@@ -79,20 +79,20 @@ struct Window {
 
 //_________________________________________
 // Window handling
-class Windowing : public sigil::Module {
+struct Windowing : sigil::Module {
     public:
     virtual void init()      override;
     virtual void terminate() override;
     virtual void tick()      override;
 
-    Window* main_window;
+    WindowHandle* main_window;
 };
 
 //_________________________________________
 // Input handling
 //
 // @TODO: Improve modkey handling
-class Input : public sigil::Module {
+struct Input : sigil::Module {
     public:
     virtual void init() override;
     virtual void tick() override;

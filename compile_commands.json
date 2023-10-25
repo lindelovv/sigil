@@ -11,16 +11,18 @@
       "-D_GLFW_WAYLAND",
       "-D_GLFW_EGL",
       "-I./src/core",
+      "-I./src/data",
       "-I./src/systems",
-      "-I./src/systems/glfw",
+      "-I./src/systems/motion",
       "-I./src/systems/renderer",
+      "-I./src/systems/glfw",
       "-o",
       "./build/sigil",
       "./src/main.cc"
     ],
-    "directory": "/home/gin/Code/corpus_sigillum/ccigil",
-    "file": "/home/gin/Code/corpus_sigillum/ccigil/src/main.cc",
-    "output": "/home/gin/Code/corpus_sigillum/ccigil/build/sigil"
+    "directory": "/home/gin/_Work/_code/corpus_sigillum/sigil",
+    "file": "/home/gin/_Work/_code/corpus_sigillum/sigil/src/main.cc",
+    "output": "/home/gin/_Work/_code/corpus_sigillum/sigil/build/sigil"
   },
   {
     "arguments": [
@@ -34,38 +36,42 @@
       "-D_GLFW_WAYLAND",
       "-D_GLFW_EGL",
       "-I./src/core",
+      "-I./src/data",
       "-I./src/systems",
-      "-I./src/systems/glfw",
+      "-I./src/systems/motion",
       "-I./src/systems/renderer",
-      "-o",
-      "./build/sigil",
-      "./src/systems/glfw/glfw.cc"
-    ],
-    "directory": "/home/gin/Code/corpus_sigillum/ccigil",
-    "file": "/home/gin/Code/corpus_sigillum/ccigil/src/systems/glfw/glfw.cc",
-    "output": "/home/gin/Code/corpus_sigillum/ccigil/build/sigil"
-  },
-  {
-    "arguments": [
-      "/usr/bin/g++-13",
-      "-c",
-      "-Wall",
-      "-Wpedantic",
-      "-std=c++20",
-      "-g",
-      "-O2",
-      "-D_GLFW_WAYLAND",
-      "-D_GLFW_EGL",
-      "-I./src/core",
-      "-I./src/systems",
       "-I./src/systems/glfw",
-      "-I./src/systems/renderer",
       "-o",
       "./build/sigil",
       "./src/systems/renderer/renderer.cc"
     ],
-    "directory": "/home/gin/Code/corpus_sigillum/ccigil",
-    "file": "/home/gin/Code/corpus_sigillum/ccigil/src/systems/renderer/renderer.cc",
-    "output": "/home/gin/Code/corpus_sigillum/ccigil/build/sigil"
+    "directory": "/home/gin/_Work/_code/corpus_sigillum/sigil",
+    "file": "/home/gin/_Work/_code/corpus_sigillum/sigil/src/systems/renderer/renderer.cc",
+    "output": "/home/gin/_Work/_code/corpus_sigillum/sigil/build/sigil"
+  },
+  {
+    "arguments": [
+      "/usr/bin/g++-13",
+      "-c",
+      "-Wall",
+      "-Wpedantic",
+      "-std=c++20",
+      "-g",
+      "-O2",
+      "-D_GLFW_WAYLAND",
+      "-D_GLFW_EGL",
+      "-I./src/core",
+      "-I./src/data",
+      "-I./src/systems",
+      "-I./src/systems/motion",
+      "-I./src/systems/renderer",
+      "-I./src/systems/glfw",
+      "-o",
+      "./build/sigil",
+      "./src/systems/glfw/glfw.cc"
+    ],
+    "directory": "/home/gin/_Work/_code/corpus_sigillum/sigil",
+    "file": "/home/gin/_Work/_code/corpus_sigillum/sigil/src/systems/glfw/glfw.cc",
+    "output": "/home/gin/_Work/_code/corpus_sigillum/sigil/build/sigil"
   }
 ]
