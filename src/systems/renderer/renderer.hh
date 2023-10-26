@@ -180,19 +180,19 @@ struct Renderer : sigil::Module {
         vk::SampleCountFlagBits msaa_samples = vk::SampleCountFlagBits::e1;
 
                 // WORLD //
-        inline static glm::vec3 world_up = glm::vec3(0.f, 0.f, 1.f);
+        inline static glm::vec3 world_up = glm::vec3(0.f, 0.f, -1.f);
 
           // FIRST PERSON CAMERA //
         struct {
             struct {
-                glm::vec3 position = glm::vec3(-2, 0, .5f);
+                glm::vec3 position = glm::vec3( 0, 2, .5f );
                 glm::vec3 rotation = glm::vec3( 0, 0,  0 );
                 glm::vec3 scale    = glm::vec3( 0 );
             } transform;
             glm::vec3 velocity;
-            glm::vec3 forward_vector = glm::vec3(1.f, 0.f, 0.f);
-            glm::vec3 up_vector      = world_up;
-            glm::vec3 right_vector = -glm::cross(forward_vector, world_up);
+            glm::vec3 forward_vector = glm::vec3(0.f, -1.f, 0.f);
+            glm::vec3 up_vector      = -world_up;
+            glm::vec3 right_vector   = glm::cross(forward_vector, world_up);
             float fov =  90.f;
             float yaw = -90.f;
             float pitch = 0.f;
@@ -200,24 +200,45 @@ struct Renderer : sigil::Module {
                 float near;
                 float far;
             } clip_plane;
+            struct {
+                bool none;
+                bool forward;
+                bool right;
+                bool back; 
+                bool left; 
+                bool up; 
+                bool down; 
+            } request_movement;
             float movement_speed = 1.f;
             bool follow_mouse = false;
+            float mouse_sens = 12.f;
 
-            inline glm::mat4 get_view(Input* input) {
+            inline void update(float delta_time, Input* input) {
+                if( request_movement.forward ) velocity += forward_vector;
+                if( request_movement.back )    velocity -= forward_vector;
+                if( request_movement.right )   velocity -= right_vector;
+                if( request_movement.left )    velocity += right_vector;
+                if( request_movement.up )      velocity += up_vector;
+                if( request_movement.down )    velocity -= up_vector;
+                transform.position += velocity * movement_speed * delta_time;
+                velocity = glm::vec3(0);
                 if( follow_mouse ) {
-                    glm::dvec2 offset = input->get_mouse_movement();
+                    glm::dvec2 offset = -input->get_mouse_movement() * glm::dvec2(mouse_sens) * glm::dvec2(delta_time);
                     yaw += offset.x;
                     pitch = ( pitch + offset.y >  89.f ?  89.f
                             : pitch + offset.y < -89.f ? -89.f
                             : pitch + offset.y);
-                    forward_vector.y = cos(glm::radians(pitch)) * cos(glm::radians(yaw));
-                    forward_vector.x = cos(glm::radians(pitch)) * sin(glm::radians(yaw));
-                    forward_vector.z = sin(cos(glm::radians(pitch)));
-                    forward_vector = glm::normalize(forward_vector);
-                    right_vector = -glm::cross(forward_vector, world_up);
-                    up_vector = glm::cross(forward_vector, up_vector);
+                    forward_vector = glm::normalize(glm::vec3(
+                        cos(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                        sin(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                        sin(glm::radians(pitch))
+                    ));
+                    right_vector = glm::cross(forward_vector, world_up);
+                    up_vector = glm::cross(forward_vector, right_vector);
                     //transform.rotation = glm::qrot(transform.rotation, forward_vector);
                 }
+            }
+            inline glm::mat4 get_view() {
                 return glm::lookAt(transform.position,
                                    transform.position + forward_vector,
                                    up_vector);

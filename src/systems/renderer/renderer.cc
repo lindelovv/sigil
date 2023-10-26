@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <fstream>
 #include <glm/fwd.hpp>
+#include <glm/gtx/quaternion.hpp>
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
@@ -46,33 +47,33 @@ void Renderer::init() {
     {
         input->bind(GLFW_KEY_W,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity += camera.forward_vector; },
-                    .release = [&]{ camera.velocity -= camera.forward_vector; }
+                    .press   = [&]{ camera.request_movement.forward = 1; },
+                    .release = [&]{ camera.request_movement.forward = 0; }
             }   )
             ->bind(GLFW_KEY_S,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity += -camera.forward_vector; },
-                    .release = [&]{ camera.velocity -= -camera.forward_vector; }
+                    .press   = [&]{ camera.request_movement.back = 1; },
+                    .release = [&]{ camera.request_movement.back = 0; }
             }   )
             ->bind(GLFW_KEY_A,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity += camera.right_vector; },
-                    .release = [&]{ camera.velocity -= camera.right_vector; }
+                    .press   = [&]{ camera.request_movement.left = 1; },
+                    .release = [&]{ camera.request_movement.left = 0; }
             }   )
             ->bind(GLFW_KEY_D,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity += -camera.right_vector; },
-                    .release = [&]{ camera.velocity -= -camera.right_vector; }
+                    .press   = [&]{ camera.request_movement.right = 1; },
+                    .release = [&]{ camera.request_movement.right = 0; }
             }   )
             ->bind(GLFW_KEY_Q,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity += -camera.up_vector; },
-                    .release = [&]{ camera.velocity -= -camera.up_vector; }
+                    .press   = [&]{ camera.request_movement.down = 1; },
+                    .release = [&]{ camera.request_movement.down = 0; }
             }   )
             ->bind(GLFW_KEY_E,
                 KeyCallback {
-                    .press   = [&]{ camera.velocity += camera.up_vector; },
-                    .release = [&]{ camera.velocity -= camera.up_vector; }
+                    .press   = [&]{ camera.request_movement.up = 1; },
+                    .release = [&]{ camera.request_movement.up = 0; }
             }   )
             ->bind(GLFW_KEY_LEFT_SHIFT,
                 KeyCallback {
@@ -983,12 +984,9 @@ void Renderer::create_buffer(vk::DeviceSize size,
 }
 
 void Renderer::update_uniform_buffer(uint32_t current_image) {
-    static auto start_time = std::chrono::high_resolution_clock::now();
-    auto current_time = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
     UniformBufferObject ubo {
-        .model = glm::rotate(glm::mat4(1.f), time * glm::radians(45.f), glm::vec3(0.f, 0.f, 1.f)),
-        .view  = camera.get_view(input),
+        .model = glm::rotate(glm::mat4(1.f), glm::radians(45.f), glm::vec3(0.f, 0.f, 1.f)),
+        .view  = camera.get_view(),
         .proj  = glm::perspective(glm::radians(camera.fov), swapchain.extent.width / (float) swapchain.extent.height, 0.1f, 256.f),
     };
     ubo.proj[1][1] *= -1;
@@ -1419,9 +1417,8 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
 }
 
 void Renderer::tick() {
-    camera.transform.position += camera.velocity * camera.movement_speed * sigil->delta_time;
-    std::cout << "Pitch: " << camera.pitch << "\n";
-    std::cout << "Yaw: " << camera.yaw << "\n";
+    std::cout << "Pitch: " << camera.pitch << ", Yaw: " << camera.yaw << "\n";
+    std::cout << "Velocity: " << camera.velocity.x << camera.velocity.y << camera.velocity.z << "\n";
     std::cout << "Position: " << camera.transform.position.x << ", " << camera.transform.position.y << ", " << camera.transform.position.z << "\n";
     std::cout << "Rotation: " << camera.transform.rotation.x << ", " << camera.transform.rotation.y << ", " << camera.transform.rotation.z << "\n";
     expect("Renderer; Wait for fences failed.",
@@ -1435,6 +1432,7 @@ void Renderer::tick() {
     } else if ( next_img.result != vk::Result::eSuccess && next_img.result != vk::Result::eSuboptimalKHR ) {
         throw std::runtime_error("\tError: Failed to acquire swap chain image.");
     }
+    camera.update(sigil->delta_time, input);
     update_uniform_buffer(current_frame);
     device.resetFences(in_flight_fences[current_frame]);
     command_buffers[current_frame].reset();
