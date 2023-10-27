@@ -79,12 +79,19 @@ struct WindowHandle {
 
 //_________________________________________
 // Window handling
-struct Windowing : sigil::Module {
-    public:
-    virtual void init()      override;
-    virtual void terminate() override;
-    virtual void tick()      override;
+struct Windowing {
+public:
+    Windowing(sigil::Sigil& sigil) {
+        this->sigil = &sigil;
+        sigil.init_fns.push_back([&]{ this->init(); });
+        sigil.tick_fns.push_back([&]{ this->tick(); });
+        sigil.terminate_fns.push_back([&]{ this->terminate(); });
+    }
+    void init();
+    void terminate();
+    void tick();
 
+    sigil::Sigil* sigil;
     WindowHandle* main_window;
 };
 
@@ -92,10 +99,15 @@ struct Windowing : sigil::Module {
 // Input handling
 //
 // @TODO: Improve modkey handling
-struct Input : sigil::Module {
-    public:
-    virtual void init() override;
-    virtual void tick() override;
+struct Input {
+public:
+    Input(sigil::Sigil& sigil) {
+        this->sigil = &sigil;
+        sigil.init_fns.push_back([&]{ this->init(); });
+        sigil.tick_fns.push_back([&]{ this->tick(); });
+    }
+    void init();
+    void tick();
 
     glm::dvec2 get_mouse_movement();
     static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
@@ -107,6 +119,7 @@ private:
     glm::dvec2 mouse_position;
     void setup_standard_bindings();
     
+    sigil::Sigil* sigil;
     GLFWwindow* window;
     inline static std::unordered_map<KeyInfo, KeyCallback> callbacks;
 };

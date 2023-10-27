@@ -118,11 +118,18 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 proj;
 };
 
-struct Renderer : sigil::Module {
-        virtual void init() override;
-        virtual void terminate() override;
-        virtual void tick() override;
+struct Renderer {
+        Renderer(sigil::Sigil& sigil) {
+            this->sigil = &sigil;
+            sigil.init_fns.push_back([&]{ this->init(); });
+            sigil.tick_fns.push_back([&]{ this->tick(); });
+            sigil.terminate_fns.push_back([&]{ this->terminate(); });
+        }
+        void init();
+        void terminate();
+        void tick();
 
+        sigil::Sigil* sigil;
                //// VULKAN ////
         vk::Instance instance;
         vk::PhysicalDevice physical_device;

@@ -6,7 +6,7 @@
 #include <memory>
 #include <stdexcept>
 #include <vector>
-#include <optional>
+#include <any>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -34,58 +34,45 @@ namespace sigil {
     };
 
     //____________________________________
-    // Module base. 
-    //
-    // @TODO: Research/test if there is a better way to call each system each tick. 
-    //        Alternativly, even better, if there is an elegant way to not need inheritance.
-    struct Module {
-        virtual ~Module()        {}
-
-        virtual void init()      {}
-        virtual void terminate() {}
-        virtual void tick()      {}
-
-        struct Sigil* sigil;
-    };
-
-    //____________________________________
     // Core & builder
     struct Sigil {
         inline void run() {
-            for( auto& module : modules ) {
-                module->init();
+            for( auto&& init : init_fns ) {
+                init();
             }
             while( !should_close ) {
                 float current_frame = glfwGetTime();
                 delta_time = current_frame - last_frame;
                 last_frame = current_frame;
-                for( auto& module : modules ) {
-                    module->tick();
+                for( auto&& tick : tick_fns ) {
+                    tick();
                 }
             }
-            for( auto& module : modules ) {
-                module->terminate();
+            for( auto&& terminate : terminate_fns ) {
+                terminate();
             }
         }
 
-        template <std::derived_from<Module> T>
+        template <typename T>
         inline Sigil& add_module() {
-            auto module = new T;
-            module->sigil = this;
+            auto module = new T(*this);
             ALLOW_UNUSED(Id::of_type<T>) // Generate id (and thus index) for module.
-            modules.push_back(std::shared_ptr<Module>{ module });
+            modules.push_back(module);
             return *this;
         }
 
-        template <std::derived_from<Module> T>
+        template <typename T>
         inline T* get_module() {
-            return dynamic_cast<T*>(modules.at(Id::of_type<T>).get());
+            return static_cast<T*>(modules.at(Id::of_type<T>));
         }
 
         float delta_time;
         float last_frame;
         bool should_close = false;
-        std::vector<std::shared_ptr<Module>> modules;
+        std::vector<void*> modules;
+        std::vector<std::function<void()>> init_fns;
+        std::vector<std::function<void()>> tick_fns;
+        std::vector<std::function<void()>> terminate_fns;
     };
 }
 

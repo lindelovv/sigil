@@ -34,10 +34,8 @@ namespace vk {
 void Renderer::init() {
 
     //_____________________________________
-    // Setup cross-module requirements
+    // Setup cross-module requirements and update functions
     {  
-        if( sigil == nullptr ) throw std::runtime_error("null");
-        if( sigil->get_module<Input>() == nullptr ) throw std::runtime_error("null2");
         window = sigil->get_module<Windowing>()->main_window;
         input  = sigil->get_module<Input>();
     }
