@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <vulkan/vulkan.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
@@ -107,22 +108,16 @@ void VulkanRenderer::init() {
                 throw std::runtime_error("\tError: Validation layers requested but not available.\n");
             }
         }
-        vk::DebugUtilsMessengerEXT debug_info = expect("Failed to create debug utils messenger.",
-            instance.createDebugUtilsMessengerEXT(
-                reinterpret_cast<const VkDebugUtilsMessengerCreateInfoEXT>(vk::DebugUtilsMessengerCreateInfoEXT {
-                    .sType           = vk::StructureType::eDebugUtilsMessengerCreateInfoEXT,
-                    .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
-                                      | vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
-                                      | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
-                                      | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
-                    .messageType     = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
-                                      | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
-                                      | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-                    .pfnUserCallback = &debug_callback,
-                }),
-                nullptr,
-                &debug_messenger
-        )   );
+        auto debug_msgr_create_info = vk::DebugUtilsMessengerCreateInfoEXT {
+            .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
+                              | vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
+                              | vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning
+                              | vk::DebugUtilsMessageSeverityFlagBitsEXT::eError,
+            .messageType     = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
+                              | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
+                              | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
+            .pfnUserCallback = &debug_callback,
+        };
 #endif
         uint32_t glfw_extension_count = 0;
         const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
@@ -134,20 +129,25 @@ void VulkanRenderer::init() {
             vk::createInstance(
                 vk::InstanceCreateInfo {
 #ifdef _DEBUG
-                    .pNext                      = &debug_info,
+                    .pNext                      = &debug_msgr_create_info,
                     .pApplicationInfo           = &engine_info,
                     .enabledLayerCount          = static_cast<uint32_t>(validation_layers.size()),
                     .ppEnabledLayerNames        = validation_layers.data(),
                     .enabledExtensionCount      = static_cast<uint32_t>(extensions.size()),
                     .ppEnabledExtensionNames    = extensions.data(),
+        }   )   );
+        // @TODO: setup debug linking so _DEBUG will work at all
+        debug_messenger = expect("Could not create debug messenger.",
+            instance.createDebugUtilsMessengerEXT(debug_msgr_create_info, nullptr)
+        );
 #else 
                     .pNext                      = nullptr,
                     .pApplicationInfo           = &engine_info,
                     .enabledLayerCount          = 0,
                     .enabledExtensionCount      = static_cast<uint32_t>(extensions.size()),
                     .ppEnabledExtensionNames    = extensions.data(),
-#endif
         }   )   );
+#endif
     }
 
     //_____________________________________

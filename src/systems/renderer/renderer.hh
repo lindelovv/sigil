@@ -353,14 +353,12 @@ struct VulkanRenderer {
         void create_color_resources();
 
             //// VALIDATION LAYERS ////
-        VkResult create_debug_util_messenger_ext(VkInstance instance, 
+        VKAPI_ATTR VkResult VKAPI_CALL create_debug_util_messenger_ext(VkInstance instance, 
                                                  const VkDebugUtilsMessengerCreateInfoEXT* p_create_info,
                                                  const VkAllocationCallbacks* p_allocator,
                                                  VkDebugUtilsMessengerEXT* p_debug_messenger
             );
-        void setup_debug_messenger();
-        vk::ResultValue<std::vector<VkLayerProperties>> check_validation_layer_support();
-        void destroy_debug_util_messenger_ext(VkInstance instance, 
+        VKAPI_ATTR void VKAPI_CALL destroy_debug_util_messenger_ext(VkInstance instance, 
                                               VkDebugUtilsMessengerEXT p_debug_messenger,
                                               const VkAllocationCallbacks* p_allocator
             );
