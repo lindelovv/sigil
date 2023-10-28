@@ -118,16 +118,18 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 proj;
 };
 
-struct Renderer {
-        Renderer(sigil::Sigil& sigil) {
+//____________________________________
+// 
+struct VulkanRenderer {
+        VulkanRenderer(sigil::Sigil& sigil) {
             this->sigil = &sigil;
-            sigil.init_fns.push_back([&]{ this->init(); });
-            sigil.tick_fns.push_back([&]{ this->tick(); });
-            sigil.terminate_fns.push_back([&]{ this->terminate(); });
+            sigil.init_delegates.push_back([&]{ this->init(); });
+            sigil.tick_delegates.push_back([&]{ this->draw(); });
+            sigil.exit_delegates.push_back([&]{ this->terminate(); });
         }
         void init();
         void terminate();
-        void tick();
+        void draw();
 
         sigil::Sigil* sigil;
                //// VULKAN ////
@@ -137,7 +139,7 @@ struct Renderer {
         vk::Queue graphics_queue;
         vk::Queue present_queue;
         vk::SurfaceKHR surface;
-        VkDebugUtilsMessengerEXT debug_messenger;
+        vk::DebugUtilsMessengerEXT debug_messenger;
               // SWAP CHAIN //
         struct {
             vk::SwapchainKHR handle;

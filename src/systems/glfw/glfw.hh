@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sigil.hh"
+#include "math.hh"
 
 #include <string>
 #include <iostream>
@@ -83,9 +84,9 @@ struct Windowing {
 public:
     Windowing(sigil::Sigil& sigil) {
         this->sigil = &sigil;
-        sigil.init_fns.push_back([&]{ this->init(); });
-        sigil.tick_fns.push_back([&]{ this->tick(); });
-        sigil.terminate_fns.push_back([&]{ this->terminate(); });
+        sigil.init_delegates.push_back([&]{ this->init(); });
+        sigil.tick_delegates.push_back([&]{ this->tick(); });
+        sigil.exit_delegates.push_back([&]{ this->terminate(); });
     }
     void init();
     void terminate();
@@ -103,8 +104,8 @@ struct Input {
 public:
     Input(sigil::Sigil& sigil) {
         this->sigil = &sigil;
-        sigil.init_fns.push_back([&]{ this->init(); });
-        sigil.tick_fns.push_back([&]{ this->tick(); });
+        sigil.init_delegates.push_back([&]{ this->init(); });
+        sigil.tick_delegates.push_back([&]{ this->tick(); });
     }
     void init();
     void tick();

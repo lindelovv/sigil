@@ -31,7 +31,7 @@ namespace vk {
 //_____________________________________
 // Since a lot of the vulkan initialization logic is only needed once (with exceptions),
 // the code is contained within the single function but contained within commented blocks.
-void Renderer::init() {
+void VulkanRenderer::init() {
 
     //_____________________________________
     // Setup cross-module requirements and update functions
@@ -94,7 +94,7 @@ void Renderer::init() {
     //____________________________________
     // Instance creation
     {
-#ifdef DEBUG
+#ifdef _DEBUG
         for( auto requsted_layer : validation_layers ) {
             bool layer_found = false;
             for( const auto& available_layer : unwrap(vk::enumerateInstanceLayerProperties()) ) {
@@ -107,9 +107,9 @@ void Renderer::init() {
                 throw std::runtime_error("\tError: Validation layers requested but not available.\n");
             }
         }
-        auto debug_info = expect("Failed to create debug utils messenger.",
+        vk::DebugUtilsMessengerEXT debug_info = expect("Failed to create debug utils messenger.",
             instance.createDebugUtilsMessengerEXT(
-                vk::DebugUtilsMessengerCreateInfoEXT {
+                reinterpret_cast<const VkDebugUtilsMessengerCreateInfoEXT>(vk::DebugUtilsMessengerCreateInfoEXT {
                     .sType           = vk::StructureType::eDebugUtilsMessengerCreateInfoEXT,
                     .messageSeverity = vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
                                       | vk::DebugUtilsMessageSeverityFlagBitsEXT::eVerbose
@@ -118,8 +118,8 @@ void Renderer::init() {
                     .messageType     = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral
                                       | vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation
                                       | vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-                    .pfnUserCallback = debug_callback,
-                },
+                    .pfnUserCallback = &debug_callback,
+                }),
                 nullptr,
                 &debug_messenger
         )   );
@@ -127,13 +127,13 @@ void Renderer::init() {
         uint32_t glfw_extension_count = 0;
         const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
         std::vector<const char*> extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
-#ifdef DEBUG
+#ifdef _DEBUG
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
         instance = expect("Failed to create instance.",
             vk::createInstance(
                 vk::InstanceCreateInfo {
-#ifdef DEBUG
+#ifdef _DEBUG
                     .pNext                      = &debug_info,
                     .pApplicationInfo           = &engine_info,
                     .enabledLayerCount          = static_cast<uint32_t>(validation_layers.size()),
@@ -211,7 +211,7 @@ void Renderer::init() {
         vk::DeviceCreateInfo device_info {
             .queueCreateInfoCount           = static_cast<uint32_t>(queue_info_vec.size()),
             .pQueueCreateInfos              = queue_info_vec.data(),
-#ifdef DEBUG
+#ifdef _DEBUG
             .enabledLayerCount   = static_cast<uint32_t>(validation_layers.size()),
             .ppEnabledLayerNames = validation_layers.data(),
 #else
@@ -769,7 +769,7 @@ void Renderer::init() {
     }
 }
 
-QueueFamilyIndices Renderer::find_queue_families(vk::PhysicalDevice phys_device) {
+QueueFamilyIndices VulkanRenderer::find_queue_families(vk::PhysicalDevice phys_device) {
     QueueFamilyIndices indices;
     for( int i = 0; const vk::QueueFamilyProperties& queue_family : phys_device.getQueueFamilyProperties() ) {
         if( queue_family.queueFlags & vk::QueueFlagBits::eGraphics ) { indices.graphics_family = i; }
@@ -779,7 +779,7 @@ QueueFamilyIndices Renderer::find_queue_families(vk::PhysicalDevice phys_device)
     return indices;
 }
 
-vk::SurfaceFormatKHR Renderer::choose_swap_surface_format(const std::vector<vk::SurfaceFormatKHR>& available_formats) {
+vk::SurfaceFormatKHR VulkanRenderer::choose_swap_surface_format(const std::vector<vk::SurfaceFormatKHR>& available_formats) {
     for( const vk::SurfaceFormatKHR& available_format : available_formats ) {
         if( available_format.format     == vk::Format::eB8G8R8A8Srgb
          && available_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear ) {
@@ -788,7 +788,7 @@ vk::SurfaceFormatKHR Renderer::choose_swap_surface_format(const std::vector<vk::
     } return available_formats[0];
 }
 
-vk::PresentModeKHR Renderer::choose_swap_present_mode(const std::vector<vk::PresentModeKHR>& available_present_modes) {
+vk::PresentModeKHR VulkanRenderer::choose_swap_present_mode(const std::vector<vk::PresentModeKHR>& available_present_modes) {
     for( const vk::PresentModeKHR& available_present_mode : available_present_modes ) {
         if( available_present_mode == vk::PresentModeKHR::eMailbox ) {
             return available_present_mode;
@@ -796,7 +796,7 @@ vk::PresentModeKHR Renderer::choose_swap_present_mode(const std::vector<vk::Pres
     } return vk::PresentModeKHR::eFifo;
 }
 
-vk::Extent2D Renderer::choose_swap_extent(const vk::SurfaceCapabilitiesKHR& capabilities) {
+vk::Extent2D VulkanRenderer::choose_swap_extent(const vk::SurfaceCapabilitiesKHR& capabilities) {
     if( capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max() ) {
         return capabilities.currentExtent;
     } else {
@@ -821,7 +821,7 @@ vk::Extent2D Renderer::choose_swap_extent(const vk::SurfaceCapabilitiesKHR& capa
     }
 }
 
-void Renderer::cleanup_swap_chain() {
+void VulkanRenderer::cleanup_swap_chain() {
     device.destroyImageView(color_img_view);
     device.destroyImage(color_img);
     device.freeMemory(color_img_memory);
@@ -837,7 +837,7 @@ void Renderer::cleanup_swap_chain() {
     device.destroySwapchainKHR(swapchain.handle);
 }
 
-void Renderer::create_swap_chain() {
+void VulkanRenderer::create_swap_chain() {
     SwapChainSupportDetails swapchain_support {
         .capabilities   = physical_device.getSurfaceCapabilitiesKHR (surface).value,
         .formats        = physical_device.getSurfaceFormatsKHR      (surface).value,
@@ -886,7 +886,7 @@ void Renderer::create_swap_chain() {
     swapchain.extent     = extent;
 }
 
-void Renderer::recreate_swap_chain() {
+void VulkanRenderer::recreate_swap_chain() {
     int width = 0, height = 0;
     glfwGetFramebufferSize(window->instance, &width, &height);
     while( width == 0 || height == 0 ) {
@@ -903,7 +903,7 @@ void Renderer::recreate_swap_chain() {
     create_framebuffers();
 }
 
-vk::ImageView Renderer::create_img_view(vk::Image image,
+vk::ImageView VulkanRenderer::create_img_view(vk::Image image,
                                         vk::Format format,
                                         vk::ImageAspectFlags aspect_flags,
                                         uint32_t mip_levels
@@ -924,7 +924,7 @@ vk::ImageView Renderer::create_img_view(vk::Image image,
     }   )   );
 }
 
-void Renderer::create_img_views() {
+void VulkanRenderer::create_img_views() {
     swapchain.img_views.resize(swapchain.images.size());
 
     for( uint32_t i = 0; i < swapchain.images.size(); i++ ) {
@@ -937,7 +937,7 @@ void Renderer::create_img_views() {
     }
 }
 
-std::vector<char> Renderer::read_file(const std::string& path) {
+std::vector<char> VulkanRenderer::read_file(const std::string& path) {
     std::ifstream file(path, std::ios::ate | std::ios::binary);
     if( !file.is_open() ) {
         throw std::runtime_error("\tError: Failed to open file at:" + path);
@@ -950,7 +950,7 @@ std::vector<char> Renderer::read_file(const std::string& path) {
     return buffer;
 }
 
-vk::ShaderModule Renderer::create_shader_module(const std::vector<char>& code) {
+vk::ShaderModule VulkanRenderer::create_shader_module(const std::vector<char>& code) {
     return expect("Failed to create shader module.",
         device.createShaderModule(
             vk::ShaderModuleCreateInfo {
@@ -959,7 +959,7 @@ vk::ShaderModule Renderer::create_shader_module(const std::vector<char>& code) {
     }   )   );
 }
 
-void Renderer::create_buffer(vk::DeviceSize size,
+void VulkanRenderer::create_buffer(vk::DeviceSize size,
                              vk::BufferUsageFlags usage,
                              vk::MemoryPropertyFlags properties,
                              vk::Buffer& buffer,
@@ -981,7 +981,7 @@ void Renderer::create_buffer(vk::DeviceSize size,
     vkBindBufferMemory(device, buffer, buffer_memory, 0);
 }
 
-void Renderer::update_uniform_buffer(uint32_t current_image) {
+void VulkanRenderer::update_uniform_buffer(uint32_t current_image) {
     UniformBufferObject ubo {
         .model = glm::rotate(glm::mat4(1.f), glm::radians(45.f), glm::vec3(0.f, 0.f, 1.f)),
         .view  = camera.get_view(),
@@ -991,7 +991,7 @@ void Renderer::update_uniform_buffer(uint32_t current_image) {
     memcpy(uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
 }
 
-void Renderer::copy_buffer(vk::Buffer src_buffer,
+void VulkanRenderer::copy_buffer(vk::Buffer src_buffer,
                            vk::Buffer dst_buffer,
                            vk::DeviceSize size
 ) {
@@ -1010,7 +1010,7 @@ void Renderer::copy_buffer(vk::Buffer src_buffer,
     end_single_time_commands(command_buffer);
 }
 
-uint32_t Renderer::find_memory_type(uint32_t type_filter, vk::MemoryPropertyFlags properties) {
+uint32_t VulkanRenderer::find_memory_type(uint32_t type_filter, vk::MemoryPropertyFlags properties) {
     vk::PhysicalDeviceMemoryProperties mem_properties = physical_device.getMemoryProperties();
     for( uint32_t i = 0; i < mem_properties.memoryTypeCount; i++ ) {
         if( type_filter & (1 << i) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties ) {
@@ -1020,7 +1020,7 @@ uint32_t Renderer::find_memory_type(uint32_t type_filter, vk::MemoryPropertyFlag
     throw std::runtime_error("\tError: Failed to find suitable memory type.");
 }
 
-void Renderer::create_img(uint32_t width,
+void VulkanRenderer::create_img(uint32_t width,
                           uint32_t height,
                           uint32_t mip_levels,
                           vk::SampleCountFlagBits num_samples,
@@ -1061,7 +1061,7 @@ void Renderer::create_img(uint32_t width,
     );
 }
 
-void Renderer::transition_img_layout(vk::Image img,
+void VulkanRenderer::transition_img_layout(vk::Image img,
                                      vk::Format format,
                                      vk::ImageLayout old_layout,
                                      vk::ImageLayout new_layout,
@@ -1111,7 +1111,7 @@ void Renderer::transition_img_layout(vk::Image img,
     end_single_time_commands(command_buffer);
 }
 
-void Renderer::copy_buffer_to_img(vk::Buffer buffer,
+void VulkanRenderer::copy_buffer_to_img(vk::Buffer buffer,
                                   vk::Image img,
                                   uint32_t width,
                                   uint32_t height
@@ -1141,7 +1141,7 @@ void Renderer::copy_buffer_to_img(vk::Buffer buffer,
     end_single_time_commands(command_buffer);
 }
 
-void Renderer::generate_mipmaps(vk::Image image,
+void VulkanRenderer::generate_mipmaps(vk::Image image,
                                 vk::Format image_format,
                                 int32_t t_width,
                                 int32_t t_height,
@@ -1237,7 +1237,7 @@ void Renderer::generate_mipmaps(vk::Image image,
     end_single_time_commands(command_buffer);
 }
 
-void Renderer::create_depth_resources() {
+void VulkanRenderer::create_depth_resources() {
     vk::Format depth_format = find_depth_format();
     create_img(
         swapchain.extent.width,
@@ -1259,7 +1259,7 @@ void Renderer::create_depth_resources() {
                         );
 }
 
-vk::Format Renderer::find_supported_format(const std::vector<vk::Format>& candidates,
+vk::Format VulkanRenderer::find_supported_format(const std::vector<vk::Format>& candidates,
                                            vk::ImageTiling tiling,
                                            vk::FormatFeatureFlags features
 ) {
@@ -1274,12 +1274,12 @@ vk::Format Renderer::find_supported_format(const std::vector<vk::Format>& candid
     throw std::runtime_error("\tError: Failed to find supported format.");
 }
 
-bool Renderer::has_stencil_component(vk::Format format) {
+bool VulkanRenderer::has_stencil_component(vk::Format format) {
     return format == vk::Format::eD32SfloatS8Uint
         || format == vk::Format::eD24UnormS8Uint;
 }
 
-vk::Format Renderer::find_depth_format() {
+vk::Format VulkanRenderer::find_depth_format() {
     return find_supported_format(
         { vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint },
         vk::ImageTiling::eOptimal,
@@ -1287,7 +1287,7 @@ vk::Format Renderer::find_depth_format() {
     );
 }
 
-void Renderer::create_color_resources() {
+void VulkanRenderer::create_color_resources() {
     vk::Format color_format = swapchain.img_format;
     create_img(
         swapchain.extent.width,
@@ -1309,7 +1309,7 @@ void Renderer::create_color_resources() {
     );
 }
 
-vk::CommandBuffer Renderer::begin_single_time_commands() {
+vk::CommandBuffer VulkanRenderer::begin_single_time_commands() {
     vk::CommandBufferAllocateInfo alloc_info {
         .commandPool        = command_pool,
         .level              = vk::CommandBufferLevel::ePrimary,
@@ -1325,7 +1325,7 @@ vk::CommandBuffer Renderer::begin_single_time_commands() {
     return command_buffer;
 }
 
-void Renderer::end_single_time_commands(vk::CommandBuffer command_buffer) {
+void VulkanRenderer::end_single_time_commands(vk::CommandBuffer command_buffer) {
     expect("Failed to end command buffer.",
         command_buffer.end()
     );
@@ -1342,7 +1342,7 @@ void Renderer::end_single_time_commands(vk::CommandBuffer command_buffer) {
     device.freeCommandBuffers(command_pool, command_buffer);
 }
 
-void Renderer::create_framebuffers() {
+void VulkanRenderer::create_framebuffers() {
     swapchain.framebuffers.resize(swapchain.img_views.size());
     for( size_t i = 0; i < swapchain.img_views.size(); i++ ) {
         std::array<vk::ImageView, 3> attachments = {
@@ -1364,7 +1364,7 @@ void Renderer::create_framebuffers() {
     }
 }
 
-void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t img_index) {
+void VulkanRenderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t img_index) {
     vk::CommandBufferBeginInfo begin_info {};
     expect("Failed to begin recording command buffer.",
         command_buffer.begin(begin_info)
@@ -1414,12 +1414,12 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
     );
 }
 
-void Renderer::tick() {
+void VulkanRenderer::draw() {
     std::cout << "Pitch: " << camera.pitch << ", Yaw: " << camera.yaw << "\n";
     std::cout << "Velocity: " << camera.velocity.x << camera.velocity.y << camera.velocity.z << "\n";
     std::cout << "Position: " << camera.transform.position.x << ", " << camera.transform.position.y << ", " << camera.transform.position.z << "\n";
     std::cout << "Rotation: " << camera.transform.rotation.x << ", " << camera.transform.rotation.y << ", " << camera.transform.rotation.z << "\n";
-    expect("Renderer; Wait for fences failed.",
+    expect("VulkanRenderer; Wait for fences failed.",
         device.waitForFences(in_flight_fences, true, UINT64_MAX)
     );
     vk::ResultValue<uint32_t> next_img = device.acquireNextImageKHR(swapchain.handle, UINT64_MAX, img_available_semaphores[current_frame]);
@@ -1470,8 +1470,8 @@ void Renderer::tick() {
     current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-#ifdef DEBUG
-VkResult Renderer::create_debug_util_messenger_ext(VkInstance instance,
+#ifdef _DEBUG
+VkResult VulkanRenderer::create_debug_util_messenger_ext(VkInstance instance,
                                                    const VkDebugUtilsMessengerCreateInfoEXT* p_create_info,
                                                    const VkAllocationCallbacks* p_allocator,
                                                    VkDebugUtilsMessengerEXT* p_debug_messenger
@@ -1482,7 +1482,7 @@ VkResult Renderer::create_debug_util_messenger_ext(VkInstance instance,
     } else { return VK_ERROR_EXTENSION_NOT_PRESENT; }
 }
 
-void Renderer::destroy_debug_util_messenger_ext(VkInstance instance,
+void VulkanRenderer::destroy_debug_util_messenger_ext(VkInstance instance,
                                                 VkDebugUtilsMessengerEXT p_debug_messenger,
                                                 const VkAllocationCallbacks* p_allocator
 ) {
@@ -1492,7 +1492,7 @@ void Renderer::destroy_debug_util_messenger_ext(VkInstance instance,
     }
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL Renderer::debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
+VKAPI_ATTR VkBool32 VKAPI_CALL VulkanRenderer::debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
                                                         VkDebugUtilsMessageTypeFlagsEXT msg_type,
                                                         const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
                                                         void* p_user_data
@@ -1502,7 +1502,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL Renderer::debug_callback(VkDebugUtilsMessageSever
 }
 #endif
 
-void Renderer::terminate() {
+void VulkanRenderer::terminate() {
     expect("Device wait idle failed.", device.waitIdle());
     cleanup_swap_chain();
     device.destroyPipeline(graphics_pipeline);
@@ -1529,7 +1529,7 @@ void Renderer::terminate() {
     }
     device.destroyCommandPool(command_pool);
     device.destroy();
-#ifdef DEBUG
+#ifdef _DEBUG
     instance.destroyDebugUtilsMessengerEXT(debug_messenger);
 #endif
     instance.destroySurfaceKHR(surface);
