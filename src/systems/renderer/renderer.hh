@@ -43,8 +43,6 @@ const std::vector<const char*>  device_extensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
 
-const int MAX_FRAMES_IN_FLIGHT = 2;
-
 const std::string MODEL_PATH   = "models/model.obj";
 const std::string TEXTURE_PATH = "textures/model_texture.png";
 
@@ -120,8 +118,8 @@ struct UniformBufferObject {
 
 //____________________________________
 // 
-struct VulkanRenderer {
-        VulkanRenderer(sigil::Sigil& sigil) {
+struct Renderer {
+        Renderer(sigil::Sigil& sigil) {
             this->sigil = &sigil;
             sigil.init_delegates.push_back([&]{ this->init(); });
             sigil.tick_delegates.push_back([&]{ this->draw(); });
@@ -132,6 +130,8 @@ struct VulkanRenderer {
         void draw();
 
         sigil::Sigil* sigil;
+
+        const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
                //// VULKAN ////
         vk::Instance instance;
         vk::PhysicalDevice physical_device;
@@ -254,74 +254,48 @@ struct VulkanRenderer {
             }
         } camera;
 
-    private:
         void create_swap_chain();
         void cleanup_swap_chain();
         void recreate_swap_chain();
-        vk::ImageView create_img_view(
-                vk::Image image,
-                vk::Format format,
-                vk::ImageAspectFlags aspect_flags,
-                uint32_t mip_levels
-            );
+        vk::ImageView create_img_view(vk::Image image,
+                                      vk::Format format,
+                                      vk::ImageAspectFlags aspect_flags,
+                                      uint32_t mip_levels
+        );
         void create_img_views();
-        void print_extensions();
-        bool is_device_suitable(vk::PhysicalDevice phys_device);
-        int score_device_suitability(vk::PhysicalDevice phys_device);
-        bool check_device_extension_support(vk::PhysicalDevice phys_device);
         QueueFamilyIndices find_queue_families(vk::PhysicalDevice phys_device);
         vk::SurfaceFormatKHR choose_swap_surface_format(const std::vector<vk::SurfaceFormatKHR>&);
         vk::PresentModeKHR choose_swap_present_mode(const std::vector<vk::PresentModeKHR>&);
         vk::Extent2D choose_swap_extent(const vk::SurfaceCapabilitiesKHR&);
         vk::ShaderModule create_shader_module(const std::vector<char>&);
         static std::vector<char> read_file(const std::string& path);
-        void create_buffer(
-                vk::DeviceSize,
-                vk::BufferUsageFlags,
-                vk::MemoryPropertyFlags,
-                vk::Buffer&,
-                vk::DeviceMemory&
-            );
-        void copy_buffer(
-                vk::Buffer,
-                vk::Buffer,
-                vk::DeviceSize
-            );
-        void create_vertex_buffer();
-        void create_index_buffer();
-        void create_uniform_buffers();
+        void create_buffer(vk::DeviceSize,
+                           vk::BufferUsageFlags,
+                           vk::MemoryPropertyFlags,
+                           vk::Buffer&,
+                           vk::DeviceMemory&
+        );
+        void copy_buffer(vk::Buffer,
+                         vk::Buffer,
+                         vk::DeviceSize
+        );
         void update_uniform_buffer(uint32_t current_image);
-        uint32_t find_memory_type(
-                uint32_t,
-                vk::MemoryPropertyFlags
-            );
-        void create_descriptor_set_layout();
-        void create_descriptor_pool();
-        void create_descriptor_sets();
-        void create_img(
-                uint32_t width,
-                uint32_t height,
-                uint32_t mip_levels,
-                vk::SampleCountFlagBits num_samples,
-                vk::Format format,
-                vk::ImageTiling tiling,
-                vk::ImageUsageFlags usage,
-                vk::MemoryPropertyFlags properties,
-                vk::Image& image,
-                vk::DeviceMemory& image_memory
-            );
-        void create_texture_img();
-        void create_texture_img_view();
-        void create_texture_sampler();
-        void create_graphics_pipeline();
-        void create_render_pass();
+        uint32_t find_memory_type(uint32_t,
+                                  vk::MemoryPropertyFlags
+        );
+        void create_img(uint32_t width,
+                        uint32_t height,
+                        uint32_t mip_levels,
+                        vk::SampleCountFlagBits num_samples,
+                        vk::Format format,
+                        vk::ImageTiling tiling,
+                        vk::ImageUsageFlags usage,
+                        vk::MemoryPropertyFlags properties,
+                        vk::Image& image,
+                        vk::DeviceMemory& image_memory
+        );
         void create_framebuffers();
-        void create_command_pool();
-        void create_command_buffers();
-        void record_command_buffer(
-                vk::CommandBuffer,
-                uint32_t
-            );
+        void record_command_buffer(vk::CommandBuffer, uint32_t);
         vk::CommandBuffer begin_single_time_commands();
         void end_single_time_commands(vk::CommandBuffer command_buffer);
         void transition_img_layout(vk::Image image,
@@ -329,17 +303,17 @@ struct VulkanRenderer {
                                    vk::ImageLayout old_layout,
                                    vk::ImageLayout new_layout,
                                    uint32_t mip_levels
-            );
+        );
         void copy_buffer_to_img(vk::Buffer,
                                 vk::Image,
                                 uint32_t,
                                 uint32_t
-            );
+        );
         void create_depth_resources();
         vk::Format find_supported_format(const std::vector<vk::Format>& candidates,
                                          vk::ImageTiling tiling,
                                          vk::FormatFeatureFlags features
-            );
+        );
         vk::Format find_depth_format();
         bool has_stencil_component(vk::Format format);
         void load_model();
@@ -348,25 +322,27 @@ struct VulkanRenderer {
                               int32_t t_width,
                               int32_t t_height,
                               uint32_t mip_levels
-            );
-        vk::SampleCountFlagBits get_max_usable_sample_count();
+        );
         void create_color_resources();
 
             //// VALIDATION LAYERS ////
-        VKAPI_ATTR VkResult VKAPI_CALL create_debug_util_messenger_ext(VkInstance instance, 
-                                                 const VkDebugUtilsMessengerCreateInfoEXT* p_create_info,
-                                                 const VkAllocationCallbacks* p_allocator,
-                                                 VkDebugUtilsMessengerEXT* p_debug_messenger
-            );
-        VKAPI_ATTR void VKAPI_CALL destroy_debug_util_messenger_ext(VkInstance instance, 
-                                              VkDebugUtilsMessengerEXT p_debug_messenger,
-                                              const VkAllocationCallbacks* p_allocator
-            );
-        static VKAPI_ATTR vk::Bool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
-                                                               VkDebugUtilsMessageTypeFlagsEXT msg_type,
-                                                               const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
-                                                               void* p_user_data
-            );
+        static VKAPI_ATTR VkResult VKAPI_CALL
+        create_debug_util_messenger_ext(VkInstance instance, 
+                                        const VkDebugUtilsMessengerCreateInfoEXT* p_create_info,
+                                        const VkAllocationCallbacks* p_allocator,
+                                        VkDebugUtilsMessengerEXT* p_debug_messenger
+        );
+        static VKAPI_ATTR void VKAPI_CALL
+        destroy_debug_util_messenger_ext(VkInstance instance, 
+                                         VkDebugUtilsMessengerEXT p_debug_messenger,
+                                         const VkAllocationCallbacks* p_allocator
+        );
+        static VKAPI_ATTR vk::Bool32 VKAPI_CALL
+        debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
+                       VkDebugUtilsMessageTypeFlagsEXT msg_type,
+                       const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
+                       void* p_user_data
+        );
         WindowHandle* window;
         Input* input;
 };

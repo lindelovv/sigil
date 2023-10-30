@@ -39,8 +39,6 @@ void Input::init() {
 void Input::tick() {
     last_mouse_position = mouse_position;
     glfwGetCursorPos(window, &mouse_position.x, &mouse_position.y);
-    std::cout << "x: " << mouse_position.x << ", y: " << mouse_position.y << "\n"
-        << last_mouse_position.x - mouse_position.x << ", " << last_mouse_position.y - mouse_position.y << "\n";
 };
 
 glm::dvec2 Input::get_mouse_movement() {

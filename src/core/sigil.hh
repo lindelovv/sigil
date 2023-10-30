@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+#include <format>
 #include <vector>
 #include <functional>
 
@@ -9,6 +11,15 @@
 #define ALLOW_UNUSED(...) { ((void)(__VA_ARGS__)); }
 
 namespace sigil {
+
+    struct Version {
+        static const uint8_t major = 0;
+        static const uint8_t minor = 0;
+        static const uint8_t patch = 1;
+        static const inline std::string to_string() {
+            return std::format("sigil   v. {}.{}.{} ", major, minor, patch);
+        }
+    } const inline version;
 
     //____________________________________
     // Runtime id generator, making it easier to add and remove modules.

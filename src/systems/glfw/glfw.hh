@@ -115,9 +115,9 @@ public:
     static void mouse_callback(GLFWwindow* window, int button, int action, int mods);
     Input* bind(KeyInfo key_info, KeyCallback callbacks);
 
+    glm::dvec2 mouse_position;
 private:
     glm::dvec2 last_mouse_position;
-    glm::dvec2 mouse_position;
     void setup_standard_bindings();
     
     sigil::Sigil* sigil;
