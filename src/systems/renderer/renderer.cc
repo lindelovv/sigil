@@ -1473,7 +1473,7 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
                                           | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
                                           | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
             {
-                ImGui::TextUnformatted(sigil::version.to_string().c_str());
+                ImGui::TextUnformatted(std::format("sigil   {}", sigil::version::to_string).c_str());
                 ImGui::SetWindowPos(ImVec2(0, swapchain.extent.height - 28));
             }
             ImGui::End();
@@ -1482,19 +1482,19 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
                                           | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
             {
                 ImGui::TextUnformatted(
-                    std::format(" Camera position:\n\tx: {}\n\ty: {}\n\tz: {}",
+                    std::format(" Camera position:\n\tx: {:.3f}\n\ty: {:.3f}\n\tz: {:.3f}",
                     camera.transform.position.x, camera.transform.position.y, camera.transform.position.z).c_str()
                 );
                 ImGui::TextUnformatted(
-                    std::format(" Yaw:   {}\n Pitch: {}",
+                    std::format(" Yaw:   {:.2f}\n Pitch: {:.2f}",
                     camera.yaw, camera.pitch).c_str()
                 );
                 ImGui::TextUnformatted(
-                    std::format(" Mouse position:\n\tx: {}\n\ty: {}",
+                    std::format(" Mouse position:\n\tx: {:.0f}\n\ty: {:.0f}",
                     input->mouse_position.x, input->mouse_position.y ).c_str()
                 );
                 ImGui::TextUnformatted(
-                    std::format(" Mouse offset:\n\tx: {}\n\ty: {}",
+                    std::format(" Mouse offset:\n\tx: {:.0f}\n\ty: {:.0f}",
                     input->get_mouse_movement().x, input->get_mouse_movement().y).c_str()
                 );
                 ImGui::SetWindowPos(ImVec2(8, 8));
@@ -1505,8 +1505,9 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
                                           | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
                                           | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
             {
-                ImGui::TextUnformatted(std::format(" FPS: {:.0f}", (1000 / sigil->delta_time) / 1000).c_str());
-                ImGui::TextUnformatted(std::format(" ms: {:.2f}", sigil->delta_time * 1000).c_str());
+                auto time = sigil->get_module<Time>();
+                ImGui::TextUnformatted(std::format(" FPS: {:.0f}", (1000 / time->delta_time) / 1000).c_str());
+                ImGui::TextUnformatted(std::format(" ms: {:.2f}", time->delta_time * 1000).c_str());
                 ImGui::SetWindowPos(ImVec2(swapchain.extent.width - 68 - 8, 8));
                 ImGui::SetWindowSize(ImVec2(68, 48));
             }
@@ -1533,7 +1534,7 @@ void Renderer::draw() {
     } else if ( next_img.result != vk::Result::eSuccess && next_img.result != vk::Result::eSuboptimalKHR ) {
         throw std::runtime_error("\tError: Failed to acquire swap chain image.");
     }
-    camera.update(sigil->delta_time, input);
+    camera.update(sigil->get_module<Time>()->delta_time, input);
     update_uniform_buffer(current_frame);
     record_command_buffer(command_buffers[current_frame], img_index);
     device.resetFences(in_flight_fences[current_frame]);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <string>
 #include <format>
 #include <vector>
@@ -12,14 +13,13 @@
 
 namespace sigil {
 
-    struct Version {
+    namespace version {
         static const uint8_t major = 0;
         static const uint8_t minor = 0;
         static const uint8_t patch = 1;
-        static const inline std::string to_string() {
-            return std::format("sigil   v. {}.{}.{} ", major, minor, patch);
-        }
-    } const inline version;
+
+        static const std::string to_string = std::format("v. {}.{}.{} ", major, minor, patch);
+    };
 
     //____________________________________
     // Runtime id generator, making it easier to add and remove modules.
@@ -38,9 +38,6 @@ namespace sigil {
                 init();
             }
             while( !should_close ) {
-                float current_time = glfwGetTime();
-                delta_time = current_time - last_frame;
-                last_frame = current_time;
                 for( auto&& tick : tick_delegates ) {
                     tick();
                 }
@@ -62,8 +59,6 @@ namespace sigil {
             return static_cast<T*>(modules.at(Id::of_type<T>));
         }
 
-        float delta_time;
-        float last_frame;
         bool should_close = false;
         std::vector<void*> modules;
         std::vector<std::function<void()>> init_delegates;

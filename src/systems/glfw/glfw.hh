@@ -125,3 +125,16 @@ private:
     inline static std::unordered_map<KeyInfo, KeyCallback> callbacks;
 };
 
+struct Time {
+    Time(sigil::Sigil& sigil) {
+        sigil.tick_delegates.push_back([&]{ poll_time(); });
+    }
+    inline void poll_time() {
+        float current_time = glfwGetTime();
+        delta_time = current_time - last_frame;
+        last_frame = current_time;
+    }
+    float delta_time;
+    float last_frame;
+};
+

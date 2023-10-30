@@ -8,6 +8,7 @@ int main() {
     Sigil { /*    سيجيل    */ }
         .add_module<Windowing>()
         .add_module<Input>    ()
+        .add_module<Time>     ()
         .add_module<Renderer> ()
         .run();
 }
