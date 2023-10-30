@@ -7,6 +7,7 @@
 #include <glm/fwd.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <imgui/imgui.h>
+#include <iomanip>
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
@@ -1498,6 +1499,16 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
                 );
                 ImGui::SetWindowPos(ImVec2(8, 8));
                 ImGui::SetWindowSize(ImVec2(124, 182));
+            }
+            ImGui::End();
+            ImGui::Begin("Framerate", nullptr, ImGuiWindowFlags_NoTitleBar //| ImGuiWindowFlags_NoBackground
+                                          | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
+                                          | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
+            {
+                ImGui::TextUnformatted(std::format(" FPS: {:.0f}", (1000 / sigil->delta_time) / 1000).c_str());
+                ImGui::TextUnformatted(std::format(" ms: {:.2f}", sigil->delta_time * 1000).c_str());
+                ImGui::SetWindowPos(ImVec2(swapchain.extent.width - 68 - 8, 8));
+                ImGui::SetWindowSize(ImVec2(68, 48));
             }
             ImGui::End();
             ImGui::Render();

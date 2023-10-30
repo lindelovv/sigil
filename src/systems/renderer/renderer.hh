@@ -194,17 +194,21 @@ struct Renderer {
           // FIRST PERSON CAMERA //
         struct {
             struct {
-                glm::vec3 position = glm::vec3( 0, 2, .5f );
+                glm::vec3 position = glm::vec3( 0, 1.8, .6f );
                 glm::vec3 rotation = glm::vec3( 0, 0,  0 );
                 glm::vec3 scale    = glm::vec3( 0 );
             } transform;
-            glm::vec3 velocity;
-            glm::vec3 forward_vector = glm::vec3(0.f, -1.f, 0.f);
-            glm::vec3 up_vector      = -world_up;
-            glm::vec3 right_vector   = glm::cross(forward_vector, world_up);
             float fov =  90.f;
             float yaw = -90.f;
-            float pitch = 0.f;
+            float pitch = -13.f;
+            glm::vec3 velocity;
+            glm::vec3 forward_vector = glm::normalize(glm::vec3(
+                        cos(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                        sin(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                        sin(glm::radians(pitch))
+                    ));
+            glm::vec3 up_vector      = -world_up;
+            glm::vec3 right_vector   = glm::cross(forward_vector, world_up);
             struct {
                 float near;
                 float far;

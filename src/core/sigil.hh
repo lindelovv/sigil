@@ -38,9 +38,9 @@ namespace sigil {
                 init();
             }
             while( !should_close ) {
-                float current_frame = glfwGetTime();
-                delta_time = current_frame - last_frame;
-                last_frame = current_frame;
+                float current_time = glfwGetTime();
+                delta_time = current_time - last_frame;
+                last_frame = current_time;
                 for( auto&& tick : tick_delegates ) {
                     tick();
                 }
