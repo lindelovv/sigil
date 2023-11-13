@@ -1,7 +1,9 @@
 #include "renderer.hh"
+#include "glfw.hh"
 #include "sigil.hh"
 #include "util.hh"
 
+#include <cassert>
 #include <cstdint>
 #include <fstream>
 #include <glm/fwd.hpp>
@@ -31,73 +33,60 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tinyobj.h"
 
-// not defined on my laptop for some reason so quick fix for now until I find out what I'm missing there
-namespace vk {
-    #define True 1
-    #define False 0
-}
-
 //_____________________________________
 // Since a lot of the vulkan initialization logic is only needed once (with exceptions),
 // the code is contained within the single function but contained within commented blocks.
-void Renderer::init() {
-
-    //_____________________________________
-    // Setup cross-module requirements and update functions
-    {  
-        window = sigil->get_module<Windowing>()->main_window;
-        input  = sigil->get_module<Input>();
-    }
+void renderer::init() {
 
     //____________________________________
     // Setup keybinds
     {
-        input->bind(GLFW_KEY_W,
-                KeyCallback {
-                    .press   = [&]{ camera.request_movement.forward = 1; },
-                    .release = [&]{ camera.request_movement.forward = 0; }
-            }   )
-            ->bind(GLFW_KEY_S,
-                KeyCallback {
-                    .press   = [&]{ camera.request_movement.back = 1; },
-                    .release = [&]{ camera.request_movement.back = 0; }
-            }   )
-            ->bind(GLFW_KEY_A,
-                KeyCallback {
-                    .press   = [&]{ camera.request_movement.left = 1; },
-                    .release = [&]{ camera.request_movement.left = 0; }
-            }   )
-            ->bind(GLFW_KEY_D,
-                KeyCallback {
-                    .press   = [&]{ camera.request_movement.right = 1; },
-                    .release = [&]{ camera.request_movement.right = 0; }
-            }   )
-            ->bind(GLFW_KEY_Q,
-                KeyCallback {
-                    .press   = [&]{ camera.request_movement.down = 1; },
-                    .release = [&]{ camera.request_movement.down = 0; }
-            }   )
-            ->bind(GLFW_KEY_E,
-                KeyCallback {
-                    .press   = [&]{ camera.request_movement.up = 1; },
-                    .release = [&]{ camera.request_movement.up = 0; }
-            }   )
-            ->bind(GLFW_KEY_LEFT_SHIFT,
-                KeyCallback {
-                    .press   = [&]{ camera.movement_speed = 2.f; },
-                    .release = [&]{ camera.movement_speed = 1.f; }
-            }   )
-            ->bind(GLFW_MOUSE_BUTTON_2,
-                KeyCallback {
-                    .press   = [&]{
-                        glfwSetInputMode(window->instance, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                        camera.follow_mouse = true;
-                    },
-                    .release = [&]{
-                        glfwSetInputMode(window->instance, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-                        camera.follow_mouse = false;
-                    }
-            }   );
+        input::bind(GLFW_KEY_W,
+            key_callback {
+                .press   = [&]{ camera.request_movement.forward = 1; },
+                .release = [&]{ camera.request_movement.forward = 0; }
+        }   );
+        input::bind(GLFW_KEY_S,
+            key_callback {
+                .press   = [&]{ camera.request_movement.back = 1; },
+                .release = [&]{ camera.request_movement.back = 0; }
+        }   );
+        input::bind(GLFW_KEY_A,
+            key_callback {
+                .press   = [&]{ camera.request_movement.left = 1; },
+                .release = [&]{ camera.request_movement.left = 0; }
+        }   );
+        input::bind(GLFW_KEY_D,
+            key_callback {
+                .press   = [&]{ camera.request_movement.right = 1; },
+                .release = [&]{ camera.request_movement.right = 0; }
+        }   );
+        input::bind(GLFW_KEY_Q,
+            key_callback {
+                .press   = [&]{ camera.request_movement.down = 1; },
+                .release = [&]{ camera.request_movement.down = 0; }
+        }   );
+        input::bind(GLFW_KEY_E,
+            key_callback {
+                .press   = [&]{ camera.request_movement.up = 1; },
+                .release = [&]{ camera.request_movement.up = 0; }
+        }   );
+        input::bind(GLFW_KEY_LEFT_SHIFT,
+            key_callback {
+                .press   = [&]{ camera.movement_speed = 2.f; },
+                .release = [&]{ camera.movement_speed = 1.f; }
+        }   );
+        input::bind(GLFW_MOUSE_BUTTON_2,
+            key_callback {
+                .press   = [&]{
+                    glfwSetInputMode(window::handle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                    camera.follow_mouse = true;
+                },
+                .release = [&]{
+                    glfwSetInputMode(window::handle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                    camera.follow_mouse = false;
+                }
+        }   );
     }
 
     //____________________________________
@@ -162,7 +151,7 @@ void Renderer::init() {
     // Bind surface to window
     {
         expect("Failed to create main window surface.",
-            glfwCreateWindowSurface(instance, window->instance, nullptr, (VkSurfaceKHR*)&surface)
+            glfwCreateWindowSurface(instance, window::handle, nullptr, (VkSurfaceKHR*)&surface)
         );
     }
 
@@ -344,7 +333,7 @@ void Renderer::init() {
             .bindingCount       = static_cast<uint32_t>(bindings.size()),
             .pBindings          = bindings.data(),
         };
-        descriptor_set_layout = expect("Failed to create descriptor set layout.",
+        descriptor.uniform_set_layout = expect("Failed to create descriptor set layout.",
             device.createDescriptorSetLayout(layout_info)
         );
     }
@@ -433,7 +422,7 @@ void Renderer::init() {
             device.createPipelineLayout(
                 vk::PipelineLayoutCreateInfo{
                     .setLayoutCount = 1,
-                    .pSetLayouts = &descriptor_set_layout,
+                    .pSetLayouts = &descriptor.uniform_set_layout,
         }   )   );
         graphics_pipeline = expect("Failed to create graphics pipeline.",
             device.createGraphicsPipeline(
@@ -482,87 +471,89 @@ void Renderer::init() {
     //_____________________________________
     // Texture image, view and sampler creation
     {
-        int t_width, t_height, t_channels;
-        stbi_uc* pixels = stbi_load(TEXTURE_PATH.c_str(), &t_width, &t_height, &t_channels, STBI_rgb_alpha);
-        vk::DeviceSize img_size = t_width * t_height * 4;
-        //expect("Failed to load texture image.", pixels);
+        for( auto& texture : textures ) {
+            int t_width, t_height, t_channels;
+            stbi_uc* pixels = stbi_load(texture.path.c_str(), &t_width, &t_height, &t_channels, STBI_rgb_alpha);
+            vk::DeviceSize img_size = t_width * t_height * 4;
+            //expect("Failed to load texture image.", pixels);
 
-        vk::Buffer staging_buffer;
-        vk::DeviceMemory staging_buffer_memory;
-        create_buffer(
-            img_size,
-            vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            staging_buffer,
-            staging_buffer_memory
+            vk::Buffer staging_buffer;
+            vk::DeviceMemory staging_buffer_memory;
+            create_buffer(
+                img_size,
+                vk::BufferUsageFlagBits::eTransferSrc,
+                vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                staging_buffer,
+                staging_buffer_memory
             );
-        void* data = device.mapMemory(staging_buffer_memory, 0, img_size).value;
-        {
-            memcpy(data, pixels, static_cast<size_t>(img_size));
+            void* data = device.mapMemory(staging_buffer_memory, 0, img_size).value;
+            {
+                memcpy(data, pixels, static_cast<size_t>(img_size));
+            }
+            device.unmapMemory(staging_buffer_memory);
+            stbi_image_free(pixels);
+            texture.mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(t_width, t_height)))) + 1;
+
+            create_img(
+                t_width, 
+                t_height, 
+                texture.mip_levels,
+                vk::SampleCountFlagBits::e1,
+                vk::Format::eR8G8B8A8Srgb,
+                vk::ImageTiling::eOptimal,
+                vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
+                vk::MemoryPropertyFlagBits::eDeviceLocal,
+                texture.image,
+                texture.image_memory
+            );
+            transition_img_layout(
+                texture.image,
+                vk::Format::eR8G8B8A8Srgb,
+                vk::ImageLayout::eUndefined,
+                vk::ImageLayout::eTransferDstOptimal,
+                texture.mip_levels
+            );
+            copy_buffer_to_img(
+                staging_buffer,
+                texture.image,
+                static_cast<uint32_t>(t_width),
+                static_cast<uint32_t>(t_width)
+            );
+            device.destroyBuffer(staging_buffer);
+            device.freeMemory(staging_buffer_memory);
+            generate_mipmaps(texture.image, vk::Format::eR8G8B8A8Srgb, t_width, t_height, texture.mip_levels);
+
+            texture.image_view = create_img_view(
+                                    texture.image,
+                                    vk::Format::eR8G8B8A8Srgb,
+                                    vk::ImageAspectFlagBits::eColor,
+                                    texture.mip_levels
+                                );
+
+            texture.sampler = expect("Failed to create texture sampler.",
+                device.createSampler(
+                    vk::SamplerCreateInfo {
+                        .magFilter               = vk::Filter::eLinear,
+                        .minFilter               = vk::Filter::eLinear,
+                        .mipmapMode              = vk::SamplerMipmapMode::eLinear,
+                        .addressModeU            = vk::SamplerAddressMode::eRepeat,
+                        .addressModeV            = vk::SamplerAddressMode::eRepeat,
+                        .addressModeW            = vk::SamplerAddressMode::eRepeat,
+                        .mipLodBias              = 0.f,
+                        .anisotropyEnable        = true,
+                        .maxAnisotropy           = physical_device.getProperties().limits.maxSamplerAnisotropy,
+                        .compareEnable           = false,
+                        .compareOp               = vk::CompareOp::eAlways,
+                        .minLod                  = 0.f,
+                        .maxLod                  = static_cast<float>(texture.mip_levels),
+                        .borderColor             = vk::BorderColor::eIntOpaqueBlack,
+                        .unnormalizedCoordinates = false,
+            }   )  );
         }
-        device.unmapMemory(staging_buffer_memory);
-        stbi_image_free(pixels);
-        mip_levels = static_cast<uint32_t>(std::floor(std::log2(std::max(t_width, t_height)))) + 1;
-
-        create_img(
-            t_width, 
-            t_height, 
-            mip_levels,
-            vk::SampleCountFlagBits::e1,
-            vk::Format::eR8G8B8A8Srgb,
-            vk::ImageTiling::eOptimal,
-            vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            texture_image,
-            texture_image_memory
-        );
-        transition_img_layout(
-            texture_image,
-            vk::Format::eR8G8B8A8Srgb,
-            vk::ImageLayout::eUndefined,
-            vk::ImageLayout::eTransferDstOptimal,
-            mip_levels
-        );
-        copy_buffer_to_img(
-            staging_buffer,
-            texture_image,
-            static_cast<uint32_t>(t_width),
-            static_cast<uint32_t>(t_width)
-        );
-        device.destroyBuffer(staging_buffer);
-        device.freeMemory(staging_buffer_memory);
-        generate_mipmaps(texture_image, vk::Format::eR8G8B8A8Srgb, t_width, t_height, mip_levels);
-
-        texture_image_view = create_img_view(
-                                texture_image,
-                                vk::Format::eR8G8B8A8Srgb,
-                                vk::ImageAspectFlagBits::eColor,
-                                mip_levels
-                            );
-
-        texture_sampler = expect("Failed to create texture sampler.",
-            device.createSampler(
-                vk::SamplerCreateInfo {
-                    .magFilter               = vk::Filter::eLinear,
-                    .minFilter               = vk::Filter::eLinear,
-                    .mipmapMode              = vk::SamplerMipmapMode::eLinear,
-                    .addressModeU            = vk::SamplerAddressMode::eRepeat,
-                    .addressModeV            = vk::SamplerAddressMode::eRepeat,
-                    .addressModeW            = vk::SamplerAddressMode::eRepeat,
-                    .mipLodBias              = 0.f,
-                    .anisotropyEnable        = true,
-                    .maxAnisotropy           = physical_device.getProperties().limits.maxSamplerAnisotropy,
-                    .compareEnable           = false,
-                    .compareOp               = vk::CompareOp::eAlways,
-                    .minLod                  = 0.f,
-                    .maxLod                  = static_cast<float>(mip_levels),
-                    .borderColor             = vk::BorderColor::eIntOpaqueBlack,
-                    .unnormalizedCoordinates = false,
-        }   )  );
     }
 
     //_____________________________________
-    // Load model       @TODO: replace with own .obj loading code
+    // Load model
     {
         tinyobj::attrib_t attrib;
         std::vector<tinyobj::shape_t> shapes;
@@ -644,7 +635,7 @@ void Renderer::init() {
             vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
             staging_buffer,
             staging_buffer_memory
-            );
+        );
         void* data = device.mapMemory(staging_buffer_memory, 0, buffer_size).value;
         {
             memcpy(data, indices.data(), (size_t) buffer_size);
@@ -657,7 +648,7 @@ void Renderer::init() {
             vk::MemoryPropertyFlagBits::eDeviceLocal,
             index_buffer,
             index_buffer_memory
-            );
+        );
         copy_buffer(staging_buffer, index_buffer, buffer_size);
         device.destroyBuffer(staging_buffer);
         device.freeMemory(staging_buffer_memory);
@@ -694,7 +685,7 @@ void Renderer::init() {
                 .type                = vk::DescriptorType::eCombinedImageSampler,
                 .descriptorCount     = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) * 2,
         },  }};
-        descriptor_pool = expect("Failed to create descriptor pool.",
+        descriptor.pool = expect("Failed to create descriptor pool.",
             device.createDescriptorPool(
                 vk::DescriptorPoolCreateInfo {
                     .flags              = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
@@ -707,11 +698,11 @@ void Renderer::init() {
     //_____________________________________
     // Create descriptor sets
     {
-        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptor_set_layout);
-        descriptor_sets = expect("Failed to allocate descriptor sets.",
+        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptor.uniform_set_layout);
+        descriptor.sets = expect("Failed to allocate descriptor sets.",
             device.allocateDescriptorSets(
                 vk::DescriptorSetAllocateInfo {
-                    .descriptorPool      = descriptor_pool,
+                    .descriptorPool      = descriptor.pool,
                     .descriptorSetCount  = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
                     .pSetLayouts         = layouts.data(),
         }   )   );
@@ -722,20 +713,20 @@ void Renderer::init() {
                 .range           = sizeof(UniformBufferObject),
             };
             vk::DescriptorImageInfo image_info {
-                .sampler         = texture_sampler,
-                .imageView       = texture_image_view,
+                .sampler         = textures[0].sampler,
+                .imageView       = textures[0].image_view,
                 .imageLayout     = vk::ImageLayout::eShaderReadOnlyOptimal,
             };
             std::array<vk::WriteDescriptorSet, 2> descriptor_writes {{
                 { // [0]
-                    .dstSet          = descriptor_sets[i],
+                    .dstSet          = descriptor.sets[i],
                     .dstBinding      = 0,
                     .dstArrayElement = 0,
                     .descriptorCount = 1,
                     .descriptorType  = vk::DescriptorType::eUniformBuffer,
                     .pBufferInfo     = &buffer_info,
             },  { // [1]
-                    .dstSet          = descriptor_sets[i],
+                    .dstSet          = descriptor.sets[i],
                     .dstBinding      = 1,
                     .dstArrayElement = 0,
                     .descriptorCount = 1,
@@ -780,13 +771,13 @@ void Renderer::init() {
     // Initialize ImGui
     {
         ImGui::CreateContext();
-        ImGui_ImplGlfw_InitForVulkan(sigil->get_module<Windowing>()->main_window->instance, true);
+        ImGui_ImplGlfw_InitForVulkan(window::handle, true);
         ImGui_ImplVulkan_InitInfo init_info {
             .Instance           = static_cast<VkInstance>(instance),
             .PhysicalDevice     = static_cast<VkPhysicalDevice>(physical_device),
             .Device             = static_cast<VkDevice>(device),
             .Queue              = static_cast<VkQueue>(graphics_queue),
-            .DescriptorPool     = static_cast<VkDescriptorPool>(descriptor_pool),
+            .DescriptorPool     = static_cast<VkDescriptorPool>(descriptor.pool),
             .MinImageCount      = MAX_FRAMES_IN_FLIGHT,
             .ImageCount         = MAX_FRAMES_IN_FLIGHT,
             .MSAASamples        = static_cast<VkSampleCountFlagBits>(msaa_samples),
@@ -823,7 +814,7 @@ void Renderer::init() {
     }
 }
 
-QueueFamilyIndices Renderer::find_queue_families(vk::PhysicalDevice phys_device) {
+renderer::QueueFamilyIndices renderer::find_queue_families(vk::PhysicalDevice phys_device) {
     QueueFamilyIndices indices;
     for( int i = 0; const vk::QueueFamilyProperties& queue_family : phys_device.getQueueFamilyProperties() ) {
         if( queue_family.queueFlags & vk::QueueFlagBits::eGraphics ) { indices.graphics_family = i; }
@@ -833,7 +824,7 @@ QueueFamilyIndices Renderer::find_queue_families(vk::PhysicalDevice phys_device)
     return indices;
 }
 
-vk::SurfaceFormatKHR Renderer::choose_swap_surface_format(const std::vector<vk::SurfaceFormatKHR>& available_formats) {
+vk::SurfaceFormatKHR renderer::choose_swap_surface_format(const std::vector<vk::SurfaceFormatKHR>& available_formats) {
     for( const vk::SurfaceFormatKHR& available_format : available_formats ) {
         if( available_format.format     == vk::Format::eB8G8R8A8Srgb
          && available_format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear ) {
@@ -842,7 +833,7 @@ vk::SurfaceFormatKHR Renderer::choose_swap_surface_format(const std::vector<vk::
     } return available_formats[0];
 }
 
-vk::PresentModeKHR Renderer::choose_swap_present_mode(const std::vector<vk::PresentModeKHR>& available_present_modes) {
+vk::PresentModeKHR renderer::choose_swap_present_mode(const std::vector<vk::PresentModeKHR>& available_present_modes) {
     for( const vk::PresentModeKHR& available_present_mode : available_present_modes ) {
         if( available_present_mode == vk::PresentModeKHR::eMailbox ) {
             return available_present_mode;
@@ -850,12 +841,12 @@ vk::PresentModeKHR Renderer::choose_swap_present_mode(const std::vector<vk::Pres
     } return vk::PresentModeKHR::eFifo;
 }
 
-vk::Extent2D Renderer::choose_swap_extent(const vk::SurfaceCapabilitiesKHR& capabilities) {
+vk::Extent2D renderer::choose_swap_extent(const vk::SurfaceCapabilitiesKHR& capabilities) {
     if( capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max() ) {
         return capabilities.currentExtent;
     } else {
         int width, height;
-        glfwGetFramebufferSize(window->instance, &width, &height);
+        glfwGetFramebufferSize(window::handle, &width, &height);
         
         vk::Extent2D actual_extent = {
             static_cast<uint32_t>(width),
@@ -875,7 +866,7 @@ vk::Extent2D Renderer::choose_swap_extent(const vk::SurfaceCapabilitiesKHR& capa
     }
 }
 
-void Renderer::cleanup_swap_chain() {
+void renderer::cleanup_swap_chain() {
     device.destroyImageView(color_img_view);
     device.destroyImage(color_img);
     device.freeMemory(color_img_memory);
@@ -891,7 +882,7 @@ void Renderer::cleanup_swap_chain() {
     device.destroySwapchainKHR(swapchain.handle);
 }
 
-void Renderer::create_swap_chain() {
+void renderer::create_swap_chain() {
     SwapChainSupportDetails swapchain_support {
         .capabilities   = physical_device.getSurfaceCapabilitiesKHR (surface).value,
         .formats        = physical_device.getSurfaceFormatsKHR      (surface).value,
@@ -940,11 +931,11 @@ void Renderer::create_swap_chain() {
     swapchain.extent     = extent;
 }
 
-void Renderer::recreate_swap_chain() {
+void renderer::recreate_swap_chain() {
     int width = 0, height = 0;
-    glfwGetFramebufferSize(window->instance, &width, &height);
+    glfwGetFramebufferSize(window::handle, &width, &height);
     while( width == 0 || height == 0 ) {
-        glfwGetFramebufferSize(window->instance, &width, &height);
+        glfwGetFramebufferSize(window::handle, &width, &height);
         glfwWaitEvents();
     }
     expect("Device wait idle failed.", device.waitIdle());
@@ -957,7 +948,7 @@ void Renderer::recreate_swap_chain() {
     create_framebuffers();
 }
 
-vk::ImageView Renderer::create_img_view(vk::Image image,
+vk::ImageView renderer::create_img_view(vk::Image image,
                                         vk::Format format,
                                         vk::ImageAspectFlags aspect_flags,
                                         uint32_t mip_levels
@@ -978,7 +969,7 @@ vk::ImageView Renderer::create_img_view(vk::Image image,
     }   )   );
 }
 
-void Renderer::create_img_views() {
+void renderer::create_img_views() {
     swapchain.img_views.resize(swapchain.images.size());
 
     for( uint32_t i = 0; i < swapchain.images.size(); i++ ) {
@@ -991,7 +982,7 @@ void Renderer::create_img_views() {
     }
 }
 
-std::vector<char> Renderer::read_file(const std::string& path) {
+std::vector<char> renderer::read_file(const std::string& path) {
     std::ifstream file(path, std::ios::ate | std::ios::binary);
     if( !file.is_open() ) {
         throw std::runtime_error("\tError: Failed to open file at:" + path);
@@ -1004,7 +995,7 @@ std::vector<char> Renderer::read_file(const std::string& path) {
     return buffer;
 }
 
-vk::ShaderModule Renderer::create_shader_module(const std::vector<char>& code) {
+vk::ShaderModule renderer::create_shader_module(const std::vector<char>& code) {
     return expect("Failed to create shader module.",
         device.createShaderModule(
             vk::ShaderModuleCreateInfo {
@@ -1013,7 +1004,7 @@ vk::ShaderModule Renderer::create_shader_module(const std::vector<char>& code) {
     }   )   );
 }
 
-void Renderer::create_buffer(vk::DeviceSize size,
+void renderer::create_buffer(vk::DeviceSize size,
                              vk::BufferUsageFlags usage,
                              vk::MemoryPropertyFlags properties,
                              vk::Buffer& buffer,
@@ -1035,17 +1026,22 @@ void Renderer::create_buffer(vk::DeviceSize size,
     vkBindBufferMemory(device, buffer, buffer_memory, 0);
 }
 
-void Renderer::update_uniform_buffer(uint32_t current_image) {
+void renderer::update_uniform_buffer(uint32_t current_image) {
     UniformBufferObject ubo {
         .model = glm::rotate(glm::mat4(1.f), glm::radians(45.f), glm::vec3(0.f, 0.f, 1.f)),
         .view  = camera.get_view(),
-        .proj  = glm::perspective(glm::radians(camera.fov), swapchain.extent.width / (float) swapchain.extent.height, 0.1f, 256.f),
+        .proj  = glm::perspective(
+                glm::radians(camera.fov),
+                swapchain.extent.width/(float)swapchain.extent.height,
+                camera.clip_plane.near,
+                camera.clip_plane.far
+            ),
     };
     ubo.proj[1][1] *= -1;
     memcpy(uniform_buffers_mapped[current_image], &ubo, sizeof(ubo));
 }
 
-void Renderer::copy_buffer(vk::Buffer src_buffer,
+void renderer::copy_buffer(vk::Buffer src_buffer,
                            vk::Buffer dst_buffer,
                            vk::DeviceSize size
 ) {
@@ -1064,7 +1060,7 @@ void Renderer::copy_buffer(vk::Buffer src_buffer,
     end_single_time_commands(command_buffer);
 }
 
-uint32_t Renderer::find_memory_type(uint32_t type_filter, vk::MemoryPropertyFlags properties) {
+uint32_t renderer::find_memory_type(uint32_t type_filter, vk::MemoryPropertyFlags properties) {
     vk::PhysicalDeviceMemoryProperties mem_properties = physical_device.getMemoryProperties();
     for( uint32_t i = 0; i < mem_properties.memoryTypeCount; i++ ) {
         if( type_filter & (1 << i) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties ) {
@@ -1074,7 +1070,7 @@ uint32_t Renderer::find_memory_type(uint32_t type_filter, vk::MemoryPropertyFlag
     throw std::runtime_error("\tError: Failed to find suitable memory type.");
 }
 
-void Renderer::create_img(uint32_t width,
+void renderer::create_img(uint32_t width,
                           uint32_t height,
                           uint32_t mip_levels,
                           vk::SampleCountFlagBits num_samples,
@@ -1115,7 +1111,7 @@ void Renderer::create_img(uint32_t width,
     );
 }
 
-void Renderer::transition_img_layout(vk::Image img,
+void renderer::transition_img_layout(vk::Image img,
                                      vk::Format format,
                                      vk::ImageLayout old_layout,
                                      vk::ImageLayout new_layout,
@@ -1165,7 +1161,7 @@ void Renderer::transition_img_layout(vk::Image img,
     end_single_time_commands(command_buffer);
 }
 
-void Renderer::copy_buffer_to_img(vk::Buffer buffer,
+void renderer::copy_buffer_to_img(vk::Buffer buffer,
                                   vk::Image img,
                                   uint32_t width,
                                   uint32_t height
@@ -1195,7 +1191,7 @@ void Renderer::copy_buffer_to_img(vk::Buffer buffer,
     end_single_time_commands(command_buffer);
 }
 
-void Renderer::generate_mipmaps(vk::Image image,
+void renderer::generate_mipmaps(vk::Image image,
                                 vk::Format image_format,
                                 int32_t t_width,
                                 int32_t t_height,
@@ -1291,7 +1287,7 @@ void Renderer::generate_mipmaps(vk::Image image,
     end_single_time_commands(command_buffer);
 }
 
-void Renderer::create_depth_resources() {
+void renderer::create_depth_resources() {
     vk::Format depth_format = find_depth_format();
     create_img(
         swapchain.extent.width,
@@ -1313,7 +1309,7 @@ void Renderer::create_depth_resources() {
                         );
 }
 
-vk::Format Renderer::find_supported_format(const std::vector<vk::Format>& candidates,
+vk::Format renderer::find_supported_format(const std::vector<vk::Format>& candidates,
                                            vk::ImageTiling tiling,
                                            vk::FormatFeatureFlags features
 ) {
@@ -1328,12 +1324,12 @@ vk::Format Renderer::find_supported_format(const std::vector<vk::Format>& candid
     throw std::runtime_error("\tError: Failed to find supported format.");
 }
 
-bool Renderer::has_stencil_component(vk::Format format) {
+bool renderer::has_stencil_component(vk::Format format) {
     return format == vk::Format::eD32SfloatS8Uint
         || format == vk::Format::eD24UnormS8Uint;
 }
 
-vk::Format Renderer::find_depth_format() {
+vk::Format renderer::find_depth_format() {
     return find_supported_format(
         { vk::Format::eD32Sfloat, vk::Format::eD32SfloatS8Uint, vk::Format::eD24UnormS8Uint },
         vk::ImageTiling::eOptimal,
@@ -1341,7 +1337,7 @@ vk::Format Renderer::find_depth_format() {
     );
 }
 
-void Renderer::create_color_resources() {
+void renderer::create_color_resources() {
     vk::Format color_format = swapchain.img_format;
     create_img(
         swapchain.extent.width,
@@ -1363,7 +1359,7 @@ void Renderer::create_color_resources() {
     );
 }
 
-vk::CommandBuffer Renderer::begin_single_time_commands() {
+vk::CommandBuffer renderer::begin_single_time_commands() {
     vk::CommandBufferAllocateInfo alloc_info {
         .commandPool        = command_pool,
         .level              = vk::CommandBufferLevel::ePrimary,
@@ -1379,7 +1375,7 @@ vk::CommandBuffer Renderer::begin_single_time_commands() {
     return command_buffer;
 }
 
-void Renderer::end_single_time_commands(vk::CommandBuffer command_buffer) {
+void renderer::end_single_time_commands(vk::CommandBuffer command_buffer) {
     expect("Failed to end command buffer.",
         command_buffer.end()
     );
@@ -1396,7 +1392,7 @@ void Renderer::end_single_time_commands(vk::CommandBuffer command_buffer) {
     device.freeCommandBuffers(command_pool, command_buffer);
 }
 
-void Renderer::create_framebuffers() {
+void renderer::create_framebuffers() {
     swapchain.framebuffers.resize(swapchain.img_views.size());
     for( size_t i = 0; i < swapchain.img_views.size(); i++ ) {
         std::array<vk::ImageView, 3> attachments = {
@@ -1418,7 +1414,7 @@ void Renderer::create_framebuffers() {
     }
 }
 
-void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t img_index) {
+void renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t img_index) {
     vk::CommandBufferBeginInfo begin_info {
         .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
     };
@@ -1461,7 +1457,7 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
         vk::DeviceSize offsets[]    = { 0 };
         command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
         command_buffer.bindIndexBuffer(index_buffer, 0, vk::IndexType::eUint32);
-        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, descriptor_sets[current_frame], nullptr);
+        command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, descriptor.sets[current_frame], nullptr);
         command_buffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
         //____________________________________
         // ImGui specific updates
@@ -1473,8 +1469,9 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
                                           | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
                                           | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
             {
-                ImGui::TextUnformatted(std::format("sigil   {}", sigil::version::to_string).c_str());
-                ImGui::SetWindowPos(ImVec2(0, swapchain.extent.height - 28));
+                ImGui::TextUnformatted(std::format("GPU: {}", physical_device.getProperties().deviceName.data()).c_str());
+                ImGui::TextUnformatted(std::format("sigil   {}", sigil::version::as_string).c_str());
+                ImGui::SetWindowPos(ImVec2(0, swapchain.extent.height - ImGui::GetWindowSize().y));
             }
             ImGui::End();
             ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoTitleBar   //| ImGuiWindowFlags_NoBackground
@@ -1491,25 +1488,24 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
                 );
                 ImGui::TextUnformatted(
                     std::format(" Mouse position:\n\tx: {:.0f}\n\ty: {:.0f}",
-                    input->mouse_position.x, input->mouse_position.y ).c_str()
+                    input::mouse_position.x, input::mouse_position.y ).c_str()
                 );
                 ImGui::TextUnformatted(
                     std::format(" Mouse offset:\n\tx: {:.0f}\n\ty: {:.0f}",
-                    input->get_mouse_movement().x, input->get_mouse_movement().y).c_str()
+                    input::get_mouse_movement().x, input::get_mouse_movement().y).c_str()
                 );
+                ImGui::SetWindowSize(ImVec2(108, 182));
                 ImGui::SetWindowPos(ImVec2(8, 8));
-                ImGui::SetWindowSize(ImVec2(124, 182));
             }
             ImGui::End();
-            ImGui::Begin("Framerate", nullptr, ImGuiWindowFlags_NoTitleBar //| ImGuiWindowFlags_NoBackground
+            ImGui::Begin("Framerate", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground
                                           | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
                                           | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
             {
-                auto time = sigil->get_module<Time>();
-                ImGui::TextUnformatted(std::format(" FPS: {:.0f}", (1000 / time->delta_time) / 1000).c_str());
-                ImGui::TextUnformatted(std::format(" ms: {:.2f}", time->delta_time * 1000).c_str());
-                ImGui::SetWindowPos(ImVec2(swapchain.extent.width - 68 - 8, 8));
-                ImGui::SetWindowSize(ImVec2(68, 48));
+                ImGui::TextUnformatted(std::format(" FPS: {:.0f}", time::fps).c_str());
+                ImGui::TextUnformatted(std::format(" ms: {:.2f}", time::ms).c_str());
+                ImGui::SetWindowSize(ImVec2(82, 64));
+                ImGui::SetWindowPos(ImVec2(swapchain.extent.width - ImGui::GetWindowSize().x, 8));
             }
             ImGui::End();
             ImGui::Render();
@@ -1522,8 +1518,8 @@ void Renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
     );
 }
 
-void Renderer::draw() {
-    expect("VulkanRenderer; Wait for fences failed.",
+void renderer::draw() {
+    expect("Wait for fences failed.",
         device.waitForFences(in_flight_fences, true, UINT64_MAX)
     );
     vk::ResultValue<uint32_t> next_img = device.acquireNextImageKHR(swapchain.handle, UINT64_MAX, img_available_semaphores[current_frame]);
@@ -1534,16 +1530,16 @@ void Renderer::draw() {
     } else if ( next_img.result != vk::Result::eSuccess && next_img.result != vk::Result::eSuboptimalKHR ) {
         throw std::runtime_error("\tError: Failed to acquire swap chain image.");
     }
-    camera.update(sigil->get_module<Time>()->delta_time, input);
+    camera.update(time::delta_time);
     update_uniform_buffer(current_frame);
     record_command_buffer(command_buffers[current_frame], img_index);
     device.resetFences(in_flight_fences[current_frame]);
     //command_buffers[current_frame].reset();
 
-    vk::Semaphore wait_semaphores[]      = { img_available_semaphores[current_frame]            };
-    vk::PipelineStageFlags wait_stages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput  };
-    vk::Semaphore signal_semaphores[]    = { render_finished_semaphores[current_frame]          };
-    
+    vk::Semaphore wait_semaphores[]      = { img_available_semaphores[current_frame]           };
+    vk::PipelineStageFlags wait_stages[] = { vk::PipelineStageFlagBits::eColorAttachmentOutput };
+    vk::Semaphore signal_semaphores[]    = { render_finished_semaphores[current_frame]         };
+
     vk::SubmitInfo submit_info {
         .waitSemaphoreCount   = 1,
         .pWaitSemaphores      = wait_semaphores,
@@ -1565,8 +1561,8 @@ void Renderer::draw() {
         .pImageIndices        = &img_index,
     };
     vk::Result result = present_queue.presentKHR(present_info);
-    if( result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || window->resized ) {
-        window->resized = false;
+    if( result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR || window::resized ) {
+        window::resized = false;
         recreate_swap_chain();
     } else if ( result != vk::Result::eSuccess ) {
         throw std::runtime_error("\tError: Failed to present swap chain image.");
@@ -1575,7 +1571,7 @@ void Renderer::draw() {
 }
 
 #ifdef _DEBUG
-VkResult Renderer::create_debug_util_messenger_ext(VkInstance instance,
+VkResult renderer::create_debug_util_messenger_ext(VkInstance instance,
                                                    const VkDebugUtilsMessengerCreateInfoEXT* p_create_info,
                                                    const VkAllocationCallbacks* p_allocator,
                                                    VkDebugUtilsMessengerEXT* p_debug_messenger
@@ -1586,7 +1582,7 @@ VkResult Renderer::create_debug_util_messenger_ext(VkInstance instance,
     } else { return VK_ERROR_EXTENSION_NOT_PRESENT; }
 }
 
-void Renderer::destroy_debug_util_messenger_ext(VkInstance instance,
+void renderer::destroy_debug_util_messenger_ext(VkInstance instance,
                                                 VkDebugUtilsMessengerEXT p_debug_messenger,
                                                 const VkAllocationCallbacks* p_allocator
 ) {
@@ -1596,7 +1592,7 @@ void Renderer::destroy_debug_util_messenger_ext(VkInstance instance,
     }
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL Renderer::debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
+VKAPI_ATTR VkBool32 VKAPI_CALL renderer::debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT msg_severity,
                                                         VkDebugUtilsMessageTypeFlagsEXT msg_type,
                                                         const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
                                                         void* p_user_data
@@ -1606,7 +1602,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL Renderer::debug_callback(VkDebugUtilsMessageSever
 }
 #endif
 
-void Renderer::terminate() {
+void renderer::terminate() {
     expect("Device wait idle failed.", device.waitIdle());
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -1619,12 +1615,15 @@ void Renderer::terminate() {
         device.destroyBuffer(uniform_buffers[i]);
         device.freeMemory(uniform_buffers_memory[i]);
     }
-    device.destroyDescriptorPool(descriptor_pool);
-    device.destroySampler(texture_sampler);
-    device.destroyImageView(texture_image_view);
-    device.destroyImage(texture_image);
-    device.freeMemory(texture_image_memory);
-    device.destroyDescriptorSetLayout(descriptor_set_layout);
+    device.destroyDescriptorPool(descriptor.pool);
+    for( auto& texture : textures ) {
+        device.destroySampler(texture.sampler);
+        device.destroyImageView(texture.image_view);
+        device.destroyImage(texture.image);
+        device.freeMemory(texture.image_memory);
+    }
+    device.destroyDescriptorSetLayout(descriptor.uniform_set_layout);
+    device.destroyDescriptorSetLayout(descriptor.texture_set_layout);
     device.destroyBuffer(index_buffer);
     device.freeMemory(index_buffer_memory);
     device.destroyBuffer(vertex_buffer);

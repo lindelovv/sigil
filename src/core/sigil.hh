@@ -1,5 +1,6 @@
 #pragma once
 
+#include <initializer_list>
 #include <iostream>
 #include <string>
 #include <format>
@@ -12,58 +13,77 @@
 #define ALLOW_UNUSED(...) { ((void)(__VA_ARGS__)); }
 
 namespace sigil {
-
+    //____________________________________
+    // Version info
     namespace version {
-        static const uint8_t major = 0;
-        static const uint8_t minor = 0;
-        static const uint8_t patch = 1;
-
-        static const std::string to_string = std::format("v. {}.{}.{} ", major, minor, patch);
+        inline uint32_t version = VK_MAKE_API_VERSION(0, 0, 0, 1);
+        static const std::string as_string = std::format("v. {} ", version);
     };
 
     //____________________________________
     // Runtime id generator, making it easier to add and remove modules.
-    class Id {
+    class id {
         inline static std::size_t identifier {};
     public:
         template <typename>
         inline static const std::size_t of_type = identifier++;
     };
 
-    //____________________________________
-    // Core & builder
-    struct Sigil {
-        inline void run() {
-            for( auto&& init : init_delegates ) {
-                init();
+    namespace /* private */ {
+        inline bool should_close = false;
+        inline std::vector<void*> modules;
+        inline std::vector<std::function<void()>> init_delegates;
+        inline std::vector<std::function<void()>> tick_delegates;
+        inline std::vector<std::function<void()>> exit_delegates;
+        //____________________________________
+        // Core & builder
+        struct _sigil {
+            template <typename T>
+            inline _sigil& add_module() {
+                ALLOW_UNUSED(id::of_type<T>) // Generate id (and thus index) for module.
+                modules.push_back(new T);
+                return *this;
             }
-            while( !should_close ) {
-                for( auto&& tick : tick_delegates ) {
-                    tick();
+
+            inline void run() {
+                for( auto&& init : init_delegates ) {
+                    init();
+                }
+                while( !should_close ) {
+                    for( auto&& tick : tick_delegates ) {
+                        tick();
+                    }
+                }
+                for( auto&& terminate : exit_delegates ) {
+                    terminate();
                 }
             }
-            for( auto&& terminate : exit_delegates ) {
-                terminate();
-            }
-        }
+        } inline core;
+    }
 
-        template <typename T>
-        inline Sigil& add_module() {
-            ALLOW_UNUSED(Id::of_type<T>) // Generate id (and thus index) for module.
-            modules.push_back(new T(*this));
-            return *this;
-        }
+    inline _sigil& init() {
+        return core;
+    }
 
-        template <typename T>
-        inline T* get_module() {
-            return static_cast<T*>(modules.at(Id::of_type<T>));
-        }
+    inline void request_exit() {
+        should_close = true;
+    }
 
-        bool should_close = false;
-        std::vector<void*> modules;
-        std::vector<std::function<void()>> init_delegates;
-        std::vector<std::function<void()>> tick_delegates;
-        std::vector<std::function<void()>> exit_delegates;
-    };
+    template <typename T>
+    inline T* get_module() {
+        return static_cast<T*>(modules.at(id::of_type<T>));
+    }
+
+    inline void add_init_fn(std::function<void()> fn) {
+        init_delegates.push_back(fn);
+    }
+
+    inline void add_tick_fn(std::function<void()> fn) {
+        tick_delegates.push_back(fn);
+    }
+
+    inline void add_exit_fn(std::function<void()> fn) {
+        exit_delegates.push_back(fn);
+    }
 }
 
