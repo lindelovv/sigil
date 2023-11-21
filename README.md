@@ -2,7 +2,7 @@
 
 Simple rendering engine
 
-Using:
+Using: \
     [Vulkan-Hpp](https://github.com/KhronosGroup/Vulkan-Hpp)\
     [GLFW](https://github.com/glfw/glfw)\
     [glm](https://github.com/g-truc/glm)\
