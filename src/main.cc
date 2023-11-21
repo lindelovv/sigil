@@ -2,8 +2,6 @@
 #include "glfw.hh"
 #include "renderer.hh"
 
-using namespace sigil;
-
 int main() { /*     سيجيل     */
     sigil::init               ()
         .add_module<glfw>     ()
