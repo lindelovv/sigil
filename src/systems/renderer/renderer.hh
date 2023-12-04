@@ -116,21 +116,31 @@ struct renderer {
     };
     
     struct TextureData {
-        uint32_t mip_levels;
-        vk::Image image;
-        vk::DeviceMemory image_memory;
-        vk::ImageView image_view;
-        vk::Sampler sampler;
-        const std::string path;
+        vk::Image               image;
+        vk::DeviceMemory        image_memory;
+        vk::ImageView           image_view;
+        uint32_t                mip_levels;
+        vk::Sampler             sampler;
+        const std::string       path;
     };
     
     struct Mesh {
-        std::vector<Vertex> vertecies;
-        std::vector<uint32_t> indices;
-        std::vector<TextureData> textures;
+        struct {
+            std::vector<Vertex>     pos;
+            vk::Buffer              buffer;
+            vk::DeviceMemory        memory;
+        } vertices;
+        struct {
+            std::vector<uint32_t>   unique;
+            uint32_t                count;
+            vk::Buffer              buffer;
+            vk::DeviceMemory        memory;
+        } indices;
+        std::vector<TextureData>    textures;
     };
     
     struct Model {
+        std::vector<Mesh> meshes;
     };
     
     struct UniformBufferObject {
@@ -171,12 +181,9 @@ struct renderer {
     vk::PipelineLayout pipeline_layout;
     vk::Pipeline graphics_pipeline;
        // VERTEX & INDICES //
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
-    vk::Buffer vertex_buffer;
-    vk::DeviceMemory vertex_buffer_memory;
-    vk::Buffer index_buffer;
-    vk::DeviceMemory index_buffer_memory;
+    //std::vector<Vertex> vertices;
+    //std::vector<uint32_t> indices;
+
     std::vector<vk::Buffer> uniform_buffers;
     std::vector<vk::DeviceMemory> uniform_buffers_memory;
     std::vector<void*> uniform_buffers_mapped;
@@ -200,6 +207,8 @@ struct renderer {
     bool framebuffer_resized = false;
     uint32_t current_frame = 0;
     vk::SampleCountFlagBits msaa_samples = vk::SampleCountFlagBits::e1;
+
+    std::vector<Model> models;
 
             // WORLD //
     inline static glm::vec3 world_up = glm::vec3(0.f, 0.f, -1.f);

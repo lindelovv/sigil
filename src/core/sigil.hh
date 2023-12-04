@@ -1,5 +1,7 @@
 #pragma once
 
+#include "types.hh"
+
 #include <initializer_list>
 #include <iostream>
 #include <string>
@@ -16,8 +18,10 @@ namespace sigil {
     //____________________________________
     // Version info
     namespace version {
-        inline uint32_t version = VK_MAKE_API_VERSION(0, 0, 0, 1);
-        static const std::string as_string = std::format("v. {} ", version);
+        inline uint32_t major = 0;
+        inline uint32_t minor = 0;
+        inline uint32_t patch = 1;
+        static const std::string as_string = std::format("v. {}.{}.{} ", major, minor, patch);
     };
 
     //____________________________________

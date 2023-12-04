@@ -1,5 +1,5 @@
 CFLAGS=-std=c++20 -g -O2 -D_GLFW_WAYLAND -D_GLFW_EGL $(DEFINE)
-LDFLAGS=-lglfw -lvulkan -limgui -ldl -lX11 -lXxf86vm -lXrandr -lXi
+LDFLAGS=-lglfw -lvulkan -limgui -lassimp -ldl -lX11 -lXxf86vm -lXrandr -lXi
 NAME=simple_shader
 
 compile c:
