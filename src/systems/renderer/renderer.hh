@@ -17,9 +17,6 @@
 #include <optional>
 #include <iostream>
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <vulkan/vulkan.hpp>
@@ -120,6 +117,7 @@ struct renderer {
         vk::DeviceMemory        image_memory;
         vk::ImageView           image_view;
         uint32_t                mip_levels;
+        vk::DescriptorSet       descriptor_set;
         vk::Sampler             sampler;
         const std::string       path;
     };

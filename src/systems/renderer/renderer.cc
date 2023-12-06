@@ -3,7 +3,6 @@
 #include "sigil.hh"
 #include "util.hh"
 
-#include <assimp/Importer.hpp>
 #include <cassert>
 #include <cstdint>
 #include <fstream>
@@ -35,8 +34,6 @@
 #include <assimp/cimport.h>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
-#define TINYOBJLOADER_IMPLEMENTATION
-#include "tinyobj.h"
 
 //_____________________________________
 // Since a lot of the vulkan initialization logic is only needed once (with exceptions),
@@ -565,7 +562,8 @@ void renderer::init() {
         std::vector<Vertex> VertexBuffer;
         if( auto file = importer.ReadFile(MODEL_PATH.c_str(), aiProcess_Triangulate | aiProcess_FlipUVs) ) {
             Model model;
-            for( uint32_t i = 0; i <= file->mNumMeshes; i++ ) {
+            std::cout << "Num Meshes: " << file->mNumMeshes << "\n";
+            for( uint32_t i = 0; i < file->mNumMeshes; i++ ) {
                 Mesh mesh;
                 std::unordered_map<Vertex, uint32_t> unique_vertices {};
                 for( uint32_t j = 0; j <= file->mMeshes[i]->mNumVertices; j++ ) {
@@ -585,12 +583,20 @@ void renderer::init() {
                             file->mMeshes[i]->mTextureCoords[0][j].y,
                         }
                     };
+                    mesh.vertices.pos.push_back(vertex);
                     if( unique_vertices.count(vertex) == 0 ) {
-                        unique_vertices[vertex] = static_cast<uint32_t>(mesh.vertices.pos.size());
-                        mesh.vertices.pos.push_back(vertex);
+                        unique_vertices[vertex] = mesh.vertices.pos.size();
+                        mesh.indices.unique.push_back(mesh.vertices.pos.size());
                     }
-                    mesh.indices.unique.push_back(unique_vertices[vertex]);
                 }
+                //std::cout << "Vertices: " << mesh.vertices.pos.size() << "\n";
+                //std::cout << "Indices: " << mesh.indices.unique.size() << "\n";
+                //for( uint64_t j = 0; j < file->mMeshes[i]->mNumFaces; j++ ) {
+                //    for( uint64_t l = 0; l < file->mMeshes[i]->mFaces[j].mNumIndices; l++ ) {
+                //        //std::cout << "(" << file->mMeshes[i]->mFaces[j].mIndices[l] << "), ";
+                //        mesh.indices.unique.push_back(file->mMeshes[i]->mFaces[j].mIndices[l]);
+                //    }
+                //}
                 //_____________________________________
                 // Vertex buffer creation
                 {
@@ -621,11 +627,10 @@ void renderer::init() {
                     copy_buffer(staging_buffer, mesh.vertices.buffer, buffer_size);
                     device.destroyBuffer(staging_buffer);
                     device.freeMemory(staging_buffer_memory);
-                    model.meshes.push_back(mesh);
                 }
 
                 //_____________________________________
-                // Image buffer creation
+                // Index buffer creation
                 {
                     vk::DeviceSize buffer_size = sizeof(mesh.indices.unique[0]) * mesh.indices.unique.size();
 
@@ -655,7 +660,9 @@ void renderer::init() {
                     device.destroyBuffer(staging_buffer);
                     device.freeMemory(staging_buffer_memory);
                 }
+                model.meshes.push_back(mesh);
             }
+            models.push_back(model);
         } else {
             throw std::runtime_error("Error:\n>>\tFailed to load model.");
         }
@@ -794,7 +801,7 @@ void renderer::init() {
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
         io.LogFilename = nullptr;
-        io.FontDefault = io.Fonts->AddFontFromFileTTF("/usr/share/fonts/noto/NotoSansMono-Regular.ttf", 12.f);
+        //io.FontDefault = io.Fonts->AddFontFromFileTTF("fonts/NotoSansMono-Regular.ttf", 12.f);
         io.Fonts->Build();
 
         vk::CommandBuffer command_buffer = begin_single_time_commands();
@@ -1466,7 +1473,7 @@ void renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
             for( auto mesh : model.meshes ) {
                 vertex_buffers.push_back(mesh.vertices.buffer);
                 command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
-                offsets.push_back(mesh.vertices.pos.size());
+                //offsets.push_back(mesh.vertices.pos.size());
             }
         }
         for( auto model : models ) {
