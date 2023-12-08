@@ -30,8 +30,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include "tinyobj.h"
+#include <assimp/Importer.hpp>
+#include <assimp/cimport.h>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 //_____________________________________
 // Since a lot of the vulkan initialization logic is only needed once (with exceptions),
@@ -555,103 +557,109 @@ void renderer::init() {
     //_____________________________________
     // Load model
     {
-        tinyobj::attrib_t attrib;
-        std::vector<tinyobj::shape_t> shapes;
-        std::vector<tinyobj::material_t> materials;
-        std::string warn, err;
-        expect("Failed loading model.\n" + warn + err,
-            tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str())
-        );
-        std::unordered_map<Vertex, uint32_t> unique_vertices {};
-        for( const tinyobj::shape_t& shape : shapes ) {
-            for( const tinyobj::index_t& index : shape.mesh.indices ) {
-                Vertex vertex {
-                    .pos = {
-                        attrib.vertices[3 * index.vertex_index + 0],
-                        attrib.vertices[3 * index.vertex_index + 1],
-                        attrib.vertices[3 * index.vertex_index + 2],
-                    },
-                    .color = {
-                        1.f,
-                        1.f,
-                        1.f,
-                    },
-                    .uvs = {
-                              attrib.texcoords[2 * index.texcoord_index + 0],
-                        1.f - attrib.texcoords[2 * index.texcoord_index + 1],
-                    },
-                };
-                if( unique_vertices.count(vertex) == 0 ) {
-                    unique_vertices[vertex] = static_cast<uint32_t>(vertices.size());
-                    vertices.push_back(vertex);
+        // assimp
+        Assimp::Importer importer;
+        std::vector<Vertex> VertexBuffer;
+        if( auto file = importer.ReadFile(MODEL_PATH.c_str(), aiProcess_Triangulate | aiProcess_FlipUVs) ) {
+            Model model;
+            for( uint32_t i = 0; i < file->mNumMeshes; i++ ) {
+                Mesh mesh;
+                std::unordered_map<Vertex, uint32_t> unique_vertices {};
+                for( uint32_t j = 0; j <= file->mMeshes[i]->mNumVertices; j++ ) {
+                    Vertex vertex {
+                        .pos = {
+                            file->mMeshes[i]->mVertices[j].x,
+                            file->mMeshes[i]->mVertices[j].y,
+                            file->mMeshes[i]->mVertices[j].z,
+                        },
+                        .color = {
+                            1.f,
+                            1.f,
+                            1.f,
+                        },
+                        .uvs = {
+                            file->mMeshes[i]->mTextureCoords[0][j].x,
+                            file->mMeshes[i]->mTextureCoords[0][j].y,
+                        }
+                    };
+                    mesh.vertices.pos.push_back(vertex);
                 }
-                indices.push_back(unique_vertices[vertex]);
+                for( uint64_t j = 0; j < file->mMeshes[i]->mNumFaces; j++ ) {
+                    const aiFace& face = file->mMeshes[i]->mFaces[j];
+                    assert(face.mNumIndices == 3);
+                    mesh.indices.unique.push_back(face.mIndices[0]);
+                    mesh.indices.unique.push_back(face.mIndices[1]);
+                    mesh.indices.unique.push_back(face.mIndices[2]);
+                }
+                //_____________________________________
+                // Vertex buffer creation
+                {
+                    vk::DeviceSize buffer_size = sizeof(mesh.vertices.pos[0]) * mesh.vertices.pos.size();
+
+                    vk::Buffer staging_buffer;
+                    vk::DeviceMemory staging_buffer_memory;
+                    create_buffer(
+                        buffer_size,
+                        vk::BufferUsageFlagBits::eTransferSrc,
+                        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                        staging_buffer,
+                        staging_buffer_memory
+                    );
+                    void* data = device.mapMemory(staging_buffer_memory, 0, buffer_size).value;
+                    {
+                        memcpy(data, mesh.vertices.pos.data(), (size_t) buffer_size);
+                    }
+                    device.unmapMemory(staging_buffer_memory);
+
+                    create_buffer(
+                        buffer_size,
+                        vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+                        vk::MemoryPropertyFlagBits::eDeviceLocal,
+                        mesh.vertices.buffer,
+                        mesh.vertices.memory
+                    );
+                    copy_buffer(staging_buffer, mesh.vertices.buffer, buffer_size);
+                    device.destroyBuffer(staging_buffer);
+                    device.freeMemory(staging_buffer_memory);
+                }
+
+                //_____________________________________
+                // Index buffer creation
+                {
+                    vk::DeviceSize buffer_size = sizeof(mesh.indices.unique[0]) * mesh.indices.unique.size();
+
+                    vk::Buffer staging_buffer;
+                    vk::DeviceMemory staging_buffer_memory;
+                    create_buffer(
+                        buffer_size,
+                        vk::BufferUsageFlagBits::eTransferSrc,
+                        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                        staging_buffer,
+                        staging_buffer_memory
+                    );
+                    void* data = device.mapMemory(staging_buffer_memory, 0, buffer_size).value;
+                    {
+                        memcpy(data, mesh.indices.unique.data(), (size_t) buffer_size);
+                    }
+                    device.unmapMemory(staging_buffer_memory);
+
+                    create_buffer(
+                        buffer_size,
+                        vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+                        vk::MemoryPropertyFlagBits::eDeviceLocal,
+                        mesh.indices.buffer,
+                        mesh.indices.memory
+                    );
+                    copy_buffer(staging_buffer, mesh.indices.buffer, buffer_size);
+                    device.destroyBuffer(staging_buffer);
+                    device.freeMemory(staging_buffer_memory);
+                }
+                model.meshes.push_back(mesh);
             }
+            models.push_back(model);
+        } else {
+            throw std::runtime_error("Error:\n>>\tFailed to load model.");
         }
-    }
-
-    //_____________________________________
-    // Vertex buffer creation
-    {
-        vk::DeviceSize buffer_size = sizeof(vertices[0]) * vertices.size();
-
-        vk::Buffer staging_buffer;
-        vk::DeviceMemory staging_buffer_memory;
-        create_buffer(
-            buffer_size,
-            vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            staging_buffer,
-            staging_buffer_memory
-        );
-        void* data = device.mapMemory(staging_buffer_memory, 0, buffer_size).value;
-        {
-            memcpy(data, vertices.data(), (size_t) buffer_size);
-        }
-        device.unmapMemory(staging_buffer_memory);
-
-        create_buffer(
-            buffer_size,
-            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            vertex_buffer,
-            vertex_buffer_memory
-        );
-        copy_buffer(staging_buffer, vertex_buffer, buffer_size);
-        device.destroyBuffer(staging_buffer);
-        device.freeMemory(staging_buffer_memory);
-    }
-
-    //_____________________________________
-    // Image buffer creation
-    {
-        vk::DeviceSize buffer_size = sizeof(indices[0]) * indices.size();
-
-        vk::Buffer staging_buffer;
-        vk::DeviceMemory staging_buffer_memory;
-        create_buffer(
-            buffer_size,
-            vk::BufferUsageFlagBits::eTransferSrc,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-            staging_buffer,
-            staging_buffer_memory
-        );
-        void* data = device.mapMemory(staging_buffer_memory, 0, buffer_size).value;
-        {
-            memcpy(data, indices.data(), (size_t) buffer_size);
-        }
-        device.unmapMemory(staging_buffer_memory);
-
-        create_buffer(
-            buffer_size,
-            vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
-            index_buffer,
-            index_buffer_memory
-        );
-        copy_buffer(staging_buffer, index_buffer, buffer_size);
-        device.destroyBuffer(staging_buffer);
-        device.freeMemory(staging_buffer_memory);
     }
 
     //_____________________________________
@@ -787,7 +795,7 @@ void renderer::init() {
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
         io.LogFilename = nullptr;
-        io.FontDefault = io.Fonts->AddFontFromFileTTF("/usr/share/fonts/noto/NotoSansMono-Regular.ttf", 12.f);
+        io.FontDefault = io.Fonts->AddFontFromFileTTF("fonts/NotoSansMono-Regular.ttf", 12.f);
         io.Fonts->Build();
 
         vk::CommandBuffer command_buffer = begin_single_time_commands();
@@ -1453,12 +1461,26 @@ void renderer::record_command_buffer(vk::CommandBuffer command_buffer, uint32_t 
         };
         command_buffer.setScissor(0, scissor);
 
-        vk::Buffer vertex_buffers[] = { vertex_buffer };
-        vk::DeviceSize offsets[]    = { 0 };
-        command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
-        command_buffer.bindIndexBuffer(index_buffer, 0, vk::IndexType::eUint32);
+        std::vector<vk::Buffer> vertex_buffers;
+        std::vector<vk::DeviceSize> offsets = { 0 };
+        for( auto model : models ) {
+            for( auto mesh : model.meshes ) {
+                vertex_buffers.push_back(mesh.vertices.buffer);
+                command_buffer.bindVertexBuffers(0, vertex_buffers, offsets);
+                //offsets.push_back(mesh.vertices.pos.size());
+            }
+        }
+        for( auto model : models ) {
+            for( auto mesh : model.meshes ) {
+                command_buffer.bindIndexBuffer(mesh.indices.buffer, 0, vk::IndexType::eUint32);
+            }
+        }
         command_buffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_layout, 0, descriptor.sets[current_frame], nullptr);
-        command_buffer.drawIndexed(static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+        for( auto model : models ) {
+            for( auto mesh : model.meshes ) {
+                command_buffer.drawIndexed(static_cast<uint32_t>(mesh.indices.unique.size()), 1, 0, 0, 0);
+            }
+        }
         //____________________________________
         // ImGui specific updates
         {
@@ -1624,10 +1646,16 @@ void renderer::terminate() {
     }
     device.destroyDescriptorSetLayout(descriptor.uniform_set_layout);
     device.destroyDescriptorSetLayout(descriptor.texture_set_layout);
-    device.destroyBuffer(index_buffer);
-    device.freeMemory(index_buffer_memory);
-    device.destroyBuffer(vertex_buffer);
-    device.freeMemory(vertex_buffer_memory);
+    
+    for( auto model : models ) {
+        for( auto mesh : model.meshes ) {
+            device.destroyBuffer(mesh.indices.buffer);
+            device.freeMemory(mesh.indices.memory);
+            device.destroyBuffer(mesh.vertices.buffer);
+            device.freeMemory(mesh.vertices.memory);
+        }
+    }
+
     for( size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++ ) {
         device.destroySemaphore(img_available_semaphores[i]);
         device.destroySemaphore(render_finished_semaphores[i]);
