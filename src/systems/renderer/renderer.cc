@@ -562,7 +562,6 @@ void renderer::init() {
         std::vector<Vertex> VertexBuffer;
         if( auto file = importer.ReadFile(MODEL_PATH.c_str(), aiProcess_Triangulate | aiProcess_FlipUVs) ) {
             Model model;
-            std::cout << "Num Meshes: " << file->mNumMeshes << "\n";
             for( uint32_t i = 0; i < file->mNumMeshes; i++ ) {
                 Mesh mesh;
                 std::unordered_map<Vertex, uint32_t> unique_vertices {};
@@ -584,19 +583,14 @@ void renderer::init() {
                         }
                     };
                     mesh.vertices.pos.push_back(vertex);
-                    if( unique_vertices.count(vertex) == 0 ) {
-                        unique_vertices[vertex] = mesh.vertices.pos.size();
-                        mesh.indices.unique.push_back(mesh.vertices.pos.size());
-                    }
                 }
-                //std::cout << "Vertices: " << mesh.vertices.pos.size() << "\n";
-                //std::cout << "Indices: " << mesh.indices.unique.size() << "\n";
-                //for( uint64_t j = 0; j < file->mMeshes[i]->mNumFaces; j++ ) {
-                //    for( uint64_t l = 0; l < file->mMeshes[i]->mFaces[j].mNumIndices; l++ ) {
-                //        //std::cout << "(" << file->mMeshes[i]->mFaces[j].mIndices[l] << "), ";
-                //        mesh.indices.unique.push_back(file->mMeshes[i]->mFaces[j].mIndices[l]);
-                //    }
-                //}
+                for( uint64_t j = 0; j < file->mMeshes[i]->mNumFaces; j++ ) {
+                    const aiFace& face = file->mMeshes[i]->mFaces[j];
+                    assert(face.mNumIndices == 3);
+                    mesh.indices.unique.push_back(face.mIndices[0]);
+                    mesh.indices.unique.push_back(face.mIndices[1]);
+                    mesh.indices.unique.push_back(face.mIndices[2]);
+                }
                 //_____________________________________
                 // Vertex buffer creation
                 {
@@ -801,7 +795,7 @@ void renderer::init() {
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
         io.LogFilename = nullptr;
-        //io.FontDefault = io.Fonts->AddFontFromFileTTF("fonts/NotoSansMono-Regular.ttf", 12.f);
+        io.FontDefault = io.Fonts->AddFontFromFileTTF("fonts/NotoSansMono-Regular.ttf", 12.f);
         io.Fonts->Build();
 
         vk::CommandBuffer command_buffer = begin_single_time_commands();
