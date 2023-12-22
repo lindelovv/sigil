@@ -47,9 +47,9 @@ const std::string TEXTURE_PATH = "textures/model_texture.png";
 // 
 struct renderer {
     renderer() {
-        sigil::add_init_fn([&]{ this->init();      });
-        sigil::add_tick_fn([&]{ this->draw();      });
-        sigil::add_exit_fn([&]{ this->terminate(); });
+        sigil::schedule(run_level::init, [&]{ this->init();      });
+        sigil::schedule(run_level::tick, [&]{ this->draw();      });
+        sigil::schedule(run_level::exit, [&]{ this->terminate(); });
     }
     void init();
     void terminate();

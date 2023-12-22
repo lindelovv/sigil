@@ -173,9 +173,12 @@ namespace sigil {
             glfwSetInputMode(window::handle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
             glfwSetKeyCallback(window::handle, input::keyboard_callback);
             glfwSetMouseButtonCallback(window::handle, input::mouse_callback);
-            sigil::add_tick_fn( time::poll );
-            sigil::add_tick_fn( input::poll );
-            sigil::add_tick_fn( window::poll );
+
+            sigil::schedule(tick, {
+                time::poll,
+                input::poll,
+                window::poll
+            });
         }
         ~glfw() {
             glfwDestroyWindow(window::handle);

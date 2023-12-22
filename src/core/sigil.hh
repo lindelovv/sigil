@@ -8,6 +8,7 @@
 #include <format>
 #include <vector>
 #include <functional>
+#include <bitset>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -18,14 +19,14 @@ namespace sigil {
     //____________________________________
     // Version info
     namespace version {
-        inline uint32_t major = 0;
-        inline uint32_t minor = 0;
-        inline uint32_t patch = 1;
+        inline uint8_t major = 0;
+        inline uint8_t minor = 0;
+        inline uint8_t patch = 1;
         static const std::string as_string = std::format("v. {}.{}.{} ", major, minor, patch);
     };
 
     //____________________________________
-    // Runtime id generator, making it easier to add and remove modules.
+    // Runtime id generator.
     class id {
         inline static std::size_t identifier {};
     public:
@@ -34,33 +35,45 @@ namespace sigil {
     };
 
     namespace /* private */ {
-        inline bool should_close = false;
+
+        enum run_level {
+            init,
+            tick,
+            exit,
+        };
+        inline std::unordered_map<run_level, std::vector<std::function<void()>>> delegates {
+            { init, std::vector<std::function<void()>> {} },
+            { tick, std::vector<std::function<void()>> {} },
+            { exit, std::vector<std::function<void()>> {} },
+        };
+
+        inline void exec(run_level lvl) {
+            for( auto&& fn : delegates.at(lvl) ) { fn(); }
+        }
+
         inline std::vector<void*> modules;
-        inline std::vector<std::function<void()>> init_delegates;
-        inline std::vector<std::function<void()>> tick_delegates;
-        inline std::vector<std::function<void()>> exit_delegates;
+        inline bool should_close = false;
+
+        //struct {
+        //    std::vector<std::bitset<std::size_t>> entity_bitset;
+        //} inline entity_data;
+
         //____________________________________
         // Core & builder
         struct _sigil {
             template <typename T>
-            inline _sigil& add_module() {
-                ALLOW_UNUSED(id::of_type<T>) // Generate id (and thus index) for module.
+            _sigil& add_module() {
+                ALLOW_UNUSED(id::of_type<T>)
                 modules.push_back(new T);
                 return *this;
             }
 
-            inline void run() {
-                for( auto&& init : init_delegates ) {
-                    init();
-                }
+            void run() {
+                exec(init);
                 while( !should_close ) {
-                    for( auto&& tick : tick_delegates ) {
-                        tick();
-                    }
+                    exec(tick);
                 }
-                for( auto&& terminate : exit_delegates ) {
-                    terminate();
-                }
+                exec(exit);
             }
         } inline core;
     }
@@ -69,25 +82,18 @@ namespace sigil {
         return core;
     }
 
+    inline void schedule(run_level lvl, std::initializer_list<std::function<void()>> delegate_list) {
+        for( auto&& delegate : delegate_list ) {
+            delegates.at(lvl).emplace_back(delegate);
+        }
+    }
+
+    inline void schedule(run_level lvl, std::function<void()> delegate) {
+        delegates.at(lvl).emplace_back(delegate);
+    }
+
     inline void request_exit() {
         should_close = true;
-    }
-
-    template <typename T>
-    inline T* get_module() {
-        return static_cast<T*>(modules.at(id::of_type<T>));
-    }
-
-    inline void add_init_fn(std::function<void()> fn) {
-        init_delegates.push_back(fn);
-    }
-
-    inline void add_tick_fn(std::function<void()> fn) {
-        tick_delegates.push_back(fn);
-    }
-
-    inline void add_exit_fn(std::function<void()> fn) {
-        exit_delegates.push_back(fn);
     }
 }
 

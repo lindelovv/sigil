@@ -1,16 +1,15 @@
 #pragma once
 
 #include <cstdint>
+#include <glm/fwd.hpp>
 
 namespace sigil {
 
-    //struct vec3 {
-    //    vec3(int32_t x, int32_t y, int32_t z)
-    //        : x(x), y(y), z(z) {};
-    //    int32_t x;
-    //    int32_t y;
-    //    int32_t z;
-    //};
+    typedef glm::vec3 position;
+    typedef glm::vec3 rotation;
+    typedef glm::vec3 scale;
+
+    typedef glm::vec3 velocity;
     
     struct rgb {
         rgb(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
