@@ -559,7 +559,6 @@ void renderer::init() {
     {
         // assimp
         Assimp::Importer importer;
-        std::vector<Vertex> VertexBuffer;
         if( auto file = importer.ReadFile(MODEL_PATH.c_str(), aiProcess_Triangulate | aiProcess_FlipUVs) ) {
             Model model;
             for( uint32_t i = 0; i < file->mNumMeshes; i++ ) {
