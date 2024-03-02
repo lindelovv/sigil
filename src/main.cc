@@ -1,11 +1,11 @@
 #include "sigil.hh"
 #include "glfw.hh"
-#include "renderer.hh"
+#include "vulkan.hh"
 
 int main() { /*     سيجيل     */
     sigil::init               ()
-        .add_module<glfw>     ()
-        .add_module<renderer> ()
+        .use<glfw>            ()
+        .use<vulkan>          ()
         .run                  ();
 }
 
