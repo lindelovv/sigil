@@ -7,21 +7,21 @@
       "-Wpedantic",
       "-std=c++20",
       "-g",
+      "-march=native",
       "-O2",
+      "-pipe",
       "-D_GLFW_WAYLAND",
       "-D_GLFW_EGL",
       "-I./src/core",
       "-I./src/systems",
-      "-I./src/systems/motion",
       "-I./src/systems/renderer",
-      "-I./src/systems/glfw",
       "-o",
       "./build/sigil",
       "./src/main.cc"
     ],
-    "directory": "/home/gin/_Work/_code/corpus_sigillum/sigil",
-    "file": "/home/gin/_Work/_code/corpus_sigillum/sigil/src/main.cc",
-    "output": "/home/gin/_Work/_code/corpus_sigillum/sigil/build/sigil"
+    "directory": "/home/gin/Code/corpus_sigillum/sigil",
+    "file": "/home/gin/Code/corpus_sigillum/sigil/src/main.cc",
+    "output": "/home/gin/Code/corpus_sigillum/sigil/build/sigil"
   },
   {
     "arguments": [
@@ -31,44 +31,20 @@
       "-Wpedantic",
       "-std=c++20",
       "-g",
+      "-march=native",
       "-O2",
+      "-pipe",
       "-D_GLFW_WAYLAND",
       "-D_GLFW_EGL",
       "-I./src/core",
       "-I./src/systems",
-      "-I./src/systems/motion",
       "-I./src/systems/renderer",
-      "-I./src/systems/glfw",
       "-o",
       "./build/sigil",
       "./src/systems/renderer/renderer.cc"
     ],
-    "directory": "/home/gin/_Work/_code/corpus_sigillum/sigil",
-    "file": "/home/gin/_Work/_code/corpus_sigillum/sigil/src/systems/renderer/renderer.cc",
-    "output": "/home/gin/_Work/_code/corpus_sigillum/sigil/build/sigil"
-  },
-  {
-    "arguments": [
-      "/usr/bin/g++-13",
-      "-c",
-      "-Wall",
-      "-Wpedantic",
-      "-std=c++20",
-      "-g",
-      "-O2",
-      "-D_GLFW_WAYLAND",
-      "-D_GLFW_EGL",
-      "-I./src/core",
-      "-I./src/systems",
-      "-I./src/systems/motion",
-      "-I./src/systems/renderer",
-      "-I./src/systems/glfw",
-      "-o",
-      "./build/sigil",
-      "./src/systems/glfw/glfw.cc"
-    ],
-    "directory": "/home/gin/_Work/_code/corpus_sigillum/sigil",
-    "file": "/home/gin/_Work/_code/corpus_sigillum/sigil/src/systems/glfw/glfw.cc",
-    "output": "/home/gin/_Work/_code/corpus_sigillum/sigil/build/sigil"
+    "directory": "/home/gin/Code/corpus_sigillum/sigil",
+    "file": "/home/gin/Code/corpus_sigillum/sigil/src/systems/renderer/renderer.cc",
+    "output": "/home/gin/Code/corpus_sigillum/sigil/build/sigil"
   }
 ]

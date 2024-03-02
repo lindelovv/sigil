@@ -1,6 +1,6 @@
-CFLAGS=-std=c++20 -g -O2 -D_GLFW_WAYLAND -D_GLFW_EGL $(DEFINE)
+CFLAGS=-std=c++20 -g -march=native -O2 -pipe -fuse-ld=mold -D_GLFW_WAYLAND -D_GLFW_EGL $(DEFINE)
 LDFLAGS=-lglfw -lvulkan -limgui -lassimp -ldl -lX11 -lXxf86vm -lXrandr -lXi
-NAME=simple_shader
+NAME=default
 
 compile c:
 	g++-13 -Wall -Wpedantic $(CFLAGS) $(EXFLAGS) $(shell find ./src/* -name "*.cc") $(shell find ./src/* -type d | sed s/^/-I/) -o ./build/sigil $(LDFLAGS)
@@ -15,5 +15,5 @@ vertexc scv:
 fragmentc scf:
 	glslc ./shaders/$(NAME).frag -o ./shaders/$(NAME).frag.spv
 shaderc sc:
-	$(MAKE) vertex && $(MAKE) fragment
+	$(MAKE) vertexc && $(MAKE) fragmentc
 
