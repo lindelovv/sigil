@@ -54,7 +54,7 @@ namespace sigil {
             return os;
         }
     };
-}
+} // sigil
 
 namespace std {
     template <>
@@ -64,7 +64,7 @@ namespace std {
                   ^ (hash<int>()(o.mods) << 1) >> 1));
         }
     };
-}
+} // std
     
 namespace sigil {
 
@@ -132,7 +132,7 @@ namespace sigil {
             input::bind(GLFW_KEY_T,      key_callback { .press = []{ std::cout << "test\n"; } });
             input::bind(GLFW_KEY_ESCAPE, key_callback { .press = []{ glfwSetWindowShouldClose(window::handle, true); } });
         }
-    };
+    } // input
     
     //_________________________________________
     // Time and timer handler
@@ -153,8 +153,8 @@ namespace sigil {
             }
             last_frame = current_time;
         }
-    };
-}
+    } // time
+} // sigil
 
 //_________________________________________
 // @TODO: Possibly combine all into this single struct since they all rely on glfw anyway
