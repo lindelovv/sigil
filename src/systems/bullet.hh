@@ -3,7 +3,7 @@
 #include "sigil.hh"
 
 namespace sigil {
-    namespace bullet {
+    namespace physics {
     }
 }
 
