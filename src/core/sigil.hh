@@ -3,12 +3,9 @@
 #include "types.hh"
 
 #include <initializer_list>
-#include <iostream>
-#include <limits>
 #include <string>
 #include <format>
 #include <vector>
-#include <bitset>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
