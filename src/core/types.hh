@@ -21,8 +21,6 @@ namespace sigil {
     template <typename ReturnType>
     using fn = std::function<ReturnType>;
 
-    using vec3 = glm::vec3;
-
     struct rgb {
         rgb(u8 r, u8 g, u8 b, u8 a)
             : red(r), green(g), blue(b) {};
