@@ -5,10 +5,7 @@
 
 #include <string>
 #include <iostream>
-#include <map>
 #include <sstream>
-#include <vector>
-#include <optional>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -154,7 +151,7 @@ namespace sigil {
             last_frame = current_time;
         }
     } // time
-} // sigil
+}
 
 //_________________________________________
 // @TODO: Possibly combine all into this single struct since they all rely on glfw anyway

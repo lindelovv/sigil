@@ -2,10 +2,15 @@
 
 #include "sigil.hh"
 #include "glfw.hh"
+#include <deque>
+#include <fstream>
+#include <ranges>
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
+#define VMA_IMPLEMENTATION
+#include "../../submodules/VulkanMemoryAllocator-Hpp/include/vk_mem_alloc.hpp"
 
 namespace sigil::renderer {
 
@@ -23,6 +28,21 @@ namespace sigil::renderer {
     const std::vector<const char*> layers            = { "VK_LAYER_KHRONOS_validation",   };
     const std::vector<const char*> device_extensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, };
 
+    //_____________________________________
+    struct DeletionQueue {
+        std::deque<fn<void()>> queue;
+
+        void push_fn(fn<void()>&& fn) { queue.push_back(fn); }
+
+        void flush() {
+            for( auto& fn : std::ranges::views::reverse(queue) ) {
+                fn();
+            } 
+            queue.clear(); 
+        }
+    } inline main_delete_queue;
+
+    //_____________________________________
     struct {
         vk::DebugUtilsMessengerEXT messenger;
 
@@ -37,10 +57,11 @@ namespace sigil::renderer {
         }
     } inline debug;
 
-    inline vk::Instance instance;
-    inline vk::SurfaceKHR surface;
-    inline vk::PhysicalDevice phys_device;
-    inline vk::Device device;
+    //_____________________________________
+    inline vk::Instance         instance;
+    inline vk::SurfaceKHR       surface;
+    inline vk::PhysicalDevice   phys_device;
+    inline vk::Device           device;
 
     struct {
         vk::SwapchainKHR           handle;
@@ -50,8 +71,10 @@ namespace sigil::renderer {
         vk::Extent2D               extent;
     } inline swapchain;
 
+    //_____________________________________
     constexpr u8 FRAME_OVERLAP = 2;
     struct Frame {
+        DeletionQueue deleteQueue;
         struct {
             vk::CommandPool   pool;
             vk::CommandBuffer buffer;
@@ -69,6 +92,35 @@ namespace sigil::renderer {
     } inline graphics_queue;
 
     //_____________________________________
+    struct {
+        struct {
+            vk::Image       handle;
+            vk::ImageView   view;
+            VmaAllocation   alloc;
+            vk::Extent3D    extent;
+            vk::Format      format;
+        }            img;
+        vk::Extent2D extent;
+    } inline draw;
+
+    inline vma::Allocator alloc;
+
+    //_____________________________________
+    struct {
+        vk::DescriptorPool pool;
+        struct {
+            std::vector<vk::DescriptorSet> handles;
+            vk::DescriptorSetLayout layout;
+            std::vector<vk::DescriptorSetLayoutBinding> bindings;
+        } set;
+    } inline descriptor;
+
+    struct {
+        std::vector<vk::Pipeline> handles;
+        vk::PipelineLayout layout;
+    } inline pipeline;
+
+    //_____________________________________
     inline void build_swapchain() {
         int w, h;
         glfwGetFramebufferSize(window::handle, &w, &h);
@@ -79,17 +131,72 @@ namespace sigil::renderer {
             .minImageCount      = capabilities.minImageCount + 1,
             .imageFormat        = (swapchain.img_format = vk::Format::eB8G8R8A8Srgb),
             .imageColorSpace    = vk::ColorSpaceKHR::eSrgbNonlinear,
-            .imageExtent        = { (u32)w, (u32)h },
+            .imageExtent        = { .width = (u32)w, .height = (u32)h },
             .imageArrayLayers   = 1,
-            .imageUsage         = vk::ImageUsageFlagBits::eColorAttachment,
+            .imageUsage         = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment,
             .preTransform       = capabilities.currentTransform,
             .compositeAlpha     = vk::CompositeAlphaFlagBitsKHR::eOpaque,
             .presentMode        = vk::PresentModeKHR::eMailbox,
             .clipped            = true,
         }   ).value;
 
-        swapchain.extent = vk::Extent2D { (u32)w, (u32)h };
+        swapchain.extent = vk::Extent2D { .width = (u32)w, .height = (u32)h };
         swapchain.images = device.getSwapchainImagesKHR(swapchain.handle).value;
+        for(auto image : swapchain.images) {
+            swapchain.img_views.push_back(
+                device.createImageView(
+                    vk::ImageViewCreateInfo {
+                        .image      = image,
+                        .viewType   = vk::ImageViewType::e2D,
+                        .format     = swapchain.img_format,
+                        .subresourceRange {
+                            .aspectMask     = vk::ImageAspectFlagBits::eColor,
+                            .baseMipLevel   = 0,
+                            .levelCount     = 1,
+                            .baseArrayLayer = 0,
+                            .layerCount     = 1,
+            },  }   ).value );
+        }
+        draw.img = {
+            .extent = vk::Extent3D { .width = (u32)w, .height = (u32)h, .depth = 1 },
+            .format = vk::Format::eR16G16B16A16Sfloat,
+        };
+        std::tie( draw.img.handle, draw.img.alloc ) = alloc.createImage(
+            vk::ImageCreateInfo {
+                .imageType = vk::ImageType::e2D,
+                .format = draw.img.format,
+                .extent = draw.img.extent,
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = vk::SampleCountFlagBits::e1,
+                .tiling = vk::ImageTiling::eOptimal,
+                .usage = vk::ImageUsageFlagBits::eTransferSrc
+                       | vk::ImageUsageFlagBits::eTransferDst
+                       | vk::ImageUsageFlagBits::eStorage
+                       | vk::ImageUsageFlagBits::eColorAttachment,
+            },
+            vma::AllocationCreateInfo {
+                .usage = vma::MemoryUsage::eGpuOnly,
+                .requiredFlags = vk::MemoryPropertyFlagBits::eDeviceLocal,
+            }
+        ).value;
+        draw.img.view = device.createImageView(
+            vk::ImageViewCreateInfo {
+                .image      = draw.img.handle,
+                .viewType   = vk::ImageViewType::e2D,
+                .format     = draw.img.format,
+                .subresourceRange {
+                    .aspectMask     = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel   = 0,
+                    .levelCount     = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount     = 1,
+        },  }   ).value;
+
+        main_delete_queue.push_fn([&]{
+            device.destroyImageView(draw.img.view);
+            alloc.destroyImage(draw.img.handle, draw.img.alloc);
+        });
     }
 
     //_____________________________________
@@ -140,6 +247,82 @@ namespace sigil::renderer {
             VK_CHECK(device.createSemaphore(&semaphore_info, nullptr, &frames.at(i).swap_semaphore  ));
             VK_CHECK(device.createSemaphore(&semaphore_info, nullptr, &frames.at(i).render_semaphore));
         }
+    }
+
+    //_____________________________________
+    inline void build_descriptors() {
+        std::vector<vk::DescriptorPoolSize> sizes;
+        sizes.push_back(vk::DescriptorPoolSize {
+            .type = vk::DescriptorType::eStorageImage,
+            .descriptorCount = (u32)1 * 10,
+        });
+
+        descriptor.pool = device.createDescriptorPool(
+            vk::DescriptorPoolCreateInfo {
+                .flags = vk::DescriptorPoolCreateFlags(0),
+                .maxSets = 10,
+                .poolSizeCount = (u32)sizes.size(),
+                .pPoolSizes = sizes.data(),
+            },
+            nullptr
+        ).value;
+
+        descriptor.set.bindings.push_back(vk::DescriptorSetLayoutBinding {
+            .binding         = 0,
+            .descriptorType  = vk::DescriptorType::eStorageImage,
+            .descriptorCount = 1,
+        });
+
+        for( auto& bind : descriptor.set.bindings ) {
+            bind.stageFlags |= vk::ShaderStageFlagBits::eCompute;
+        }
+        descriptor.set.layout = device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo {
+            .flags        = vk::DescriptorSetLayoutCreateFlags(0),
+            .bindingCount = (u32) descriptor.set.bindings.size(),
+            .pBindings    = descriptor.set.bindings.data(),
+        }).value;
+
+        descriptor.set.handles = device.allocateDescriptorSets(
+            vk::DescriptorSetAllocateInfo {
+                .descriptorPool = descriptor.pool,
+                .descriptorSetCount = 1,
+                .pSetLayouts = &descriptor.set.layout,
+        }).value;
+    }
+
+    //_____________________________________
+    inline vk::ResultValue<vk::ShaderModule> load_shader_module(const char* path) {
+        std::ifstream file(path, std::ios::ate | std::ios::binary);
+        size_t size = file.tellg();
+        std::vector<u32> buffer(size / sizeof(u32));
+        file.seekg(0);
+        file.read((char*)buffer.data(), size);
+        file.close();
+        return device.createShaderModule(vk::ShaderModuleCreateInfo {
+            .codeSize = buffer.size() * sizeof(u32),
+            .pCode = buffer.data(),
+        });
+    }
+
+    //_____________________________________
+    inline void build_pipeline() {
+        pipeline.layout = device.createPipelineLayout(
+            vk::PipelineLayoutCreateInfo {
+                .setLayoutCount = 1,
+                .pSetLayouts = &descriptor.set.layout,
+        }).value;
+
+        vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo()).value;
+
+        pipeline.handles = device.createComputePipelines(cache, vk::ComputePipelineCreateInfo {
+                .stage = vk::PipelineShaderStageCreateInfo {
+                    .stage  = vk::ShaderStageFlagBits::eCompute,
+                    .module = load_shader_module("../../shaders/gradient.comp.spv").value,
+                    .pName  = "main",
+                },
+                .layout = pipeline.layout,
+            }
+        ).value;
     }
 
     //_____________________________________
@@ -204,15 +387,26 @@ namespace sigil::renderer {
             },
             nullptr
         ).value;
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
-
-        build_swapchain();
+        //VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
 
         graphics_queue.family = get_queue_family(vk::QueueFlagBits::eGraphics);
         graphics_queue.handle = device.getQueue(graphics_queue.family, 0);
 
+        auto alloc_info = vma::AllocatorCreateInfo {
+            .flags = vma::AllocatorCreateFlagBits::eBufferDeviceAddress,
+            .physicalDevice = phys_device,
+            .device = device,
+            .instance = instance,
+        };
+        alloc = vma::createAllocator(alloc_info).value;
+        main_delete_queue.push_fn([&] { alloc.destroy(); });
+
+        build_swapchain();
+
         build_command_structures();
         build_sync_structures();
+        build_descriptors();
+        build_pipeline();
     }
 
     //_____________________________________
@@ -240,9 +434,9 @@ namespace sigil::renderer {
             .pImageMemoryBarriers = &img_barrier,
         });
     }
-
+    
     //_____________________________________
-    inline void draw() {
+    inline void tick() {
         auto frame = frames.at(current_frame % FRAME_OVERLAP);
 
         VK_CHECK(device.waitForFences(1, &frame.fence, true, UINT64_MAX));
@@ -252,11 +446,14 @@ namespace sigil::renderer {
         vk::Image img = swapchain.images.at(img_index);
 
         frame.cmd.buffer.reset();
+
+        draw.extent.width = draw.img.extent.width;
+        draw.extent.height = draw.img.extent.height;
         VK_CHECK(frame.cmd.buffer.begin(vk::CommandBufferBeginInfo { .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit, }));
         {
-            transition_img(frame.cmd.buffer, img, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+            transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
             frame.cmd.buffer.clearColorImage(
-                img,
+                draw.img.handle,
                 vk::ImageLayout::eGeneral,
                 vk::ClearColorValue {{{ 0.f, 0.f, 0.f, 1.f }}},
                 vk::ImageSubresourceRange {
@@ -267,7 +464,42 @@ namespace sigil::renderer {
                     .layerCount     = vk::RemainingArrayLayers,
                 }
             );
-            transition_img(frame.cmd.buffer, img, vk::ImageLayout::eGeneral, vk::ImageLayout::ePresentSrcKHR);
+            transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+            transition_img(frame.cmd.buffer, img, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferDstOptimal);
+
+            auto blit_region = vk::ImageBlit2 {
+                .srcSubresource = vk::ImageSubresourceLayers {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+                .srcOffsets = {{
+                    vk::Offset3D { 0, 0, 0 },
+                    vk::Offset3D { (int) draw.extent.width, (int) draw.extent.height, 1 },
+                }},
+                .dstSubresource = vk::ImageSubresourceLayers {
+                    .aspectMask = vk::ImageAspectFlagBits::eColor,
+                    .mipLevel = 0,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+                .dstOffsets = {{
+                    vk::Offset3D { 0, 0, 0 },
+                    vk::Offset3D { (int) swapchain.extent.width, (int) swapchain.extent.height, 1 },
+                }},
+            };
+            frame.cmd.buffer.blitImage2(vk::BlitImageInfo2 {
+                .srcImage = draw.img.handle,
+                .srcImageLayout = vk::ImageLayout::eTransferSrcOptimal,
+                .dstImage = img,
+                .dstImageLayout = vk::ImageLayout::eTransferDstOptimal,
+                .regionCount = 1,
+                .pRegions = &blit_region,
+                .filter = vk::Filter::eLinear,
+            });
+
+            transition_img(frame.cmd.buffer, img, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
         }
         VK_CHECK(frame.cmd.buffer.end());
 
@@ -317,13 +549,15 @@ namespace sigil::renderer {
         for( auto view : swapchain.img_views ) {
             device.destroyImageView(view);
         }
-
         for( auto frame : frames ) {
             device.destroyCommandPool(frame.cmd.pool);
+            device.destroyFence(frame.fence);
+            device.destroySemaphore(frame.swap_semaphore);
+            device.destroySemaphore(frame.render_semaphore);
         }
-
         device.destroy();
         instance.destroySurfaceKHR(surface);
+        instance.destroyDebugUtilsMessengerEXT(debug.messenger);
         instance.destroy();
     }
 } // sigil::renderer
@@ -332,7 +566,7 @@ struct vulkan {
     vulkan() {
         using namespace sigil;
         schedule(runlvl::init, renderer::init     );
-        schedule(runlvl::tick, renderer::draw     );
+        schedule(runlvl::tick, renderer::tick     );
         schedule(runlvl::exit, renderer::terminate);
     }
 };
