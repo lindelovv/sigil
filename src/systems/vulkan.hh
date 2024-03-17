@@ -2,13 +2,16 @@
 
 #include "sigil.hh"
 #include "glfw.hh"
+
 #include <deque>
 #include <fstream>
 #include <ranges>
+
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
+
 #define VMA_IMPLEMENTATION
 #include "../../submodules/VulkanMemoryAllocator-Hpp/include/vk_mem_alloc.hpp"
 
@@ -96,14 +99,14 @@ namespace sigil::renderer {
         struct {
             vk::Image       handle;
             vk::ImageView   view;
-            VmaAllocation   alloc;
+            vma::Allocation   alloc;
             vk::Extent3D    extent;
             vk::Format      format;
         }            img;
         vk::Extent2D extent;
     } inline draw;
 
-    inline vma::Allocator alloc;
+    static vma::Allocator alloc;
 
     //_____________________________________
     struct {
@@ -312,17 +315,25 @@ namespace sigil::renderer {
                 .pSetLayouts = &descriptor.set.layout,
         }).value;
 
-        vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo()).value;
-
-        pipeline.handles = device.createComputePipelines(cache, vk::ComputePipelineCreateInfo {
+        auto compute = load_shader_module("../../shaders/gradient.comp.spv").value;
+        //vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo{}).value;
+        pipeline.handles = device.createComputePipelines(nullptr, vk::ComputePipelineCreateInfo {
                 .stage = vk::PipelineShaderStageCreateInfo {
                     .stage  = vk::ShaderStageFlagBits::eCompute,
-                    .module = load_shader_module("../../shaders/gradient.comp.spv").value,
+                    .module = compute,
                     .pName  = "main",
                 },
                 .layout = pipeline.layout,
             }
         ).value;
+
+        device.destroyShaderModule(compute);
+        main_delete_queue.push_fn([&]{
+            device.destroyPipelineLayout(pipeline.layout);
+            for( auto pipe : pipeline.handles ) {
+                device.destroyPipeline(pipe);
+            }
+        });
     }
 
     //_____________________________________
@@ -452,19 +463,22 @@ namespace sigil::renderer {
         VK_CHECK(frame.cmd.buffer.begin(vk::CommandBufferBeginInfo { .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit, }));
         {
             transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-            frame.cmd.buffer.clearColorImage(
-                draw.img.handle,
-                vk::ImageLayout::eGeneral,
-                vk::ClearColorValue {{{ 0.f, 0.f, 0.f, 1.f }}},
-                vk::ImageSubresourceRange {
-                    .aspectMask     = vk::ImageAspectFlagBits::eColor,
-                    .baseMipLevel   = 0,
-                    .levelCount     = vk::RemainingMipLevels,
-                    .baseArrayLayer = 0,
-                    .layerCount     = vk::RemainingArrayLayers,
-                }
-            );
-            transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+            frame.cmd.buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.handles[0]);
+            frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline.layout, 0, descriptor.set.handles[0], nullptr);
+            frame.cmd.buffer.dispatch(std::ceil(draw.extent.width / 16.f), std::ceil(draw.extent.height / 16.f), 1);
+            //frame.cmd.buffer.clearColorImage(
+            //    draw.img.handle,
+            //    vk::ImageLayout::eGeneral,
+            //    vk::ClearColorValue {{{ 0.f, 0.f, 0.f, 1.f }}},
+            //    vk::ImageSubresourceRange {
+            //        .aspectMask     = vk::ImageAspectFlagBits::eColor,
+            //        .baseMipLevel   = 0,
+            //        .levelCount     = vk::RemainingMipLevels,
+            //        .baseArrayLayer = 0,
+            //        .layerCount     = vk::RemainingArrayLayers,
+            //    }
+            //);
+            //transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
             transition_img(frame.cmd.buffer, img, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferDstOptimal);
 
             auto blit_region = vk::ImageBlit2 {
