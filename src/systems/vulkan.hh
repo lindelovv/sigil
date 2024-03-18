@@ -15,7 +15,10 @@
 
 namespace sigil::renderer {
 
-#define VK_CHECK(x) do { VkResult e = (VkResult)x; if(e) { std::cout << "Vulkan error: " << e << "\n"; } } while(0)
+#define VK_CHECK(x) { vk::Result e = (vk::Result)x; if((VkResult)e) {       \
+    std::cout << "__VK_CHECK failed__ "                                      \
+    << vk::to_string(e) << " @ " << __FILE_NAME__ << "_" << __LINE__ << "\n"; \
+} }
 #define SIGIL_V VK_MAKE_VERSION(version::major, version::minor, version::patch)
 
     const vk::ApplicationInfo engine_info = {
@@ -26,7 +29,7 @@ namespace sigil::renderer {
         .apiVersion                             = VK_API_VERSION_1_3,
     };
 
-    const std::vector<const char*> layers            = { "VK_LAYER_KHRONOS_validation",   };
+    const std::vector<const char*> layers            = { "VK_LAYER_KHRONOS_validation", };
     const std::vector<const char*> device_extensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
@@ -86,7 +89,7 @@ namespace sigil::renderer {
         struct {
             vk::Image       handle;
             vk::ImageView   view;
-            vma::Allocation   alloc;
+            vma::Allocation alloc;
             vk::Extent3D    extent;
             vk::Format      format;
         }            img;
@@ -99,7 +102,7 @@ namespace sigil::renderer {
     struct {
         vk::DescriptorPool pool;
         struct {
-            std::vector<vk::DescriptorSet> handles;
+            vk::DescriptorSet handle;
             vk::DescriptorSetLayout layout;
             std::vector<vk::DescriptorSetLayoutBinding> bindings;
         } set;
@@ -116,23 +119,24 @@ namespace sigil::renderer {
         glfwGetFramebufferSize(window::handle, &w, &h);
 
         auto capabilities = phys_device.getSurfaceCapabilitiesKHR(surface).value;
-        swapchain.handle = device.createSwapchainKHR(vk::SwapchainCreateInfoKHR {
-            .surface            = surface,
-            .minImageCount      = capabilities.minImageCount + 1,
-            .imageFormat        = (swapchain.img_format = vk::Format::eB8G8R8A8Srgb),
-            .imageColorSpace    = vk::ColorSpaceKHR::eSrgbNonlinear,
-            .imageExtent        = { .width = (u32)w, .height = (u32)h },
-            .imageArrayLayers   = 1,
-            .imageUsage         = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment,
-            .preTransform       = capabilities.currentTransform,
-            .compositeAlpha     = vk::CompositeAlphaFlagBitsKHR::eOpaque,
-            .presentMode        = vk::PresentModeKHR::eMailbox,
-            .clipped            = true,
+        swapchain.handle = device.createSwapchainKHR(
+            vk::SwapchainCreateInfoKHR {
+                .surface            = surface,
+                .minImageCount      = capabilities.minImageCount + 1,
+                .imageFormat        = (swapchain.img_format = vk::Format::eB8G8R8A8Srgb),
+                .imageColorSpace    = vk::ColorSpaceKHR::eSrgbNonlinear,
+                .imageExtent        = { .width = (u32)w, .height = (u32)h },
+                .imageArrayLayers   = 1,
+                .imageUsage         = vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eColorAttachment,
+                .preTransform       = capabilities.currentTransform,
+                .compositeAlpha     = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+                .presentMode        = vk::PresentModeKHR::eMailbox,
+                .clipped            = true,
         }   ).value;
 
         swapchain.extent = vk::Extent2D { .width = (u32)w, .height = (u32)h };
         swapchain.images = device.getSwapchainImagesKHR(swapchain.handle).value;
-        for(auto image : swapchain.images) {
+        for( auto image : swapchain.images ) {
             swapchain.img_views.push_back(
                 device.createImageView(
                     vk::ImageViewCreateInfo {
@@ -182,6 +186,21 @@ namespace sigil::renderer {
                     .baseArrayLayer = 0,
                     .layerCount     = 1,
         },  }   ).value;
+    }
+
+    //_____________________________________
+    inline void rebuild_swapchain() {
+        VK_CHECK(graphics_queue.handle.waitIdle());
+
+        for( auto image : swapchain.images ) {
+            device.destroyImage(image);
+        }
+        for( auto img_view : swapchain.img_views ) {
+            device.destroyImageView(img_view);
+        }
+        device.destroySwapchainKHR(swapchain.handle);
+
+        build_swapchain();
     }
 
     //_____________________________________
@@ -239,7 +258,7 @@ namespace sigil::renderer {
         std::vector<vk::DescriptorPoolSize> sizes;
         sizes.push_back(vk::DescriptorPoolSize {
             .type = vk::DescriptorType::eStorageImage,
-            .descriptorCount = (u32)1 * 10,
+            .descriptorCount = (u32)(1 * 10),
         });
 
         descriptor.pool = device.createDescriptorPool(
@@ -268,12 +287,26 @@ namespace sigil::renderer {
             .pBindings    = descriptor.set.bindings.data(),
         }).value;
 
-        descriptor.set.handles = device.allocateDescriptorSets(
+        descriptor.set.handle = device.allocateDescriptorSets(
             vk::DescriptorSetAllocateInfo {
                 .descriptorPool = descriptor.pool,
                 .descriptorSetCount = 1,
                 .pSetLayouts = &descriptor.set.layout,
-        }).value;
+            }
+        ).value.front();
+
+        vk::DescriptorImageInfo img_info {
+            .imageView = draw.img.view,
+            .imageLayout = vk::ImageLayout::eGeneral,
+        };
+        vk::WriteDescriptorSet draw_img_write {
+            .dstSet = descriptor.set.handle,
+            .dstBinding = 0,
+            .descriptorCount = 1,
+            .descriptorType = vk::DescriptorType::eStorageImage,
+            .pImageInfo = &img_info,
+        };
+        device.updateDescriptorSets(1, &draw_img_write, 0, nullptr);
     }
 
     //_____________________________________
@@ -355,18 +388,11 @@ namespace sigil::renderer {
 
         phys_device = instance.enumeratePhysicalDevices().value[0]; // TODO: propperly pick GPU
         float prio = 1.f;
-        auto queue_info = vk::DeviceQueueCreateInfo {
+        vk::DeviceQueueCreateInfo queue_info {
             .queueFamilyIndex   = graphics_queue.family,
             .queueCount         = 1,
             .pQueuePriorities   = &prio,
         };
-
-        //vk::PhysicalDeviceFeatures device_features {
-        //    .sampleRateShading              = true,
-        //    .samplerAnisotropy              = true,
-        //};
-
-        //gpu_address = device.getBufferAddress(vk::BufferDeviceAddressInfo { .buffer = address_buffer, });
 
         vk::PhysicalDeviceSynchronization2Features sync_features {
             .synchronization2 = true,
@@ -399,7 +425,7 @@ namespace sigil::renderer {
         graphics_queue.family = get_queue_family(vk::QueueFlagBits::eGraphics);
         graphics_queue.handle = device.getQueue(graphics_queue.family, 0);
 
-        auto alloc_info = vma::AllocatorCreateInfo {
+        vma::AllocatorCreateInfo alloc_info {
             .flags = vma::AllocatorCreateFlagBits::eBufferDeviceAddress,
             .physicalDevice = phys_device,
             .device = device,
@@ -417,7 +443,7 @@ namespace sigil::renderer {
 
     //_____________________________________
     inline void transition_img(vk::CommandBuffer cmd_buffer, vk::Image img, vk::ImageLayout from, vk::ImageLayout to) {
-        auto img_barrier = vk::ImageMemoryBarrier2 {
+        vk::ImageMemoryBarrier2 img_barrier {
             .srcStageMask     = vk::PipelineStageFlagBits2::eAllCommands,
             .srcAccessMask    = vk::AccessFlagBits2::eMemoryWrite,
             .dstStageMask     = vk::PipelineStageFlagBits2::eAllCommands,
@@ -446,11 +472,15 @@ namespace sigil::renderer {
         auto frame = frames.at(current_frame % FRAME_OVERLAP);
 
         VK_CHECK(device.waitForFences(1, &frame.fence, true, UINT64_MAX));
+
+        auto img = device.acquireNextImageKHR(swapchain.handle, UINT64_MAX, frame.swap_semaphore);
+        //if( img.result == vk::Result::eErrorOutOfDateKHR ) {
+        //    rebuild_swapchain();
+        //}
+        u32 img_index = img.value;
+        vk::Image swap_img = swapchain.images.at(img_index);
+
         VK_CHECK(device.resetFences(1, &frame.fence));
-
-        u32 img_index = device.acquireNextImageKHR(swapchain.handle, UINT64_MAX, frame.swap_semaphore).value;
-        vk::Image img = swapchain.images.at(img_index);
-
         frame.cmd.buffer.reset();
 
         draw.extent.width = draw.img.extent.width;
@@ -460,24 +490,13 @@ namespace sigil::renderer {
             transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 
             frame.cmd.buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.handles[0]);
-            frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline.layout, 0, descriptor.set.handles[0], nullptr);
+            frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline.layout, 0, descriptor.set.handle, nullptr);
             frame.cmd.buffer.dispatch(std::ceil(draw.extent.width / 16.f), std::ceil(draw.extent.height / 16.f), 1);
-            //frame.cmd.buffer.clearColorImage(
-            //    draw.img.handle,
-            //    vk::ImageLayout::eGeneral,
-            //    vk::ClearColorValue {{{ 0.f, 0.f, 0.f, 1.f }}},
-            //    vk::ImageSubresourceRange {
-            //        .aspectMask     = vk::ImageAspectFlagBits::eColor,
-            //        .baseMipLevel   = 0,
-            //        .levelCount     = vk::RemainingMipLevels,
-            //        .baseArrayLayer = 0,
-            //        .layerCount     = vk::RemainingArrayLayers,
-            //    }
-            //);
-            transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
-            transition_img(frame.cmd.buffer, img, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferDstOptimal);
 
-            auto blit_region = vk::ImageBlit2 {
+            transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+            transition_img(frame.cmd.buffer, swap_img, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+
+            vk::ImageBlit2 blit_region {
                 .srcSubresource = vk::ImageSubresourceLayers {
                     .aspectMask = vk::ImageAspectFlagBits::eColor,
                     .mipLevel = 0,
@@ -499,17 +518,18 @@ namespace sigil::renderer {
                     vk::Offset3D { (int) swapchain.extent.width, (int) swapchain.extent.height, 1 },
                 }},
             };
-            frame.cmd.buffer.blitImage2(vk::BlitImageInfo2 {
-                .srcImage = draw.img.handle,
-                .srcImageLayout = vk::ImageLayout::eTransferSrcOptimal,
-                .dstImage = img,
-                .dstImageLayout = vk::ImageLayout::eTransferDstOptimal,
-                .regionCount = 1,
-                .pRegions = &blit_region,
-                .filter = vk::Filter::eLinear,
-            });
+            frame.cmd.buffer.blitImage2(
+                vk::BlitImageInfo2 {
+                    .srcImage = draw.img.handle,
+                    .srcImageLayout = vk::ImageLayout::eTransferSrcOptimal,
+                    .dstImage = swap_img,
+                    .dstImageLayout = vk::ImageLayout::eTransferDstOptimal,
+                    .regionCount = 1,
+                    .pRegions = &blit_region,
+                    .filter = vk::Filter::eLinear,
+            }   );
 
-            transition_img(frame.cmd.buffer, img, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
+            transition_img(frame.cmd.buffer, swap_img, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
         }
         VK_CHECK(frame.cmd.buffer.end());
 
@@ -556,10 +576,9 @@ namespace sigil::renderer {
         VK_CHECK(device.waitIdle());
 
         device.destroyPipelineLayout(pipeline.layout);
-        for(auto pipe : pipeline.handles) {
+        for( auto pipe : pipeline.handles ) {
             device.destroyPipeline(pipe);
         }
-
         device.destroySwapchainKHR(swapchain.handle);
         for( auto view : swapchain.img_views ) {
             device.destroyImageView(view);
@@ -575,17 +594,10 @@ namespace sigil::renderer {
             device.destroySemaphore(frame.render_semaphore);
         }
         alloc.destroy();
+        device.destroy();
         instance.destroySurfaceKHR(surface);
         instance.destroyDebugUtilsMessengerEXT(debug.messenger);
         instance.destroy();
-
-        //device.destroyPipeline(graphics_pipeline);
-        //device.destroyPipelineLayout(pipeline_layout);
-        //device.destroyRenderPass(render_pass);
-        //for( size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++ ) {
-        //    device.destroyBuffer(uniform_buffers[i]);
-        //    device.freeMemory(uniform_buffers_memory[i]);
-        //}
     }
 } // sigil::renderer
 
