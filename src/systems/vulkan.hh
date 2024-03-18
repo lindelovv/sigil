@@ -3,16 +3,14 @@
 #include "sigil.hh"
 #include "glfw.hh"
 
-#include <deque>
 #include <fstream>
-#include <ranges>
 
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
 
-#define VMA_IMPLEMENTATION
+#include "../../submodules/VulkanMemoryAllocator-Hpp/VulkanMemoryAllocator/include/vk_mem_alloc.h"
 #include "../../submodules/VulkanMemoryAllocator-Hpp/include/vk_mem_alloc.hpp"
 
 namespace sigil::renderer {
@@ -29,23 +27,13 @@ namespace sigil::renderer {
     };
 
     const std::vector<const char*> layers            = { "VK_LAYER_KHRONOS_validation",   };
-    const std::vector<const char*> device_extensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, };
+    const std::vector<const char*> device_extensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+    };
 
     //_____________________________________
-    struct DeletionQueue {
-        std::deque<fn<void()>> queue;
-
-        void push_fn(fn<void()>&& fn) { queue.push_back(fn); }
-
-        void flush() {
-            for( auto& fn : std::ranges::views::reverse(queue) ) {
-                fn();
-            } 
-            queue.clear(); 
-        }
-    } inline main_delete_queue;
-
-    //_____________________________________
+    // DEBUG
     struct {
         vk::DebugUtilsMessengerEXT messenger;
 
@@ -77,7 +65,6 @@ namespace sigil::renderer {
     //_____________________________________
     constexpr u8 FRAME_OVERLAP = 2;
     struct Frame {
-        DeletionQueue deleteQueue;
         struct {
             vk::CommandPool   pool;
             vk::CommandBuffer buffer;
@@ -195,11 +182,6 @@ namespace sigil::renderer {
                     .baseArrayLayer = 0,
                     .layerCount     = 1,
         },  }   ).value;
-
-        main_delete_queue.push_fn([&]{
-            device.destroyImageView(draw.img.view);
-            alloc.destroyImage(draw.img.handle, draw.img.alloc);
-        });
     }
 
     //_____________________________________
@@ -279,6 +261,7 @@ namespace sigil::renderer {
         for( auto& bind : descriptor.set.bindings ) {
             bind.stageFlags |= vk::ShaderStageFlagBits::eCompute;
         }
+
         descriptor.set.layout = device.createDescriptorSetLayout(vk::DescriptorSetLayoutCreateInfo {
             .flags        = vk::DescriptorSetLayoutCreateFlags(0),
             .bindingCount = (u32) descriptor.set.bindings.size(),
@@ -296,14 +279,17 @@ namespace sigil::renderer {
     //_____________________________________
     inline vk::ResultValue<vk::ShaderModule> load_shader_module(const char* path) {
         std::ifstream file(path, std::ios::ate | std::ios::binary);
+        if( !file.is_open() ) {
+            throw std::runtime_error("\tError: Failed to open file at:" + std::string(path));
+        }
         size_t size = file.tellg();
-        std::vector<u32> buffer(size / sizeof(u32));
+        std::vector<char> buffer(size);
         file.seekg(0);
         file.read((char*)buffer.data(), size);
         file.close();
         return device.createShaderModule(vk::ShaderModuleCreateInfo {
-            .codeSize = buffer.size() * sizeof(u32),
-            .pCode = buffer.data(),
+            .codeSize = buffer.size(),
+            .pCode = (const u32*)buffer.data(),
         });
     }
 
@@ -315,9 +301,11 @@ namespace sigil::renderer {
                 .pSetLayouts = &descriptor.set.layout,
         }).value;
 
-        auto compute = load_shader_module("../../shaders/gradient.comp.spv").value;
+        auto compute = load_shader_module("shaders/gradient.comp.spv").value;
         //vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo{}).value;
-        pipeline.handles = device.createComputePipelines(nullptr, vk::ComputePipelineCreateInfo {
+        pipeline.handles = device.createComputePipelines(
+            nullptr,
+            vk::ComputePipelineCreateInfo {
                 .stage = vk::PipelineShaderStageCreateInfo {
                     .stage  = vk::ShaderStageFlagBits::eCompute,
                     .module = compute,
@@ -328,12 +316,6 @@ namespace sigil::renderer {
         ).value;
 
         device.destroyShaderModule(compute);
-        main_delete_queue.push_fn([&]{
-            device.destroyPipelineLayout(pipeline.layout);
-            for( auto pipe : pipeline.handles ) {
-                device.destroyPipeline(pipe);
-            }
-        });
     }
 
     //_____________________________________
@@ -378,23 +360,37 @@ namespace sigil::renderer {
             .queueCount         = 1,
             .pQueuePriorities   = &prio,
         };
-        vk::PhysicalDeviceFeatures device_features {
-            .sampleRateShading              = true,
-            .samplerAnisotropy              = true,
-        };
-        auto sync_features = vk::PhysicalDeviceSynchronization2Features {
+
+        //vk::PhysicalDeviceFeatures device_features {
+        //    .sampleRateShading              = true,
+        //    .samplerAnisotropy              = true,
+        //};
+
+        //gpu_address = device.getBufferAddress(vk::BufferDeviceAddressInfo { .buffer = address_buffer, });
+
+        vk::PhysicalDeviceSynchronization2Features sync_features {
             .synchronization2 = true,
         };
+        vk::PhysicalDeviceDescriptorIndexingFeatures desc_index_features {
+            .pNext = &sync_features,
+        };
+        vk::PhysicalDeviceBufferDeviceAddressFeatures buffer_device_features {
+            .pNext = &desc_index_features,
+        };
+        vk::PhysicalDeviceFeatures2 device_features_2 {
+            .pNext = &buffer_device_features,
+        };
+        phys_device.getFeatures2(&device_features_2);
         device = phys_device.createDevice(
             vk::DeviceCreateInfo{
-                .pNext                   = &sync_features,
+                .pNext                   = &device_features_2,
                 .queueCreateInfoCount    = 1,
                 .pQueueCreateInfos       = &queue_info,
                 .enabledLayerCount       = (u32)layers.size(),
                 .ppEnabledLayerNames     = layers.data(),
                 .enabledExtensionCount   = (u32)device_extensions.size(),
                 .ppEnabledExtensionNames =  device_extensions.data(),
-                .pEnabledFeatures        = &device_features,
+                //.pEnabledFeatures        = &device_features,
             },
             nullptr
         ).value;
@@ -410,7 +406,6 @@ namespace sigil::renderer {
             .instance = instance,
         };
         alloc = vma::createAllocator(alloc_info).value;
-        main_delete_queue.push_fn([&] { alloc.destroy(); });
 
         build_swapchain();
 
@@ -463,6 +458,7 @@ namespace sigil::renderer {
         VK_CHECK(frame.cmd.buffer.begin(vk::CommandBufferBeginInfo { .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit, }));
         {
             transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+
             frame.cmd.buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.handles[0]);
             frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline.layout, 0, descriptor.set.handles[0], nullptr);
             frame.cmd.buffer.dispatch(std::ceil(draw.extent.width / 16.f), std::ceil(draw.extent.height / 16.f), 1);
@@ -478,7 +474,7 @@ namespace sigil::renderer {
             //        .layerCount     = vk::RemainingArrayLayers,
             //    }
             //);
-            //transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+            transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
             transition_img(frame.cmd.buffer, img, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferDstOptimal);
 
             auto blit_region = vk::ImageBlit2 {
@@ -517,23 +513,23 @@ namespace sigil::renderer {
         }
         VK_CHECK(frame.cmd.buffer.end());
 
-        auto cmd_info = vk::CommandBufferSubmitInfo {
+        vk::CommandBufferSubmitInfo cmd_info {
             .commandBuffer = frame.cmd.buffer,
             .deviceMask    = 0,
         };
-        auto wait_info = vk::SemaphoreSubmitInfo {
+        vk::SemaphoreSubmitInfo wait_info {
             .semaphore   = frame.swap_semaphore,
             .value       = 1,
             .stageMask   = vk::PipelineStageFlagBits2::eColorAttachmentOutput,
             .deviceIndex = 0,
         };
-        auto signal_info = vk::SemaphoreSubmitInfo {
+        vk::SemaphoreSubmitInfo signal_info {
             .semaphore   = frame.render_semaphore,
             .value       = 1,
             .stageMask   = vk::PipelineStageFlagBits2::eAllGraphics,
             .deviceIndex = 0,
         };
-        auto submit = vk::SubmitInfo2 {
+        vk::SubmitInfo2 submit {
             .waitSemaphoreInfoCount = 1,
             .pWaitSemaphoreInfos = &wait_info,
             .commandBufferInfoCount = 1,
@@ -543,7 +539,7 @@ namespace sigil::renderer {
         };
         VK_CHECK(graphics_queue.handle.submit2(submit, frame.fence));
 
-        auto present_info = vk::PresentInfoKHR {
+        vk::PresentInfoKHR present_info {
             .waitSemaphoreCount = 1,
             .pWaitSemaphores = &frame.render_semaphore,
             .swapchainCount = 1,
@@ -559,20 +555,37 @@ namespace sigil::renderer {
     inline void terminate() {
         VK_CHECK(device.waitIdle());
 
+        device.destroyPipelineLayout(pipeline.layout);
+        for(auto pipe : pipeline.handles) {
+            device.destroyPipeline(pipe);
+        }
+
         device.destroySwapchainKHR(swapchain.handle);
         for( auto view : swapchain.img_views ) {
             device.destroyImageView(view);
         }
+        device.destroyImageView(draw.img.view);
+        alloc.destroyImage(draw.img.handle, draw.img.alloc);
+        device.destroyDescriptorPool(descriptor.pool);
+        device.destroyDescriptorSetLayout(descriptor.set.layout);
         for( auto frame : frames ) {
             device.destroyCommandPool(frame.cmd.pool);
             device.destroyFence(frame.fence);
             device.destroySemaphore(frame.swap_semaphore);
             device.destroySemaphore(frame.render_semaphore);
         }
-        device.destroy();
+        alloc.destroy();
         instance.destroySurfaceKHR(surface);
         instance.destroyDebugUtilsMessengerEXT(debug.messenger);
         instance.destroy();
+
+        //device.destroyPipeline(graphics_pipeline);
+        //device.destroyPipelineLayout(pipeline_layout);
+        //device.destroyRenderPass(render_pass);
+        //for( size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++ ) {
+        //    device.destroyBuffer(uniform_buffers[i]);
+        //    device.freeMemory(uniform_buffers_memory[i]);
+        //}
     }
 } // sigil::renderer
 
