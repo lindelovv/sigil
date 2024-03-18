@@ -3,7 +3,7 @@ LDFLAGS=-lglfw -lvulkan -limgui -lassimp -ldl -lX11 -lXxf86vm -lXrandr -lXi
 NAME=default
 
 compile c:
-	g++-13 -Wall -Wpedantic $(CFLAGS) $(EXFLAGS) $(shell find ./src/* -name "*.cc") $(shell find ./src/* -type d | sed s/^/-I/) -o ./build/sigil $(LDFLAGS)
+	g++-13 $(CFLAGS) $(EXFLAGS) $(shell find ./src/* -name "*.cc") $(shell find ./src/* -type d | sed s/^/-I/) -o ./build/sigil $(LDFLAGS)
 run r:
 	./build/sigil
 debug d:
