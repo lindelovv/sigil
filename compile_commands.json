@@ -15,7 +15,10 @@
       "-I./src/core",
       "-I./src/systems",
       "-I./src/systems/renderer",
-      "-I./submodules/VulkanMemoryAllocator-Hpp/include",
+      "-I./subprojects/VulkanMemoryAllocator-3.0.1/include/",
+      "-I./subprojects/VulkanMemoryAllocator-Hpp-3.0.1-3/include/",
+      "-I./subprojects/imgui-1.90.4/",
+      "-I./subprojects/imgui-1.90.4/backends",
       "-o",
       "./build/sigil",
       "./src/main.cc"

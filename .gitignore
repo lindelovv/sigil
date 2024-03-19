@@ -4,4 +4,9 @@
 /.cache
 core
 !/src/core
+/subprojects/*
+!/subprojects/imgui.wrap
+!/subprojects/packagefiles
+!/subprojects/vulkan-memory-allocator.wrap
+!/subprojects/VulkanMemoryAllocator-Hpp.wrap
 

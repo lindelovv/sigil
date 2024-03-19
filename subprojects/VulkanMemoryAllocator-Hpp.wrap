@@ -1,0 +1,10 @@
+[wrap-file]
+directory = VulkanMemoryAllocator-Hpp-3.0.1-3
+source_url = https://github.com/YaaZ/VulkanMemoryAllocator-Hpp/archive/refs/tags/v3.0.1-3.tar.gz
+source_hash = 66a3d4be3bc1404c844b5a36aadeb6b366878e7cf1efe899eb0a0095f3871aae
+source_filename = VulkanMemoryAllocator-Hpp-3.0.1-3.tar.gz
+depth = 1
+patch_directory = vk_mem_alloc_hpp_patch
+
+[provide]
+vma-hpp = vma_hpp_dep

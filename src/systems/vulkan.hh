@@ -3,15 +3,22 @@
 #include "sigil.hh"
 #include "glfw.hh"
 
+#include <GLFW/glfw3.h>
 #include <fstream>
+#include <vulkan/vulkan_core.h>
 
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
 
-#include "../../submodules/VulkanMemoryAllocator-Hpp/VulkanMemoryAllocator/include/vk_mem_alloc.h"
-#include "../../submodules/VulkanMemoryAllocator-Hpp/include/vk_mem_alloc.hpp"
+//#include "vk_mem_alloc.h"
+#include "vk_mem_alloc.hpp"
+
+#include "imgui.h"
+#include "imconfig.h"
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_vulkan.h"
 
 namespace sigil::renderer {
 
@@ -33,6 +40,8 @@ namespace sigil::renderer {
     const std::vector<const char*> device_extensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+        VK_KHR_SHADER_CLOCK_EXTENSION_NAME,
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
     };
 
     //_____________________________________
@@ -57,6 +66,7 @@ namespace sigil::renderer {
     inline vk::PhysicalDevice   phys_device;
     inline vk::Device           device;
 
+    //_____________________________________
     struct {
         vk::SwapchainKHR           handle;
         vk::Format                 img_format;
@@ -79,6 +89,7 @@ namespace sigil::renderer {
     inline std::vector<Frame> frames { FRAME_OVERLAP };
     inline u32 current_frame = 0;
 
+    //_____________________________________
     struct {
         vk::Queue handle;
         u32       family;
@@ -96,6 +107,7 @@ namespace sigil::renderer {
         vk::Extent2D extent;
     } inline draw;
 
+    //_____________________________________
     static vma::Allocator alloc;
 
     //_____________________________________
@@ -108,10 +120,18 @@ namespace sigil::renderer {
         } set;
     } inline descriptor;
 
+    //_____________________________________
     struct {
         std::vector<vk::Pipeline> handles;
         vk::PipelineLayout layout;
     } inline pipeline;
+
+    //_____________________________________
+    struct {
+        vk::Fence         fence;
+        vk::CommandBuffer cmd;
+        vk::CommandPool   pool;
+    } inline immediate;
 
     //_____________________________________
     inline void build_swapchain() {
@@ -228,7 +248,7 @@ namespace sigil::renderer {
         };
         for( u32 i = 0; i < FRAME_OVERLAP; i++ ) {
             VK_CHECK(device.createCommandPool(&cmd_pool_info, nullptr, &frames.at(i).cmd.pool));
-            auto cmd_buffer_info = vk::CommandBufferAllocateInfo {
+            vk::CommandBufferAllocateInfo cmd_buffer_info {
                 .commandPool        = frames.at(i).cmd.pool,
                 .level              = vk::CommandBufferLevel::ePrimary,
                 .commandBufferCount = 1,
@@ -238,6 +258,13 @@ namespace sigil::renderer {
                 &frames.at(i).cmd.buffer
             ));
         }
+        VK_CHECK(device.createCommandPool(&cmd_pool_info, nullptr, &immediate.pool));
+        vk::CommandBufferAllocateInfo cmd_buffer_info {
+            .commandPool        = immediate.pool,
+            .level              = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1,
+        };
+        VK_CHECK(device.allocateCommandBuffers(&cmd_buffer_info, &immediate.cmd));
     }
 
     //_____________________________________
@@ -251,6 +278,7 @@ namespace sigil::renderer {
             VK_CHECK(device.createSemaphore(&semaphore_info, nullptr, &frames.at(i).swap_semaphore  ));
             VK_CHECK(device.createSemaphore(&semaphore_info, nullptr, &frames.at(i).render_semaphore));
         }
+        VK_CHECK(device.createFence(&fence_info, nullptr, &immediate.fence));
     }
 
     //_____________________________________
@@ -334,7 +362,7 @@ namespace sigil::renderer {
                 .pSetLayouts = &descriptor.set.layout,
         }).value;
 
-        auto compute = load_shader_module("shaders/gradient.comp.spv").value;
+        auto compute = load_shader_module("res/shaders/gradient.comp.spv").value;
         //vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo{}).value;
         pipeline.handles = device.createComputePipelines(
             nullptr,
@@ -349,6 +377,88 @@ namespace sigil::renderer {
         ).value;
 
         device.destroyShaderModule(compute);
+    }
+
+    //_____________________________________
+    inline void immediate_submit(fn<void(vk::CommandBuffer cmd)>&& fn) {
+        VK_CHECK(device.resetFences(1, &immediate.fence));
+        VK_CHECK(immediate.cmd.reset());
+        VK_CHECK(immediate.cmd.begin(vk::CommandBufferBeginInfo { .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit, }));
+        {
+            fn(immediate.cmd);
+        }
+        VK_CHECK(immediate.cmd.end());
+        vk::CommandBufferSubmitInfo cmd_info {
+            .commandBuffer = immediate.cmd,
+            .deviceMask    = 0,
+        };
+        vk::SubmitInfo2 submit {
+            .commandBufferInfoCount = 1,
+            .pCommandBufferInfos = &cmd_info,
+        };
+        VK_CHECK(graphics_queue.handle.submit2(1, &submit, immediate.fence));
+        VK_CHECK(device.waitForFences(immediate.fence, true, UINT64_MAX));
+    }
+
+    inline void setup_imgui() {
+        vk::DescriptorPoolSize pool_sizes[] {
+            { vk::DescriptorType::eSampler, 1000 },
+            { vk::DescriptorType::eSampledImage, 1000 },
+            { vk::DescriptorType::eStorageImage, 1000 },
+            { vk::DescriptorType::eUniformTexelBuffer, 1000 },
+            { vk::DescriptorType::eStorageTexelBuffer, 1000 },
+            { vk::DescriptorType::eUniformBuffer, 1000 },
+            { vk::DescriptorType::eStorageBuffer, 1000 },
+            { vk::DescriptorType::eUniformBufferDynamic, 1000 },
+            { vk::DescriptorType::eStorageBufferDynamic, 1000 },
+            { vk::DescriptorType::eInputAttachment, 1000 },
+        };
+        vk::DescriptorPoolCreateInfo pool_info {
+            .flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+            .maxSets = 1000,
+            .poolSizeCount = (u32)std::size(pool_sizes),
+            .pPoolSizes = pool_sizes,
+        };
+        vk::DescriptorPool imgui_pool;
+        VK_CHECK(device.createDescriptorPool(&pool_info, nullptr, &imgui_pool));
+
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGui_ImplGlfw_InitForVulkan(window::handle, true);
+        ImGui_ImplVulkan_InitInfo init_info {
+            .Instance           = static_cast<VkInstance>(instance),
+            .PhysicalDevice     = static_cast<VkPhysicalDevice>(phys_device),
+            .Device             = static_cast<VkDevice>(device),
+            .Queue              = static_cast<VkQueue>(graphics_queue.handle),
+            .DescriptorPool     = static_cast<VkDescriptorPool>(imgui_pool),
+            .RenderPass         = VK_NULL_HANDLE,
+            .MinImageCount      = 3,
+            .ImageCount         = 3,
+            .MSAASamples        = static_cast<VkSampleCountFlagBits>(vk::SampleCountFlagBits::e1),
+            .UseDynamicRendering = true,
+            .PipelineRenderingCreateInfo = vk::PipelineRenderingCreateInfo {
+                .colorAttachmentCount = 1,
+                .pColorAttachmentFormats = &swapchain.img_format,
+            },
+        };
+        ImGui_ImplVulkan_Init(&init_info);
+
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.LogFilename = nullptr;
+        io.FontDefault = io.Fonts->AddFontFromFileTTF("res/fonts/NotoSansMono-Regular.ttf", 12.f);
+        io.Fonts->Build();
+
+        //immediate_submit([&](vk::CommandBuffer cmd){ ImGui_ImplVulkan_CreateFontsTexture(); });
+
+        ImGuiStyle& style = ImGui::GetStyle();
+        style.WindowRounding = 8.f;
+        style.FrameRounding = 8.f;
+        style.ScrollbarRounding = 4.f;
+
+        style.Colors[ImGuiCol_Text] = ImVec4(.6f, .6f, .6f, 1.f);
+        style.Colors[ImGuiCol_WindowBg] = ImVec4(0.f, 0.f, 0.f, .2f);
+        style.Colors[ImGuiCol_Border] = ImVec4(0.f, 0.f, 0.f, 0.f);
     }
 
     //_____________________________________
@@ -394,7 +504,11 @@ namespace sigil::renderer {
             .pQueuePriorities   = &prio,
         };
 
+        vk::PhysicalDeviceDynamicRenderingFeatures dyn_features {
+            .dynamicRendering = true,
+        };
         vk::PhysicalDeviceSynchronization2Features sync_features {
+            .pNext = &dyn_features,
             .synchronization2 = true,
         };
         vk::PhysicalDeviceDescriptorIndexingFeatures desc_index_features {
@@ -439,6 +553,7 @@ namespace sigil::renderer {
         build_sync_structures();
         build_descriptors();
         build_pipeline();
+        setup_imgui();
     }
 
     //_____________________________________
@@ -465,6 +580,78 @@ namespace sigil::renderer {
             .imageMemoryBarrierCount = 1,
             .pImageMemoryBarriers = &img_barrier,
         });
+    }
+
+    //_____________________________________
+    inline void imgui_draw(vk::CommandBuffer cmd, vk::ImageView img_view) {
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        ImGui::Begin("Sigil", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground
+                                      | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
+                                      | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
+        {
+            ImGui::TextUnformatted(std::format("GPU: {}", phys_device.getProperties().deviceName.data()).c_str());
+            ImGui::TextUnformatted(std::format("sigil   {}", sigil::version::as_string).c_str());
+            ImGui::SetWindowPos(ImVec2(0, swapchain.extent.height - ImGui::GetWindowSize().y));
+        }
+        ImGui::End();
+
+        ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoTitleBar   //| ImGuiWindowFlags_NoBackground
+                                      | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
+                                      | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
+        {
+            //ImGui::TextUnformatted(
+            //    std::format(" Camera position:\n\tx: {:.3f}\n\ty: {:.3f}\n\tz: {:.3f}",
+            //    camera.transform.position.x, camera.transform.position.y, camera.transform.position.z).c_str()
+            //);
+            //ImGui::TextUnformatted(
+            //    std::format(" Yaw:   {:.2f}\n Pitch: {:.2f}",
+            //    camera.yaw, camera.pitch).c_str()
+            //);
+            ImGui::TextUnformatted(
+                std::format(" Mouse position:\n\tx: {:.0f}\n\ty: {:.0f}",
+                input::mouse_position.x, input::mouse_position.y ).c_str()
+            );
+            ImGui::TextUnformatted(
+                std::format(" Mouse offset:\n\tx: {:.0f}\n\ty: {:.0f}",
+                input::get_mouse_movement().x, input::get_mouse_movement().y).c_str()
+            );
+            ImGui::SetWindowSize(ImVec2(108, 182));
+            ImGui::SetWindowPos(ImVec2(8, 8));
+        }
+        ImGui::End();
+
+        ImGui::Begin("Framerate", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground
+                                      | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
+                                      | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
+        {
+            ImGui::TextUnformatted(std::format(" FPS: {:.0f}", time::fps).c_str());
+            ImGui::TextUnformatted(std::format(" ms: {:.2f}", time::ms).c_str());
+            ImGui::SetWindowSize(ImVec2(82, 64));
+            ImGui::SetWindowPos(ImVec2(swapchain.extent.width - ImGui::GetWindowSize().x, 8));
+        }
+        ImGui::End();
+        ImGui::Render();
+
+        vk::RenderingAttachmentInfo attach_info {
+            .imageView = img_view,
+            .imageLayout = vk::ImageLayout::eGeneral,
+            .loadOp = vk::AttachmentLoadOp::eLoad,
+            .storeOp = vk::AttachmentStoreOp::eStore,
+        };
+        vk::RenderingInfo render_info {
+            .renderArea = vk::Rect2D { vk::Offset2D { 0, 0 }, swapchain.extent },
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &attach_info,
+            .pDepthAttachment = nullptr,
+            .pStencilAttachment = nullptr,
+        };
+        cmd.beginRendering(&render_info);
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+        cmd.endRendering();
     }
     
     //_____________________________________
@@ -529,7 +716,11 @@ namespace sigil::renderer {
                     .filter = vk::Filter::eLinear,
             }   );
 
-            transition_img(frame.cmd.buffer, swap_img, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::ePresentSrcKHR);
+            transition_img(frame.cmd.buffer, swap_img, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eColorAttachmentOptimal);
+
+            imgui_draw(frame.cmd.buffer, swapchain.img_views[img_index]);
+
+            transition_img(frame.cmd.buffer, swap_img, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR);
         }
         VK_CHECK(frame.cmd.buffer.end());
 
@@ -575,6 +766,11 @@ namespace sigil::renderer {
     inline void terminate() {
         VK_CHECK(device.waitIdle());
 
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+        device.destroyCommandPool(immediate.pool);
+
         device.destroyPipelineLayout(pipeline.layout);
         for( auto pipe : pipeline.handles ) {
             device.destroyPipeline(pipe);
@@ -593,6 +789,8 @@ namespace sigil::renderer {
             device.destroySemaphore(frame.swap_semaphore);
             device.destroySemaphore(frame.render_semaphore);
         }
+        device.destroyCommandPool(immediate.pool);
+        device.destroyFence(immediate.fence);
         alloc.destroy();
         device.destroy();
         instance.destroySurfaceKHR(surface);
