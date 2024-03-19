@@ -10,10 +10,9 @@ void main() {
 
     if( texel_coord.x < size.x && texel_coord.y < size.y ) {
         vec4 color = vec4(0,0,0,1);
-        if( gl_LocalInvocationID.x != 0 && gl_LocalInvocationID.y != 0 ) {
-            color.x = float(texel_coord.x)/(size.x);
-            color.y = float(texel_coord.y)/(size.y);
-        }
+        color.x = 0;//float(texel_coord.x)/(size.x);
+        color.y = float(texel_coord.y)/(size.y);
+        color.z = float(texel_coord.x)/(size.x);
         imageStore(img, texel_coord, color);
     }
 }
