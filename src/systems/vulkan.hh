@@ -15,7 +15,6 @@
 #include "vk_mem_alloc.hpp"
 
 #include "imgui.h"
-#include "imconfig.h"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
 
@@ -104,7 +103,7 @@ namespace sigil::renderer {
             vk::Format      format;
         }            img;
         vk::Extent2D extent;
-    } inline draw;
+    } inline _draw;
 
     //_____________________________________
     static vma::Allocator alloc;
@@ -131,6 +130,109 @@ namespace sigil::renderer {
         vk::CommandBuffer cmd;
         vk::CommandPool   pool;
     } inline immediate;
+
+    //_____________________________________
+    struct ComputePushConstants {
+        glm::vec4 data1;
+        glm::vec4 data2;
+        glm::vec4 data3;
+        glm::vec4 data4;
+    };
+
+    //_____________________________________
+    struct ComputeEffect {
+        const char* name;
+        vk::Pipeline pipeline;
+        vk::PipelineLayout pipeline_layout;
+        ComputePushConstants data;
+    };
+    inline std::vector<ComputeEffect> bg_effects;
+    inline int current_bg_effect { 0 };
+
+    namespace ui {
+
+        inline void draw(vk::CommandBuffer cmd, vk::ImageView img_view) {
+
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
+            ComputeEffect& selected = bg_effects[current_bg_effect];
+
+            ImGui::Begin("Sigil", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground
+                                          | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
+                                          | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
+            {
+                ImGui::TextUnformatted(fmt::format("GPU: {}", phys_device.getProperties().deviceName.data()).c_str());
+                ImGui::TextUnformatted(fmt::format("sigil   {}", sigil::version::as_string).c_str());
+                ImGui::SetWindowPos(ImVec2(0, swapchain.extent.height - ImGui::GetWindowSize().y));
+            }
+            ImGui::End();
+
+            ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoTitleBar   //| ImGuiWindowFlags_NoBackground
+                                          | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
+                                          | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
+            {
+                //ImGui::TextUnformatted(
+                //    fmt::format(" Camera position:\n\tx: {:.3f}\n\ty: {:.3f}\n\tz: {:.3f}",
+                //    camera.transform.position.x, camera.transform.position.y, camera.transform.position.z).c_str()
+                //);
+                //ImGui::TextUnformatted(
+                //    fmt::format(" Yaw:   {:.2f}\n Pitch: {:.2f}",
+                //    camera.yaw, camera.pitch).c_str()
+                //);
+                ImGui::TextUnformatted(
+                    fmt::format(" Mouse position:\n\tx: {:.0f}\n\ty: {:.0f}",
+                    input::mouse_position.x, input::mouse_position.y ).c_str()
+                );
+                ImGui::TextUnformatted(
+                    fmt::format(" Mouse offset:\n\tx: {:.0f}\n\ty: {:.0f}",
+                    input::get_mouse_movement().x, input::get_mouse_movement().y).c_str()
+                );
+
+                ImGui::TextUnformatted(fmt::format("Selected effect: {}", selected.name).c_str());
+                ImGui::SliderInt("Effect Index", &current_bg_effect, 0, bg_effects.size() - 1);
+                ImGui::InputFloat4("data1", (float*)& selected.data.data1);
+                ImGui::InputFloat4("data2", (float*)& selected.data.data2);
+                ImGui::InputFloat4("data3", (float*)& selected.data.data3);
+                ImGui::InputFloat4("data4", (float*)& selected.data.data4);
+
+                ImGui::SetWindowSize(ImVec2(108, 182));
+                ImGui::SetWindowPos(ImVec2(8, 8));
+            }
+            ImGui::End();
+
+            ImGui::Begin("Framerate", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground
+                                          | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
+                                          | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
+            {
+                ImGui::TextUnformatted(fmt::format(" FPS: {:.0f}", time::fps).c_str());
+                ImGui::TextUnformatted(fmt::format(" ms: {:.2f}", time::ms).c_str());
+                ImGui::SetWindowSize(ImVec2(82, 64));
+                ImGui::SetWindowPos(ImVec2(swapchain.extent.width - ImGui::GetWindowSize().x, 8));
+            }
+            ImGui::End();
+            ImGui::Render();
+
+            vk::RenderingAttachmentInfo attach_info {
+                .imageView = img_view,
+                .imageLayout = vk::ImageLayout::eGeneral,
+                .loadOp = vk::AttachmentLoadOp::eLoad,
+                .storeOp = vk::AttachmentStoreOp::eStore,
+            };
+            vk::RenderingInfo render_info {
+                .renderArea = vk::Rect2D { vk::Offset2D { 0, 0 }, swapchain.extent },
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &attach_info,
+                .pDepthAttachment = nullptr,
+                .pStencilAttachment = nullptr,
+            };
+            cmd.beginRendering(&render_info);
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+            cmd.endRendering();
+        }
+    } // ui
 
     //_____________________________________
     inline void build_swapchain() {
@@ -170,15 +272,15 @@ namespace sigil::renderer {
                             .layerCount     = 1,
             },  }   ).value );
         }
-        draw.img = {
+        _draw.img = {
             .extent = vk::Extent3D { .width = (u32)w, .height = (u32)h, .depth = 1 },
             .format = vk::Format::eR16G16B16A16Sfloat,
         };
-        std::tie( draw.img.handle, draw.img.alloc ) = alloc.createImage(
+        std::tie( _draw.img.handle, _draw.img.alloc ) = alloc.createImage(
             vk::ImageCreateInfo {
                 .imageType = vk::ImageType::e2D,
-                .format = draw.img.format,
-                .extent = draw.img.extent,
+                .format = _draw.img.format,
+                .extent = _draw.img.extent,
                 .mipLevels = 1,
                 .arrayLayers = 1,
                 .samples = vk::SampleCountFlagBits::e1,
@@ -193,11 +295,11 @@ namespace sigil::renderer {
                 .requiredFlags = vk::MemoryPropertyFlagBits::eDeviceLocal,
             }
         ).value;
-        draw.img.view = device.createImageView(
+        _draw.img.view = device.createImageView(
             vk::ImageViewCreateInfo {
-                .image      = draw.img.handle,
+                .image      = _draw.img.handle,
                 .viewType   = vk::ImageViewType::e2D,
-                .format     = draw.img.format,
+                .format     = _draw.img.format,
                 .subresourceRange {
                     .aspectMask     = vk::ImageAspectFlagBits::eColor,
                     .baseMipLevel   = 0,
@@ -323,7 +425,7 @@ namespace sigil::renderer {
         ).value.front();
 
         vk::DescriptorImageInfo img_info {
-            .imageView = draw.img.view,
+            .imageView = _draw.img.view,
             .imageLayout = vk::ImageLayout::eGeneral,
         };
         vk::WriteDescriptorSet draw_img_write {
@@ -355,27 +457,64 @@ namespace sigil::renderer {
 
     //_____________________________________
     inline void build_pipeline() {
-        pipeline.layout = device.createPipelineLayout(
-            vk::PipelineLayoutCreateInfo {
-                .setLayoutCount = 1,
-                .pSetLayouts = &descriptor.set.layout,
-        }).value;
 
-        auto compute = load_shader_module("res/shaders/gradient.comp.spv").value;
-        //vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo{}).value;
-        pipeline.handles = device.createComputePipelines(
-            nullptr,
-            vk::ComputePipelineCreateInfo {
-                .stage = vk::PipelineShaderStageCreateInfo {
-                    .stage  = vk::ShaderStageFlagBits::eCompute,
-                    .module = compute,
-                    .pName  = "main",
-                },
-                .layout = pipeline.layout,
-            }
+        vk::PushConstantRange push_const {
+            .stageFlags = vk::ShaderStageFlagBits::eCompute,
+            .offset = 0,
+            .size = sizeof(ComputePushConstants),
+        };
+
+        pipeline.layout = device.createPipelineLayout(
+                vk::PipelineLayoutCreateInfo {
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &descriptor.set.layout,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &push_const,
+                }
         ).value;
 
-        device.destroyShaderModule(compute);
+        auto gradient_s = load_shader_module("res/shaders/gradient.comp.spv").value;
+        auto sky_s = load_shader_module("res/shaders/sky.comp.spv").value;
+
+        ComputeEffect gradient_effect {
+            .name = "gradient",
+            .pipeline_layout = pipeline.layout,
+            .data = {
+                { glm::vec4(1, 0, 0, 1) },
+                { glm::vec4(0, 0, 1, 1) },
+            },
+        };
+        vk::PipelineShaderStageCreateInfo stage_info {
+            .stage  = vk::ShaderStageFlagBits::eCompute,
+            .module = gradient_s,
+            .pName  = "main",
+        };
+        vk::ComputePipelineCreateInfo pipe_info {
+            .stage = stage_info,
+            .layout = pipeline.layout,
+        };
+
+        //vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo{}).value;
+        pipeline.handles = device.createComputePipelines(nullptr, pipe_info).value;
+        gradient_effect.pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
+        
+        stage_info.module = sky_s;
+
+        ComputeEffect sky_effect {
+            .name = "sky",
+            .pipeline_layout = pipeline.layout,
+            .data = {
+                { glm::vec4(0.1, 0.2, 0.4, 0.97) },
+            },
+        };
+
+        sky_effect.pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
+
+        bg_effects.push_back(gradient_effect);
+        bg_effects.push_back(sky_effect);
+
+        device.destroyShaderModule(gradient_s);
+        device.destroyShaderModule(sky_s);
     }
 
     //_____________________________________
@@ -580,78 +719,6 @@ namespace sigil::renderer {
             .pImageMemoryBarriers = &img_barrier,
         });
     }
-
-    //_____________________________________
-    inline void imgui_draw(vk::CommandBuffer cmd, vk::ImageView img_view) {
-        ImGui_ImplVulkan_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::Begin("Sigil", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground
-                                      | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
-                                      | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
-        {
-            ImGui::TextUnformatted(fmt::format("GPU: {}", phys_device.getProperties().deviceName.data()).c_str());
-            ImGui::TextUnformatted(fmt::format("sigil   {}", sigil::version::as_string).c_str());
-            ImGui::SetWindowPos(ImVec2(0, swapchain.extent.height - ImGui::GetWindowSize().y));
-        }
-        ImGui::End();
-
-        ImGui::Begin("Info", nullptr, ImGuiWindowFlags_NoTitleBar   //| ImGuiWindowFlags_NoBackground
-                                      | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
-                                      | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
-        {
-            //ImGui::TextUnformatted(
-            //    fmt::format(" Camera position:\n\tx: {:.3f}\n\ty: {:.3f}\n\tz: {:.3f}",
-            //    camera.transform.position.x, camera.transform.position.y, camera.transform.position.z).c_str()
-            //);
-            //ImGui::TextUnformatted(
-            //    fmt::format(" Yaw:   {:.2f}\n Pitch: {:.2f}",
-            //    camera.yaw, camera.pitch).c_str()
-            //);
-            ImGui::TextUnformatted(
-                fmt::format(" Mouse position:\n\tx: {:.0f}\n\ty: {:.0f}",
-                input::mouse_position.x, input::mouse_position.y ).c_str()
-            );
-            ImGui::TextUnformatted(
-                fmt::format(" Mouse offset:\n\tx: {:.0f}\n\ty: {:.0f}",
-                input::get_mouse_movement().x, input::get_mouse_movement().y).c_str()
-            );
-            ImGui::SetWindowSize(ImVec2(108, 182));
-            ImGui::SetWindowPos(ImVec2(8, 8));
-        }
-        ImGui::End();
-
-        ImGui::Begin("Framerate", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground
-                                      | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
-                                      | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
-        {
-            ImGui::TextUnformatted(fmt::format(" FPS: {:.0f}", time::fps).c_str());
-            ImGui::TextUnformatted(fmt::format(" ms: {:.2f}", time::ms).c_str());
-            ImGui::SetWindowSize(ImVec2(82, 64));
-            ImGui::SetWindowPos(ImVec2(swapchain.extent.width - ImGui::GetWindowSize().x, 8));
-        }
-        ImGui::End();
-        ImGui::Render();
-
-        vk::RenderingAttachmentInfo attach_info {
-            .imageView = img_view,
-            .imageLayout = vk::ImageLayout::eGeneral,
-            .loadOp = vk::AttachmentLoadOp::eLoad,
-            .storeOp = vk::AttachmentStoreOp::eStore,
-        };
-        vk::RenderingInfo render_info {
-            .renderArea = vk::Rect2D { vk::Offset2D { 0, 0 }, swapchain.extent },
-            .layerCount = 1,
-            .colorAttachmentCount = 1,
-            .pColorAttachments = &attach_info,
-            .pDepthAttachment = nullptr,
-            .pStencilAttachment = nullptr,
-        };
-        cmd.beginRendering(&render_info);
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-        cmd.endRendering();
-    }
     
     //_____________________________________
     inline void tick() {
@@ -669,17 +736,29 @@ namespace sigil::renderer {
         VK_CHECK(device.resetFences(1, &frame.fence));
         frame.cmd.buffer.reset();
 
-        draw.extent.width = draw.img.extent.width;
-        draw.extent.height = draw.img.extent.height;
+        _draw.extent.width  = _draw.img.extent.width;
+        _draw.extent.height = _draw.img.extent.height;
         VK_CHECK(frame.cmd.buffer.begin(vk::CommandBufferBeginInfo { .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit, }));
         {
-            transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+            transition_img(frame.cmd.buffer, _draw.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 
-            frame.cmd.buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.handles[0]);
+            frame.cmd.buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.handles.front());
             frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline.layout, 0, descriptor.set.handle, nullptr);
-            frame.cmd.buffer.dispatch(std::ceil(draw.extent.width / 16.f), std::ceil(draw.extent.height / 16.f), 1);
+            ComputePushConstants push_const {
+                .data1 = glm::vec4(1, 0, 0, 1),
+                .data2 = glm::vec4(0, 0, 1, 1),
+            };
+            frame.cmd.buffer.pushConstants(pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(ComputePushConstants), &push_const);
+            frame.cmd.buffer.dispatch(std::ceil(_draw.extent.width / 16.f), std::ceil(_draw.extent.height / 16.f), 1);
 
-            transition_img(frame.cmd.buffer, draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
+            ComputeEffect& effect = bg_effects[current_bg_effect];
+
+            frame.cmd.buffer.bindPipeline(vk::PipelineBindPoint::eCompute, effect.pipeline);
+            frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline.layout, 0, descriptor.set.handle, nullptr);
+            frame.cmd.buffer.pushConstants(pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(ComputePushConstants), &effect.data);
+            frame.cmd.buffer.dispatch(std::ceil(_draw.extent.width / 16.f), std::ceil(_draw.extent.height / 16.f), 1);
+
+            transition_img(frame.cmd.buffer, _draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
             transition_img(frame.cmd.buffer, swap_img, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
 
             vk::ImageBlit2 blit_region {
@@ -691,7 +770,7 @@ namespace sigil::renderer {
                 },
                 .srcOffsets = {{
                     vk::Offset3D { 0, 0, 0 },
-                    vk::Offset3D { (int) draw.extent.width, (int) draw.extent.height, 1 },
+                    vk::Offset3D { (int) _draw.extent.width, (int) _draw.extent.height, 1 },
                 }},
                 .dstSubresource = vk::ImageSubresourceLayers {
                     .aspectMask = vk::ImageAspectFlagBits::eColor,
@@ -706,7 +785,7 @@ namespace sigil::renderer {
             };
             frame.cmd.buffer.blitImage2(
                 vk::BlitImageInfo2 {
-                    .srcImage = draw.img.handle,
+                    .srcImage = _draw.img.handle,
                     .srcImageLayout = vk::ImageLayout::eTransferSrcOptimal,
                     .dstImage = swap_img,
                     .dstImageLayout = vk::ImageLayout::eTransferDstOptimal,
@@ -717,7 +796,7 @@ namespace sigil::renderer {
 
             transition_img(frame.cmd.buffer, swap_img, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eColorAttachmentOptimal);
 
-            imgui_draw(frame.cmd.buffer, swapchain.img_views[img_index]);
+            ui::draw(frame.cmd.buffer, swapchain.img_views[img_index]);
 
             transition_img(frame.cmd.buffer, swap_img, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR);
         }
@@ -778,8 +857,8 @@ namespace sigil::renderer {
         for( auto view : swapchain.img_views ) {
             device.destroyImageView(view);
         }
-        device.destroyImageView(draw.img.view);
-        alloc.destroyImage(draw.img.handle, draw.img.alloc);
+        device.destroyImageView(_draw.img.view);
+        alloc.destroyImage(_draw.img.handle, _draw.img.alloc);
         device.destroyDescriptorPool(descriptor.pool);
         device.destroyDescriptorSetLayout(descriptor.set.layout);
         for( auto frame : frames ) {
