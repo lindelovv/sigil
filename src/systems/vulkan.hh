@@ -12,7 +12,6 @@
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
 #include <vulkan/vulkan.hpp>
 
-//#include "vk_mem_alloc.h"
 #include "vk_mem_alloc.hpp"
 
 #include "imgui.h"
@@ -592,8 +591,8 @@ namespace sigil::renderer {
                                       | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
                                       | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
         {
-            ImGui::TextUnformatted(std::format("GPU: {}", phys_device.getProperties().deviceName.data()).c_str());
-            ImGui::TextUnformatted(std::format("sigil   {}", sigil::version::as_string).c_str());
+            ImGui::TextUnformatted(fmt::format("GPU: {}", phys_device.getProperties().deviceName.data()).c_str());
+            ImGui::TextUnformatted(fmt::format("sigil   {}", sigil::version::as_string).c_str());
             ImGui::SetWindowPos(ImVec2(0, swapchain.extent.height - ImGui::GetWindowSize().y));
         }
         ImGui::End();
@@ -603,19 +602,19 @@ namespace sigil::renderer {
                                       | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
         {
             //ImGui::TextUnformatted(
-            //    std::format(" Camera position:\n\tx: {:.3f}\n\ty: {:.3f}\n\tz: {:.3f}",
+            //    fmt::format(" Camera position:\n\tx: {:.3f}\n\ty: {:.3f}\n\tz: {:.3f}",
             //    camera.transform.position.x, camera.transform.position.y, camera.transform.position.z).c_str()
             //);
             //ImGui::TextUnformatted(
-            //    std::format(" Yaw:   {:.2f}\n Pitch: {:.2f}",
+            //    fmt::format(" Yaw:   {:.2f}\n Pitch: {:.2f}",
             //    camera.yaw, camera.pitch).c_str()
             //);
             ImGui::TextUnformatted(
-                std::format(" Mouse position:\n\tx: {:.0f}\n\ty: {:.0f}",
+                fmt::format(" Mouse position:\n\tx: {:.0f}\n\ty: {:.0f}",
                 input::mouse_position.x, input::mouse_position.y ).c_str()
             );
             ImGui::TextUnformatted(
-                std::format(" Mouse offset:\n\tx: {:.0f}\n\ty: {:.0f}",
+                fmt::format(" Mouse offset:\n\tx: {:.0f}\n\ty: {:.0f}",
                 input::get_mouse_movement().x, input::get_mouse_movement().y).c_str()
             );
             ImGui::SetWindowSize(ImVec2(108, 182));
@@ -627,8 +626,8 @@ namespace sigil::renderer {
                                       | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
                                       | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
         {
-            ImGui::TextUnformatted(std::format(" FPS: {:.0f}", time::fps).c_str());
-            ImGui::TextUnformatted(std::format(" ms: {:.2f}", time::ms).c_str());
+            ImGui::TextUnformatted(fmt::format(" FPS: {:.0f}", time::fps).c_str());
+            ImGui::TextUnformatted(fmt::format(" ms: {:.2f}", time::ms).c_str());
             ImGui::SetWindowSize(ImVec2(82, 64));
             ImGui::SetWindowPos(ImVec2(swapchain.extent.width - ImGui::GetWindowSize().x, 8));
         }

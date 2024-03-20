@@ -4,8 +4,9 @@
 
 #include <initializer_list>
 #include <string>
-#include <format>
 #include <vector>
+
+#include <fmt/core.h>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -21,7 +22,7 @@ namespace sigil {
         static u8 major = 0;
         static u8 minor = 0;
         static u8 patch = 1;
-        static const std::string as_string = std::format("v. {}.{}.{} ", major, minor, patch);
+        static const std::string as_string = fmt::format("v. {}.{}.{} ", major, minor, patch);
     };
 
     //____________________________________
