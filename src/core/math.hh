@@ -9,24 +9,23 @@
 #include <glm/gtx/hash.hpp>
 
 //____________________________________
-// @TODO: add own vector math functions and types etc
+// @TODO: all
 
-namespace sigil {
-    namespace math {
+namespace sigil::math {
 
 #define PI 3.14159265358979323846
 
-        //inline float ease_in(float x) {
-        //    return 1 - cos((x * PI) / 2);
-        //}
+    //inline float ease_in(float x) {
+    //    return 1 - cos((x * PI) / 2);
+    //}
 
-        //inline float ease_out(float x) {
-        //    return sin((x * PI) / 2);
-        //}
+    //inline float ease_out(float x) {
+    //    return sin((x * PI) / 2);
+    //}
 
-        //inline float ease_in_out(float x) {
-        //    return -(cos(PI * x) - 1) / 2;
-        //}
-    }
-}
+    //inline float ease_in_out(float x) {
+    //    return -(cos(PI * x) - 1) / 2;
+    //}
+
+} // sigil::math
 
