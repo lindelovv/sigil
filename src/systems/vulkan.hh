@@ -5,7 +5,6 @@
 
 #include <GLFW/glfw3.h>
 #include <fstream>
-#include <vulkan/vulkan_core.h>
 
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_CONSTRUCTORS
@@ -17,6 +16,8 @@
 #include "imgui.h"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
+
+#include "assimp/Importer.hpp"
 
 namespace sigil::renderer {
 
@@ -120,9 +121,22 @@ namespace sigil::renderer {
 
     //_____________________________________
     struct {
-        std::vector<vk::Pipeline> handles;
+        vk::Pipeline handle;
         vk::PipelineLayout layout;
-    } inline pipeline;
+    } inline compute_pipeline;
+
+    struct {
+        vk::Pipeline handle;
+        u32 index;
+        vk::PipelineLayout layout;
+        vk::RenderPass pass;
+        u32 subpass;
+        std::vector<vk::PipelineShaderStageCreateInfo> shader_stages;
+        vk::DynamicState state[2] = {
+            vk::DynamicState::eViewport,
+            vk::DynamicState::eScissor,
+        };
+    } inline graphics_pipeline;
 
     //_____________________________________
     struct {
@@ -148,6 +162,42 @@ namespace sigil::renderer {
     };
     inline std::vector<ComputeEffect> bg_effects;
     inline int current_bg_effect { 0 };
+
+    struct AllocBuffer {
+        vk::Buffer handle;
+        vma::Allocation allocation;
+        vma::AllocationInfo info;
+    };
+
+    struct Vertex {
+        glm::vec3 position;
+        float uv_x;
+        glm::vec3 normal;
+        float uv_y;
+        glm::vec4 color;
+    };
+
+    struct GPUMeshBuffer {
+        AllocBuffer index_buffer;
+        AllocBuffer vertex_buffer;
+        vk::DeviceAddress vertex_buffer_address;
+    };
+
+    struct GPUDrawPushConstants {
+        glm::mat4 world_matrix;
+        vk::DeviceAddress vertex_buffer;
+    };
+
+    struct GeoSurface {
+        u32 start_index;
+        u32 count;
+    };
+
+    struct Mesh {
+        std::string name;
+        std::vector<GeoSurface> surfaces;
+        GPUMeshBuffer mesh_buffer;
+    };
 
     namespace ui {
 
@@ -439,85 +489,6 @@ namespace sigil::renderer {
     }
 
     //_____________________________________
-    inline vk::ResultValue<vk::ShaderModule> load_shader_module(const char* path) {
-        std::ifstream file(path, std::ios::ate | std::ios::binary);
-        if( !file.is_open() ) {
-            throw std::runtime_error("\tError: Failed to open file at:" + std::string(path));
-        }
-        size_t size = file.tellg();
-        std::vector<char> buffer(size);
-        file.seekg(0);
-        file.read((char*)buffer.data(), size);
-        file.close();
-        return device.createShaderModule(vk::ShaderModuleCreateInfo {
-            .codeSize = buffer.size(),
-            .pCode = (const u32*)buffer.data(),
-        });
-    }
-
-    //_____________________________________
-    inline void build_pipeline() {
-
-        vk::PushConstantRange push_const {
-            .stageFlags = vk::ShaderStageFlagBits::eCompute,
-            .offset = 0,
-            .size = sizeof(ComputePushConstants),
-        };
-
-        pipeline.layout = device.createPipelineLayout(
-                vk::PipelineLayoutCreateInfo {
-                    .setLayoutCount = 1,
-                    .pSetLayouts = &descriptor.set.layout,
-                    .pushConstantRangeCount = 1,
-                    .pPushConstantRanges = &push_const,
-                }
-        ).value;
-
-        auto gradient_s = load_shader_module("res/shaders/gradient.comp.spv").value;
-        auto sky_s = load_shader_module("res/shaders/sky.comp.spv").value;
-
-        ComputeEffect gradient_effect {
-            .name = "gradient",
-            .pipeline_layout = pipeline.layout,
-            .data = {
-                { glm::vec4(1, 0, 0, 1) },
-                { glm::vec4(0, 0, 1, 1) },
-            },
-        };
-        vk::PipelineShaderStageCreateInfo stage_info {
-            .stage  = vk::ShaderStageFlagBits::eCompute,
-            .module = gradient_s,
-            .pName  = "main",
-        };
-        vk::ComputePipelineCreateInfo pipe_info {
-            .stage = stage_info,
-            .layout = pipeline.layout,
-        };
-
-        //vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo{}).value;
-        pipeline.handles = device.createComputePipelines(nullptr, pipe_info).value;
-        gradient_effect.pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
-        
-        stage_info.module = sky_s;
-
-        ComputeEffect sky_effect {
-            .name = "sky",
-            .pipeline_layout = pipeline.layout,
-            .data = {
-                { glm::vec4(0.1, 0.2, 0.4, 0.97) },
-            },
-        };
-
-        sky_effect.pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
-
-        bg_effects.push_back(gradient_effect);
-        bg_effects.push_back(sky_effect);
-
-        device.destroyShaderModule(gradient_s);
-        device.destroyShaderModule(sky_s);
-    }
-
-    //_____________________________________
     inline void immediate_submit(fn<void(vk::CommandBuffer cmd)>&& fn) {
         VK_CHECK(device.resetFences(1, &immediate.fence));
         VK_CHECK(immediate.cmd.reset());
@@ -536,6 +507,243 @@ namespace sigil::renderer {
         };
         VK_CHECK(graphics_queue.handle.submit2(1, &submit, immediate.fence));
         VK_CHECK(device.waitForFences(immediate.fence, true, UINT64_MAX));
+    }
+
+    //_____________________________________
+    inline AllocBuffer create_buffer(size_t size, vk::BufferUsageFlags usage, vma::MemoryUsage mem_usage) {
+        vk::BufferCreateInfo buffer_info {
+            .size = size,
+            .usage = usage,
+        };
+        vma::AllocationCreateInfo alloc_info {
+            .flags = vma::AllocationCreateFlagBits::eMapped,
+            .usage = mem_usage,
+        };
+        AllocBuffer buffer;
+        VK_CHECK(alloc.createBuffer(&buffer_info, &alloc_info, &buffer.handle, &buffer.allocation, &buffer.info));
+        return buffer;
+    }
+
+    inline void destroy_buffer(const AllocBuffer& buffer) {
+        alloc.destroyBuffer(buffer.handle, buffer.allocation);
+    }
+
+    inline GPUMeshBuffer upload_mesh(std::span<u32> indices, std::span<Vertex> vertices) {
+        const size_t vertex_buffer_size = vertices.size() * sizeof(Vertex);
+        const size_t index_buffer_size = indices.size() * sizeof(u32);
+
+        auto vertex_buffer = create_buffer(vertex_buffer_size, vk::BufferUsageFlagBits::eStorageBuffer | vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eShaderDeviceAddress, vma::MemoryUsage::eGpuOnly);
+
+        GPUMeshBuffer mesh_buffer {
+            .index_buffer = create_buffer(index_buffer_size, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst, vma::MemoryUsage::eGpuOnly),
+            .vertex_buffer = vertex_buffer,
+            .vertex_buffer_address = device.getBufferAddress(
+                vk::BufferDeviceAddressInfo {
+                    .buffer = vertex_buffer.handle,
+                }
+            ),
+        };
+        AllocBuffer staging_buffer = create_buffer(vertex_buffer_size + index_buffer_size, vk::BufferUsageFlagBits::eTransferSrc, vma::MemoryUsage::eCpuOnly);
+        void* data = staging_buffer.info.pMappedData;
+        memcpy(data, vertices.data(), vertex_buffer_size);
+        memcpy((char*)data + vertex_buffer_size, indices.data(), index_buffer_size);
+        immediate_submit([&](vk::CommandBuffer cmd) {
+            vk::BufferCopy vertex_copy {
+                .srcOffset = 0,
+                .dstOffset = 0,
+                .size = vertex_buffer_size,
+            };
+            cmd.copyBuffer(staging_buffer.handle, mesh_buffer.vertex_buffer.handle, 1, &vertex_copy);
+            vk::BufferCopy index_copy {
+                .srcOffset = vertex_buffer_size,
+                .dstOffset = 0,
+                .size = index_buffer_size,
+            };
+            cmd.copyBuffer(staging_buffer.handle, mesh_buffer.index_buffer.handle, 1, &index_copy);
+        });
+        destroy_buffer(staging_buffer);
+        return mesh_buffer;
+    }
+
+    //_____________________________________
+    inline vk::ResultValue<vk::ShaderModule> load_shader_module(const char* path) {
+        std::ifstream file(path, std::ios::ate | std::ios::binary);
+        if( !file.is_open() ) {
+            throw std::runtime_error("\tError: Failed to open file at:" + std::string(path));
+        }
+        size_t size = file.tellg();
+        std::vector<char> buffer(size);
+        file.seekg(0);
+        file.read((char*)buffer.data(), size);
+        file.close();
+        return device.createShaderModule(vk::ShaderModuleCreateInfo {
+            .codeSize = buffer.size(),
+            .pCode = (const u32*)buffer.data(),
+        });
+    }
+
+    //_____________________________________
+    inline void build_compute_pipeline() {
+
+        vk::PushConstantRange push_const {
+            .stageFlags = vk::ShaderStageFlagBits::eCompute,
+            .offset = 0,
+            .size = sizeof(ComputePushConstants),
+        };
+
+        compute_pipeline.layout = device.createPipelineLayout(
+                vk::PipelineLayoutCreateInfo {
+                    .setLayoutCount = 1,
+                    .pSetLayouts = &descriptor.set.layout,
+                    .pushConstantRangeCount = 1,
+                    .pPushConstantRanges = &push_const,
+                }
+        ).value;
+
+        auto gradient_s = load_shader_module("res/shaders/gradient.comp.spv").value;
+        auto sky_s = load_shader_module("res/shaders/sky.comp.spv").value;
+
+        ComputeEffect gradient_effect {
+            .name = "gradient",
+            .pipeline_layout = compute_pipeline.layout,
+            .data = {
+                { glm::vec4(1, 0, 0, 1) },
+                { glm::vec4(0, 0, 1, 1) },
+            },
+        };
+        vk::PipelineShaderStageCreateInfo stage_info {
+            .stage  = vk::ShaderStageFlagBits::eCompute,
+            .module = gradient_s,
+            .pName  = "main",
+        };
+        vk::ComputePipelineCreateInfo pipe_info {
+            .stage = stage_info,
+            .layout = compute_pipeline.layout,
+        };
+
+        //vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo{}).value;
+        compute_pipeline.handle  = device.createComputePipelines(nullptr, pipe_info).value.front();
+        gradient_effect.pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
+        
+        stage_info.module = sky_s;
+
+        ComputeEffect sky_effect {
+            .name = "sky",
+            .pipeline_layout = compute_pipeline.layout,
+            .data = {
+                { glm::vec4(0.1, 0.2, 0.4, 0.97) },
+            },
+        };
+
+        sky_effect.pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
+
+        bg_effects.push_back(sky_effect);
+        bg_effects.push_back(gradient_effect);
+
+        device.destroyShaderModule(sky_s);
+        device.destroyShaderModule(gradient_s);
+    }
+
+    //_____________________________________
+    inline void build_graphics_pipeline() {
+        vk::PipelineViewportStateCreateInfo viewport_state {
+            .viewportCount = 1,
+            .scissorCount = 1,
+        };
+        vk::PipelineColorBlendAttachmentState attach_state {
+            .blendEnable = false,
+            .colorWriteMask = vk::ColorComponentFlagBits::eR 
+                             | vk::ColorComponentFlagBits::eG 
+                             | vk::ColorComponentFlagBits::eB 
+                             | vk::ColorComponentFlagBits::eA,
+        };
+        vk::PipelineColorBlendStateCreateInfo blend_state {
+            .logicOpEnable = false,
+            .logicOp = vk::LogicOp::eCopy,
+            .attachmentCount = 1,
+            .pAttachments = &attach_state,
+        };
+        vk::PipelineDepthStencilStateCreateInfo depth_state {
+            .depthTestEnable = false,
+            .depthWriteEnable = false,
+            .depthCompareOp = vk::CompareOp::eNever,
+            .depthBoundsTestEnable = false,
+            .stencilTestEnable = false,
+            .front = {},
+            .back = {},
+            .minDepthBounds = 0.f,
+            .maxDepthBounds = 1.f,
+        };
+        vk::PipelineDynamicStateCreateInfo dyn_state {
+            .dynamicStateCount = 2,
+            .pDynamicStates = &graphics_pipeline.state[0],
+        };
+        vk::PipelineRasterizationStateCreateInfo rasterization_state {
+            .polygonMode = vk::PolygonMode::eFill,
+            .cullMode = vk::CullModeFlagBits::eNone,
+            .frontFace = vk::FrontFace::eClockwise,
+            .lineWidth = 1.f,
+        };
+        vk::PipelineInputAssemblyStateCreateInfo assembly_state {
+            .topology = vk::PrimitiveTopology::eTriangleList,
+            .primitiveRestartEnable = false,
+        };
+        vk::PipelineMultisampleStateCreateInfo multisample_state {
+            .rasterizationSamples = vk::SampleCountFlagBits::e1,
+            .sampleShadingEnable = false,
+            .minSampleShading = 1.f,
+            .pSampleMask = nullptr,
+            .alphaToCoverageEnable = false,
+            .alphaToOneEnable = false,
+        };
+        auto vertex_shader   = load_shader_module("res/shaders/mesh.vert.spv").value;
+        auto fragment_shader = load_shader_module("res/shaders/solid.frag.spv").value;
+        vk::PushConstantRange buffer_range {
+            .stageFlags = vk::ShaderStageFlagBits::eVertex,
+            .offset = 0,
+            .size = sizeof(GPUDrawPushConstants),
+        };
+        graphics_pipeline.layout = device.createPipelineLayout(
+            vk::PipelineLayoutCreateInfo {
+                .pushConstantRangeCount = 1,
+                .pPushConstantRanges = &buffer_range,
+            })
+            .value;
+        graphics_pipeline.shader_stages.push_back(
+            vk::PipelineShaderStageCreateInfo {
+            .stage  = vk::ShaderStageFlagBits::eVertex,
+            .module = vertex_shader,
+            .pName  = "main",
+        });
+        graphics_pipeline.shader_stages.push_back(
+            vk::PipelineShaderStageCreateInfo {
+            .stage  = vk::ShaderStageFlagBits::eFragment,
+            .module = fragment_shader,
+            .pName  = "main",
+        });
+        vk::Format color_attachment = vk::Format::eR16G16B16A16Sfloat;
+        vk::PipelineRenderingCreateInfo render_info {
+            .colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &color_attachment,
+            .depthAttachmentFormat = vk::Format::eUndefined,
+        };
+        vk::GraphicsPipelineCreateInfo graphics_pipeline_info {
+            .pNext = &render_info,
+            .stageCount = (u32)graphics_pipeline.shader_stages.size(),
+            .pStages = graphics_pipeline.shader_stages.data(),
+            .pInputAssemblyState = &assembly_state,
+            .pViewportState = &viewport_state,
+            .pRasterizationState = &rasterization_state,
+            .pMultisampleState = &multisample_state,
+            .pDepthStencilState = &depth_state,
+            .pColorBlendState = &blend_state,
+            .pDynamicState = &dyn_state,
+            .layout = graphics_pipeline.layout,
+        };
+        graphics_pipeline.handle = device
+            .createGraphicsPipelines(nullptr, graphics_pipeline_info)
+            .value
+            .front();
     }
 
     inline void setup_imgui() {
@@ -690,7 +898,8 @@ namespace sigil::renderer {
         build_command_structures();
         build_sync_structures();
         build_descriptors();
-        build_pipeline();
+        build_compute_pipeline();
+        build_graphics_pipeline();
         setup_imgui();
     }
 
@@ -719,6 +928,89 @@ namespace sigil::renderer {
             .pImageMemoryBarriers = &img_barrier,
         });
     }
+
+    //_____________________________________
+    inline void draw_geometry(vk::CommandBuffer cmd) {
+
+        Vertex rect_vertices[4] {
+            Vertex {
+                .position = { .5, -.5, 0 },
+                .color    = { 0, 1, 1, 1},
+            },
+            Vertex {
+                .position = { .5, .5, 0 },
+                .color    = { 0, 1, 1, 1 },
+            },
+            Vertex {
+                .position = { -.5, -.5, 0 },
+                .color    = { 0, 1, 1, 1 },
+            },
+            Vertex {
+                .position = { -.5, .5, 0 },
+                .color    = { 0, 1, 1, 1 },
+            },
+        };
+        u32 rect_indices[6] {
+            0, 1, 2,
+            2, 1, 3,
+        };
+        auto rect = upload_mesh(rect_indices, rect_vertices);
+
+        vk::RenderingAttachmentInfo attach_info {
+            .imageView = _draw.img.view,
+            .imageLayout = vk::ImageLayout::eGeneral,
+            .loadOp = vk::AttachmentLoadOp::eLoad,
+            .storeOp = vk::AttachmentStoreOp::eStore,
+        };
+        vk::RenderingInfo render_info {
+            .renderArea = {
+                .offset = vk::Offset2D {
+                    .x = 0,
+                    .y = 0,
+                },
+                .extent = _draw.extent,
+            },
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &attach_info,
+            .pDepthAttachment = nullptr,
+            .pStencilAttachment = nullptr,
+        };
+        cmd.beginRendering(&render_info);
+
+        vk::Viewport viewport {
+            .x = 0,
+            .y = 0,
+            .width = (float)_draw.extent.width,
+            .height = (float)_draw.extent.height,
+            .minDepth = 0.f,
+            .maxDepth = 1.f,
+        };
+        cmd.setViewport(0, 1, &viewport);
+
+        vk::Rect2D scissor {
+            .offset {
+                .x = 0,
+                .y = 0,
+            },
+            .extent {
+                .width = _draw.extent.width,
+                .height = _draw.extent.height,
+            },
+        };
+        cmd.setScissor(0, 1, &scissor);
+
+        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline.handle);
+
+        GPUDrawPushConstants push_constants {
+            .world_matrix = glm::mat4 { 1 },
+            .vertex_buffer = rect.vertex_buffer_address,
+        };
+        cmd.pushConstants(graphics_pipeline.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &push_constants);
+        cmd.bindIndexBuffer(rect.index_buffer.handle, 0, vk::IndexType::eUint32);
+        cmd.drawIndexed(6, 1, 0, 0, 0);
+        cmd.endRendering();
+    };
     
     //_____________________________________
     inline void tick() {
@@ -742,21 +1034,22 @@ namespace sigil::renderer {
         {
             transition_img(frame.cmd.buffer, _draw.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 
-            frame.cmd.buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.handles.front());
-            frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline.layout, 0, descriptor.set.handle, nullptr);
+            frame.cmd.buffer.bindPipeline(vk::PipelineBindPoint::eCompute, compute_pipeline.handle);
+            frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, compute_pipeline.layout, 0, descriptor.set.handle, nullptr);
             ComputePushConstants push_const {
                 .data1 = glm::vec4(1, 0, 0, 1),
                 .data2 = glm::vec4(0, 0, 1, 1),
             };
-            frame.cmd.buffer.pushConstants(pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(ComputePushConstants), &push_const);
+            frame.cmd.buffer.pushConstants(compute_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(ComputePushConstants), &push_const);
             frame.cmd.buffer.dispatch(std::ceil(_draw.extent.width / 16.f), std::ceil(_draw.extent.height / 16.f), 1);
 
             ComputeEffect& effect = bg_effects[current_bg_effect];
 
             frame.cmd.buffer.bindPipeline(vk::PipelineBindPoint::eCompute, effect.pipeline);
-            frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline.layout, 0, descriptor.set.handle, nullptr);
-            frame.cmd.buffer.pushConstants(pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(ComputePushConstants), &effect.data);
+            frame.cmd.buffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, compute_pipeline.layout, 0, descriptor.set.handle, nullptr);
+            frame.cmd.buffer.pushConstants(compute_pipeline.layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(ComputePushConstants), &effect.data);
             frame.cmd.buffer.dispatch(std::ceil(_draw.extent.width / 16.f), std::ceil(_draw.extent.height / 16.f), 1);
+            draw_geometry(frame.cmd.buffer);
 
             transition_img(frame.cmd.buffer, _draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eTransferSrcOptimal);
             transition_img(frame.cmd.buffer, swap_img, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
@@ -849,10 +1142,12 @@ namespace sigil::renderer {
         ImGui::DestroyContext();
         device.destroyCommandPool(immediate.pool);
 
-        device.destroyPipelineLayout(pipeline.layout);
-        for( auto pipe : pipeline.handles ) {
-            device.destroyPipeline(pipe);
-        }
+        device.destroyPipelineLayout(compute_pipeline.layout);
+        device.destroyPipeline(compute_pipeline.handle);
+
+        device.destroyPipelineLayout(graphics_pipeline.layout);
+        device.destroyPipeline(graphics_pipeline.handle);
+
         device.destroySwapchainKHR(swapchain.handle);
         for( auto view : swapchain.img_views ) {
             device.destroyImageView(view);
