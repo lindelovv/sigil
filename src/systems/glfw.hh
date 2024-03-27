@@ -30,7 +30,7 @@ namespace sigil {
             this->mods   = mods;
         }
     
-        uint16_t operator[](uint16_t i) {
+        u16 operator[](u16 i) {
             std::hash<std::string> hsh;
             std::stringstream ss;
             ss << key << mods;

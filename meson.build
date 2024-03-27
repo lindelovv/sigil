@@ -21,6 +21,7 @@ executable('sigil', sources,
     dependency('glm'),
     dependency('imgui', version: ['>=1.90.4'], default_options: ['default_library=static']),
     dependency('fmt', default_options: ['default_library=static']),
+    dependency('assimp'),
   ]
 )
 
