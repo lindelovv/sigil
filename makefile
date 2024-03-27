@@ -2,8 +2,10 @@ CFLAGS=-std=c++20 -g -march=native -O2 -pipe -fuse-ld=mold -D_GLFW_WAYLAND -D_GL
 LDFLAGS=-lglfw -lvulkan -lassimp -ldl -lX11 -lXxf86vm -lXrandr -lXi
 NAME=default
 
+#g++-13 $(CFLAGS) $(EXFLAGS) $(shell find ./src/* -name "*.cc") $(shell find ./src/* -type d | sed s/^/-I/) -I./submodules/imgui -I./submodules/VulkanMemoryAllocator-Hpp/include/ -I./submodules/VulkanMemoryAllocator-Hpp/VulkanMemoryAllocator/include -o ./build/sigil $(LDFLAGS)
+
 compile c:
-	g++-13 $(CFLAGS) $(EXFLAGS) $(shell find ./src/* -name "*.cc") $(shell find ./src/* -type d | sed s/^/-I/) -I./submodules/imgui -I./submodules/VulkanMemoryAllocator-Hpp/include/ -I./submodules/VulkanMemoryAllocator-Hpp/VulkanMemoryAllocator/include -o ./build/sigil $(LDFLAGS)
+	ninja -C build
 run r:
 	./build/sigil
 debug d:

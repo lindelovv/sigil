@@ -4,7 +4,9 @@
 #include "glfw.hh"
 
 #include <GLFW/glfw3.h>
+#include <assimp/mesh.h>
 #include <fstream>
+#include <memory>
 
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_CONSTRUCTORS
@@ -18,6 +20,9 @@
 #include "backends/imgui_impl_vulkan.h"
 
 #include "assimp/Importer.hpp"
+#include <assimp/cimport.h>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 namespace sigil::renderer {
 
@@ -95,16 +100,18 @@ namespace sigil::renderer {
     } inline graphics_queue;
 
     //_____________________________________
-    struct {
+    struct AllocatedImage {
         struct {
             vk::Image       handle;
             vk::ImageView   view;
             vma::Allocation alloc;
             vk::Extent3D    extent;
             vk::Format      format;
-        }            img;
+        } img;
         vk::Extent2D extent;
-    } inline _draw;
+    };
+    inline AllocatedImage _draw;
+    inline AllocatedImage _depth;
 
     //_____________________________________
     static vma::Allocator alloc;
@@ -199,6 +206,77 @@ namespace sigil::renderer {
         GPUMeshBuffer mesh_buffer;
     };
 
+    inline std::vector<Mesh> meshes;
+
+    //_____________________________________
+    inline static glm::vec3 world_up = glm::vec3(0.f, 0.f, -1.f);
+
+    struct {
+        struct {
+            glm::vec3 position = glm::vec3( 1, 0, 0 );
+            glm::vec3 rotation = glm::vec3( 0, 0, 0 );
+            glm::vec3 scale    = glm::vec3( 0 );
+        } transform;
+        float fov =  90.f;
+        float yaw = -90.f;
+        float pitch = -13.f;
+        glm::vec3 velocity;
+        glm::vec3 forward_vector = glm::normalize(glm::vec3(
+                    cos(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                    sin(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                    sin(glm::radians(pitch))
+                ));
+        glm::vec3 up_vector      = -world_up;
+        glm::vec3 right_vector   = glm::cross(forward_vector, world_up);
+        struct {
+            float near =  0.01f;
+            float far  = 256.0f;
+        } clip_plane;
+        struct {
+            bool forward;
+            bool right;
+            bool back; 
+            bool left; 
+            bool up; 
+            bool down; 
+        } request_movement;
+        float movement_speed = 1.f;
+        bool follow_mouse = false;
+        float mouse_sens = 12.f;
+
+        inline void update(float delta_time) {
+            if( request_movement.forward ) velocity += forward_vector;
+            if( request_movement.back    ) velocity -= forward_vector;
+            if( request_movement.right   ) velocity -= right_vector;
+            if( request_movement.left    ) velocity += right_vector;
+            if( request_movement.up      ) velocity += up_vector;
+            if( request_movement.down    ) velocity -= up_vector;
+            transform.position += velocity * movement_speed * delta_time;
+            velocity = glm::vec3(0);
+            if( follow_mouse ) {
+                glm::dvec2 offset = -input::get_mouse_movement() * glm::dvec2(mouse_sens) * glm::dvec2(delta_time);
+                yaw += offset.x;
+                pitch = ( pitch + offset.y >  89.f ?  89.f
+                        : pitch + offset.y < -89.f ? -89.f
+                        : pitch + offset.y);
+                forward_vector = glm::normalize(glm::vec3(
+                    cos(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                    sin(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                    sin(glm::radians(pitch))
+                ));
+                right_vector = glm::cross(forward_vector, world_up);
+                up_vector = glm::cross(forward_vector, right_vector);
+                //transform.rotation = glm::qrot(transform.rotation, forward_vector);
+            }
+        }
+        inline glm::mat4 get_view() {
+            return glm::lookAt(transform.position,
+                               transform.position + forward_vector,
+                               up_vector);
+        }
+    } inline camera;
+
+    //_____________________________________
     namespace ui {
 
         inline void draw(vk::CommandBuffer cmd, vk::ImageView img_view) {
@@ -223,14 +301,14 @@ namespace sigil::renderer {
                                           | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove
                                           | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMouseInputs);
             {
-                //ImGui::TextUnformatted(
-                //    fmt::format(" Camera position:\n\tx: {:.3f}\n\ty: {:.3f}\n\tz: {:.3f}",
-                //    camera.transform.position.x, camera.transform.position.y, camera.transform.position.z).c_str()
-                //);
-                //ImGui::TextUnformatted(
-                //    fmt::format(" Yaw:   {:.2f}\n Pitch: {:.2f}",
-                //    camera.yaw, camera.pitch).c_str()
-                //);
+                ImGui::TextUnformatted(
+                    fmt::format(" Camera position:\n\tx: {:.3f}\n\ty: {:.3f}\n\tz: {:.3f}",
+                    camera.transform.position.x, camera.transform.position.y, camera.transform.position.z).c_str()
+                );
+                ImGui::TextUnformatted(
+                    fmt::format(" Yaw:   {:.2f}\n Pitch: {:.2f}",
+                    camera.yaw, camera.pitch).c_str()
+                );
                 ImGui::TextUnformatted(
                     fmt::format(" Mouse position:\n\tx: {:.0f}\n\ty: {:.0f}",
                     input::mouse_position.x, input::mouse_position.y ).c_str()
@@ -352,6 +430,39 @@ namespace sigil::renderer {
                 .format     = _draw.img.format,
                 .subresourceRange {
                     .aspectMask     = vk::ImageAspectFlagBits::eColor,
+                    .baseMipLevel   = 0,
+                    .levelCount     = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount     = 1,
+        },  }   ).value;
+
+        _depth.img = {
+            .extent = _draw.img.extent,
+            .format = vk::Format::eD32Sfloat,
+        };
+        std::tie( _depth.img.handle, _depth.img.alloc ) = alloc.createImage(
+            vk::ImageCreateInfo {
+                .imageType = vk::ImageType::e2D,
+                .format = _depth.img.format,
+                .extent = _depth.img.extent,
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = vk::SampleCountFlagBits::e1,
+                .tiling = vk::ImageTiling::eOptimal,
+                .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
+            },
+            vma::AllocationCreateInfo {
+                .usage = vma::MemoryUsage::eGpuOnly,
+                .requiredFlags = vk::MemoryPropertyFlagBits::eDeviceLocal,
+            }
+        ).value;
+        _depth.img.view = device.createImageView(
+            vk::ImageViewCreateInfo {
+                .image      = _depth.img.handle,
+                .viewType   = vk::ImageViewType::e2D,
+                .format     = _depth.img.format,
+                .subresourceRange {
+                    .aspectMask     = vk::ImageAspectFlagBits::eDepth,
                     .baseMipLevel   = 0,
                     .levelCount     = 1,
                     .baseArrayLayer = 0,
@@ -582,6 +693,136 @@ namespace sigil::renderer {
         });
     }
 
+    inline std::optional<std::vector<std::shared_ptr<Mesh>>> load_model(const char* path) {
+        std::cout << "\n>> Loading gltf file at: " << path << "\n";
+
+        std::vector<std::shared_ptr<Mesh>> new_meshes;
+        Assimp::Importer importer;
+        if( auto file = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs) ) {
+            std::vector<u32> indices;
+            std::vector<Vertex> vertices;
+            for( uint32_t i = 0; i < file->mNumMeshes; i++ ) {
+                Mesh mesh {
+                    .name = "none",
+                };
+                indices.clear();
+                vertices.clear();
+
+                for( u32 j = 0; j < file->mNumMeshes; j++ ) {
+                    aiMesh* submesh = file->mMeshes[j];
+                    GeoSurface surface;
+
+                    surface.start_index = (u32)indices.size();
+                    for( u32 f = 0; f < submesh->mNumFaces; f++ ) {
+                        aiFace& face = submesh->mFaces[f];
+                        assert(face.mNumIndices == 3);
+                        indices.push_back(face.mIndices[0]);
+                        indices.push_back(face.mIndices[1]);
+                        indices.push_back(face.mIndices[2]);
+                    }
+                    surface.count = (u32)indices.size();
+
+                    std::cout << submesh->GetNumColorChannels() << "\n";
+                    for( uint32_t j = 0; j <= submesh->mNumVertices; j++ ) {
+                        vertices.push_back(Vertex {
+                            .position = {
+                                submesh->mVertices[j].x,
+                                submesh->mVertices[j].y,
+                                submesh->mVertices[j].z,
+                            },
+                            .uv_x = submesh->mTextureCoords[0][j].x,
+                            .normal = {
+                                submesh->mNormals[j].x,
+                                submesh->mNormals[j].y,
+                                submesh->mNormals[j].z,
+                            },
+                            .uv_y = submesh->mTextureCoords[0][j].y,
+                            .color = {
+                                1.f,//submesh->mColors[0][j]->r,
+                                1.f,//submesh->mColors[0][j]->g,
+                                1.f,//submesh->mColors[0][j]->b,
+                                1.f,//submesh->mColors[0][j]->a,
+                            },
+                        });
+                    }
+                    mesh.surfaces.push_back(surface);
+                }
+                mesh.mesh_buffer = upload_mesh(indices, vertices);
+                new_meshes.push_back(std::make_shared<Mesh>(mesh));
+
+                ////_____________________________________
+                //// Vertex buffer creation
+                //{
+                //    vk::DeviceSize buffer_size = sizeof(mesh.vertices.pos[0]) * mesh.vertices.pos.size();
+
+                //    vk::Buffer staging_buffer;
+                //    vk::DeviceMemory staging_buffer_memory;
+                //    create_buffer(
+                //        buffer_size,
+                //        vk::BufferUsageFlagBits::eTransferSrc,
+                //        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                //        staging_buffer,
+                //        staging_buffer_memory
+                //    );
+                //    void* data = device.mapMemory(staging_buffer_memory, 0, buffer_size).value;
+                //    {
+                //        memcpy(data, mesh.vertices.pos.data(), (size_t) buffer_size);
+                //    }
+                //    device.unmapMemory(staging_buffer_memory);
+
+                //    create_buffer(
+                //        buffer_size,
+                //        vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+                //        vk::MemoryPropertyFlagBits::eDeviceLocal,
+                //        mesh.vertices.buffer,
+                //        mesh.vertices.memory
+                //    );
+                //    copy_buffer(staging_buffer, mesh.vertices.buffer, buffer_size);
+                //    device.destroyBuffer(staging_buffer);
+                //    device.freeMemory(staging_buffer_memory);
+                //}
+
+                ////_____________________________________
+                //// Index buffer creation
+                //{
+                //    vk::DeviceSize buffer_size = sizeof(mesh.indices.unique[0]) * mesh.indices.unique.size();
+
+                //    vk::Buffer staging_buffer;
+                //    vk::DeviceMemory staging_buffer_memory;
+                //    create_buffer(
+                //        buffer_size,
+                //        vk::BufferUsageFlagBits::eTransferSrc,
+                //        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+                //        staging_buffer,
+                //        staging_buffer_memory
+                //    );
+                //    void* data = device.mapMemory(staging_buffer_memory, 0, buffer_size).value;
+                //    {
+                //        memcpy(data, mesh.indices.unique.data(), (size_t) buffer_size);
+                //    }
+                //    device.unmapMemory(staging_buffer_memory);
+
+                //    create_buffer(
+                //        buffer_size,
+                //        vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+                //        vk::MemoryPropertyFlagBits::eDeviceLocal,
+                //        mesh.indices.buffer,
+                //        mesh.indices.memory
+                //    );
+                //    copy_buffer(staging_buffer, mesh.indices.buffer, buffer_size);
+                //    device.destroyBuffer(staging_buffer);
+                //    device.freeMemory(staging_buffer_memory);
+                //}
+                //model.meshes.push_back(mesh);
+            }
+            //models.push_back(model);
+        } else {
+            std::cout << "Error:\n>>\tFailed to load model.\n";
+            throw importer.GetException();
+        }
+        return new_meshes;
+    }
+
     //_____________________________________
     inline void build_compute_pipeline() {
 
@@ -725,7 +966,7 @@ namespace sigil::renderer {
         vk::PipelineRenderingCreateInfo render_info {
             .colorAttachmentCount = 1,
             .pColorAttachmentFormats = &color_attachment,
-            .depthAttachmentFormat = vk::Format::eUndefined,
+            .depthAttachmentFormat = _depth.img.format,
         };
         vk::GraphicsPipelineCreateInfo graphics_pipeline_info {
             .pNext = &render_info,
@@ -744,6 +985,9 @@ namespace sigil::renderer {
             .createGraphicsPipelines(nullptr, graphics_pipeline_info)
             .value
             .front();
+
+        device.destroyShaderModule(vertex_shader);
+        device.destroyShaderModule(fragment_shader);
     }
 
     inline void setup_imgui() {
@@ -809,6 +1053,52 @@ namespace sigil::renderer {
 
     //_____________________________________
     inline void init() {
+        input::bind(GLFW_KEY_W,
+            key_callback {
+                .press   = [&]{ camera.request_movement.forward = 1; },
+                .release = [&]{ camera.request_movement.forward = 0; }
+        }   );
+        input::bind(GLFW_KEY_S,
+            key_callback {
+                .press   = [&]{ camera.request_movement.back = 1; },
+                .release = [&]{ camera.request_movement.back = 0; }
+        }   );
+        input::bind(GLFW_KEY_A,
+            key_callback {
+                .press   = [&]{ camera.request_movement.left = 1; },
+                .release = [&]{ camera.request_movement.left = 0; }
+        }   );
+        input::bind(GLFW_KEY_D,
+            key_callback {
+                .press   = [&]{ camera.request_movement.right = 1; },
+                .release = [&]{ camera.request_movement.right = 0; }
+        }   );
+        input::bind(GLFW_KEY_Q,
+            key_callback {
+                .press   = [&]{ camera.request_movement.down = 1; },
+                .release = [&]{ camera.request_movement.down = 0; }
+        }   );
+        input::bind(GLFW_KEY_E,
+            key_callback {
+                .press   = [&]{ camera.request_movement.up = 1; },
+                .release = [&]{ camera.request_movement.up = 0; }
+        }   );
+        input::bind(GLFW_KEY_LEFT_SHIFT,
+            key_callback {
+                .press   = [&]{ camera.movement_speed = 2.f; },
+                .release = [&]{ camera.movement_speed = 1.f; }
+        }   );
+        input::bind(GLFW_MOUSE_BUTTON_2,
+            key_callback {
+                .press   = [&]{
+                    glfwSetInputMode(window::handle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+                    camera.follow_mouse = true;
+                },
+                .release = [&]{
+                    glfwSetInputMode(window::handle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                    camera.follow_mouse = false;
+                }
+        }   );
         u32 glfw_extension_count = 0;
         const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
         std::vector<const char*> extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
@@ -901,6 +1191,37 @@ namespace sigil::renderer {
         build_compute_pipeline();
         build_graphics_pipeline();
         setup_imgui();
+
+        //Vertex rect_vertices[4] {
+        //    Vertex {
+        //        .position = { .5, -.5, 0 },
+        //        .color    = { 0, 1, 1, 1},
+        //    },
+        //    Vertex {
+        //        .position = { .5, .5, 0 },
+        //        .color    = { 0, 1, 1, 1 },
+        //    },
+        //    Vertex {
+        //        .position = { -.5, -.5, 0 },
+        //        .color    = { 0, 1, 1, 1 },
+        //    },
+        //    Vertex {
+        //        .position = { -.5, .5, 0 },
+        //        .color    = { 0, 1, 1, 1 },
+        //    },
+        //};
+        //u32 rect_indices[6] {
+        //    0, 1, 2,
+        //    2, 1, 3,
+        //};
+        //auto rect = upload_mesh(rect_indices, rect_vertices);
+        auto loaded_meshes = load_model("res/models/SciFiHelmet.gltf");
+        if( !loaded_meshes.has_value() ) {
+            std::cout << "\nError:\n>>\tFailed to load meshes.\n";
+        }
+        for( auto& mesh : loaded_meshes.value()) {
+            meshes.push_back(*mesh);
+        }
     }
 
     //_____________________________________
@@ -931,31 +1252,6 @@ namespace sigil::renderer {
 
     //_____________________________________
     inline void draw_geometry(vk::CommandBuffer cmd) {
-
-        Vertex rect_vertices[4] {
-            Vertex {
-                .position = { .5, -.5, 0 },
-                .color    = { 0, 1, 1, 1},
-            },
-            Vertex {
-                .position = { .5, .5, 0 },
-                .color    = { 0, 1, 1, 1 },
-            },
-            Vertex {
-                .position = { -.5, -.5, 0 },
-                .color    = { 0, 1, 1, 1 },
-            },
-            Vertex {
-                .position = { -.5, .5, 0 },
-                .color    = { 0, 1, 1, 1 },
-            },
-        };
-        u32 rect_indices[6] {
-            0, 1, 2,
-            2, 1, 3,
-        };
-        auto rect = upload_mesh(rect_indices, rect_vertices);
-
         vk::RenderingAttachmentInfo attach_info {
             .imageView = _draw.img.view,
             .imageLayout = vk::ImageLayout::eGeneral,
@@ -1003,12 +1299,12 @@ namespace sigil::renderer {
         cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline.handle);
 
         GPUDrawPushConstants push_constants {
-            .world_matrix = glm::mat4 { 1 },
-            .vertex_buffer = rect.vertex_buffer_address,
+            .world_matrix = camera.get_view(),//glm::mat4 { 1 },
+            .vertex_buffer = meshes[0].mesh_buffer.vertex_buffer_address,
         };
         cmd.pushConstants(graphics_pipeline.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &push_constants);
-        cmd.bindIndexBuffer(rect.index_buffer.handle, 0, vk::IndexType::eUint32);
-        cmd.drawIndexed(6, 1, 0, 0, 0);
+        cmd.bindIndexBuffer(meshes[0].mesh_buffer.index_buffer.handle, 0, vk::IndexType::eUint32);
+        cmd.drawIndexed(meshes[0].surfaces[0].count, 1, meshes[0].surfaces[0].start_index, 0, 0);
         cmd.endRendering();
     };
     
@@ -1022,6 +1318,7 @@ namespace sigil::renderer {
         //if( img.result == vk::Result::eErrorOutOfDateKHR ) {
         //    rebuild_swapchain();
         //}
+        camera.update(time::delta_time);
         u32 img_index = img.value;
         vk::Image swap_img = swapchain.images.at(img_index);
 
@@ -1137,10 +1434,13 @@ namespace sigil::renderer {
     inline void terminate() {
         VK_CHECK(device.waitIdle());
 
+        for( auto& mesh : meshes ) {
+            alloc.destroyBuffer(mesh.mesh_buffer.index_buffer.handle, mesh.mesh_buffer.index_buffer.allocation);
+            alloc.destroyBuffer(mesh.mesh_buffer.vertex_buffer.handle, mesh.mesh_buffer.vertex_buffer.allocation);
+        }
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplGlfw_Shutdown();
         ImGui::DestroyContext();
-        device.destroyCommandPool(immediate.pool);
 
         device.destroyPipelineLayout(compute_pipeline.layout);
         device.destroyPipeline(compute_pipeline.handle);
@@ -1154,6 +1454,7 @@ namespace sigil::renderer {
         }
         device.destroyImageView(_draw.img.view);
         alloc.destroyImage(_draw.img.handle, _draw.img.alloc);
+        alloc.destroyImage(_depth.img.handle, _depth.img.alloc);
         device.destroyDescriptorPool(descriptor.pool);
         device.destroyDescriptorSetLayout(descriptor.set.layout);
         for( auto frame : frames ) {
