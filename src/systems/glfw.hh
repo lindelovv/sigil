@@ -10,6 +10,9 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include "imgui.h"
+#include "backends/imgui_impl_glfw.h"
+
 namespace sigil {
 
     //_________________________________________
@@ -171,7 +174,7 @@ struct glfw {
         glfwSetKeyCallback(window::handle, input::keyboard_callback);
         glfwSetMouseButtonCallback(window::handle, input::mouse_callback);
 
-        schedule(tick, {
+        schedule(eTick, {
             time::poll,
             input::poll,
             window::poll

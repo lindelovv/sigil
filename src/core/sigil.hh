@@ -36,18 +36,19 @@ namespace sigil {
 
     namespace /* private */ {
 
-        enum runlvl {
-            init,
-            tick,
-            exit,
-        };
-        inline std::unordered_map<runlvl, std::vector<fn<void()>>> delegates {
-            { init, std::vector<fn<void()>> {} },
-            { tick, std::vector<fn<void()>> {} },
-            { exit, std::vector<fn<void()>> {} },
+        enum Runlvl {
+            eInit,
+            eTick,
+            eExit,
         };
 
-        inline void exec(runlvl lvl) {
+        inline std::unordered_map<Runlvl, std::vector<fn<void()>>> delegates {
+            { eInit, std::vector<fn<void()>> {} },
+            { eTick, std::vector<fn<void()>> {} },
+            { eExit, std::vector<fn<void()>> {} },
+        };
+
+        inline void exec(Runlvl lvl) {
             for( auto&& fn : delegates.at(lvl) ) { fn(); }
         }
 
@@ -65,26 +66,30 @@ namespace sigil {
             }
 
             void run() {
-                exec(init);
+                exec(eInit);
                 while( !should_close ) {
-                    exec(tick);
+                    exec(eTick);
                 }
-                exec(exit);
+                exec(eExit);
             }
         } inline _core;
+
+        struct Module {
+            void setup();
+        };
     }
 
     inline _sigil& init() {
         return _core;
     }
 
-    inline void schedule(runlvl lvl, std::initializer_list<std::function<void()>> delegate_list) {
+    inline void schedule(Runlvl lvl, std::initializer_list<std::function<void()>> delegate_list) {
         for( auto&& delegate : delegate_list ) {
             delegates.at(lvl).emplace_back(delegate);
         }
     }
 
-    inline void schedule(runlvl lvl, std::function<void()> delegate) {
+    inline void schedule(Runlvl lvl, std::function<void()> delegate) {
         delegates.at(lvl).emplace_back(delegate);
     }
 
