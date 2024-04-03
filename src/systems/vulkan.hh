@@ -503,6 +503,35 @@ namespace sigil::renderer {
         }
     } inline camera;
 
+
+    namespace primitives {
+
+        struct Plane {
+            Vertex rect_vertices[4] {
+                Vertex {
+                    .position = { .5, -.5, 0 },
+                    .color    = { .5, .5, .5, 1 },
+                },
+                Vertex {
+                    .position = { .5, .5, 0 },
+                    .color    = { .5, .5, .5, 1 },
+                },
+                Vertex {
+                    .position = { -.5, -.5, 0 },
+                    .color    = { .5, .5, .5, 1 },
+                },
+                Vertex {
+                    .position = { -.5, .5, 0 },
+                    .color    = { .5, .5, .5, 1 },
+                },
+            };
+            u32 rect_indices[6] {
+                0, 1, 2,
+                2, 1, 3,
+            };
+        };
+    } // primitives
+
     //_____________________________________
     namespace ui {
 
