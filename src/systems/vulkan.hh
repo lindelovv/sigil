@@ -683,32 +683,12 @@ namespace sigil::renderer {
         std::vector<RenderObject> opaque_surfaces;
     };
 
-    class IRenderable { virtual void draw(const glm::mat4& matrix, DrawContext& context) {}; };
-
-    struct Node : public IRenderable {
-        std::weak_ptr<Node> parent;
-        std::vector<std::shared_ptr<Node>> children;
+    struct MeshNode {
+        std::shared_ptr<Mesh> mesh;
         glm::mat4 local_transform;
         glm::mat4 world_transform;
 
-        void refresh_transform(const glm::mat4& parent_matrix) {
-            world_transform = parent_matrix * local_transform;
-            for( auto child : children ) {
-                child->refresh_transform(world_transform);
-            }
-        }
-
-        virtual void Draw(const glm::mat4& matrix, DrawContext& context) {
-            for( auto& child : children ) {
-                child->Draw(matrix, context);
-            }
-        }
-    };
-
-    struct MeshNode : public Node {
-        std::shared_ptr<Mesh> mesh;
-
-        virtual void Draw(const glm::mat4& matrix, DrawContext& context) override {
+        void draw(const glm::mat4& matrix, DrawContext& context) {
             glm::mat4 node_matrix = matrix * world_transform;
 
             std::cout << "MeshNode draw\n";
@@ -722,7 +702,6 @@ namespace sigil::renderer {
                 def.vertex_buffer_address = mesh->mesh_buffer.vertex_buffer_address;
                 context.opaque_surfaces.push_back(def);
             }
-            Node::Draw(matrix, context);
         }
     };
 
@@ -730,7 +709,7 @@ namespace sigil::renderer {
     inline GLTFMetallicRoughness metal_rough_material;
 
     inline DrawContext _draw_context;
-    inline std::unordered_map<std::string, std::shared_ptr<Node>> loaded_meshes;
+    inline std::unordered_map<std::string, std::shared_ptr<MeshNode>> loaded_meshes;
 
     inline std::vector<Mesh> _meshes;
 
@@ -1943,15 +1922,18 @@ namespace sigil::renderer {
             std::cout << "\nError:\n>>\tFailed to load meshes.\n";
         }
         for( auto& mesh : loaded_model.value()) {
-            std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
-            newNode->mesh = mesh;
-            newNode->local_transform = glm::mat4 { 1.f };
-            newNode->world_transform = glm::mat4 { 1.f };
+            _meshes.push_back(*mesh);
+            //std::cout << "new mesh node\n";
+            //MeshNode node {};
+            //std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
+            //newNode->mesh = mesh;
+            //newNode->local_transform = glm::mat4 { 1.f };
+            //newNode->world_transform = glm::mat4 { 1.f };
 
-            for( auto& surface : newNode->mesh->surfaces ) {
-                surface.material = std::make_shared<GLTFMaterial>(default_data);
-            }
-            loaded_meshes[mesh->name] = std::move(newNode);
+            //for( auto& surface : newNode->mesh->surfaces ) {
+            //    surface.material = std::make_shared<GLTFMaterial>(default_data);
+            //}
+            //loaded_meshes[mesh->name] = std::move(newNode);
         }
         //auto plane = primitives::Plane {};
         //_meshes.push_back(Mesh {
@@ -2040,21 +2022,32 @@ namespace sigil::renderer {
 
         //glm::mat4 model = glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(1.f, 0.f, 0.f));
         //glm::mat4 position = glm::vec4(glm::vec3(0, 0, 0), 1.f);
-        for( const RenderObject& draw : _draw_context.opaque_surfaces ) {
-
-            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, draw.material->pipeline->handle);
-            cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, draw.material->pipeline->layout, 0, 1, &descriptor_set, 0, nullptr);
-            cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, draw.material->pipeline->layout, 1, 1, &draw.material->material_set, 0, nullptr);
-
-            cmd.bindIndexBuffer(draw.index_buffer, 0, vk::IndexType::eUint32);
+        for( auto& mesh : _meshes ) {
+            cmd.bindIndexBuffer(mesh.mesh_buffer.index_buffer.handle, 0, vk::IndexType::eUint32);
 
             GPUDrawPushConstants push_constants {
                 .world_matrix = projection * view,// * draw.transform,// * model,
-                .vertex_buffer = draw.vertex_buffer_address,
+                .vertex_buffer = mesh.mesh_buffer.vertex_buffer_address,
             };
-            cmd.pushConstants(draw.material->pipeline->layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &push_constants);
-            cmd.drawIndexed(draw.index_count, 1, draw.first_index, 0, 0);
+            cmd.pushConstants(graphics_pipeline.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &push_constants);
+            cmd.drawIndexed(mesh.surfaces[0].count, 1, mesh.surfaces[0].start_index, 0, 0);
         }
+
+        //for( const RenderObject& draw : _draw_context.opaque_surfaces ) {
+
+        //    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, draw.material->pipeline->handle);
+        //    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, draw.material->pipeline->layout, 0, 1, &descriptor_set, 0, nullptr);
+        //    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, draw.material->pipeline->layout, 1, 1, &draw.material->material_set, 0, nullptr);
+
+        //    cmd.bindIndexBuffer(draw.index_buffer, 0, vk::IndexType::eUint32);
+
+        //    GPUDrawPushConstants push_constants {
+        //        .world_matrix = projection * view,// * draw.transform,// * model,
+        //        .vertex_buffer = draw.vertex_buffer_address,
+        //    };
+        //    cmd.pushConstants(draw.material->pipeline->layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &push_constants);
+        //    cmd.drawIndexed(draw.index_count, 1, draw.first_index, 0, 0);
+        //}
         cmd.endRendering();
     };
     
