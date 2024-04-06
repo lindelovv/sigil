@@ -26,10 +26,18 @@ layout( push_constant ) uniform constants {
     float time;
 } _push_constants;
 
+const float PI = 3.14285714286;
+
 void main() {
     Vertex v = _push_constants.vertex_buffer.vertices[gl_VertexIndex];
 
-    gl_Position = _push_constants.render_matrix * vec4(v.position, 1.f);
+    vec3 pos = v.position;
+    float distance = length(v.position);
+    float wave = sin(3.0 * PI * distance * 0.3 + _push_constants.time) * 0.5;
+
+    pos.z += wave;
+
+    gl_Position = _push_constants.render_matrix * vec4(pos, 1.f);
 
     _out_normal = (_push_constants.render_matrix * vec4(v.normal, 0.f)).xyz;
     _out_color = v.color.xyz * _material_data.color_factors.xyz;

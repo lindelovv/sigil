@@ -8,6 +8,9 @@
 #include <assimp/mesh.h>
 #include <deque>
 #include <fstream>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/quaternion_common.hpp>
+#include <glm/ext/quaternion_geometric.hpp>
 #include <glm/fwd.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <memory>
@@ -456,7 +459,6 @@ namespace sigil::renderer {
             depth_stencil.depthCompareOp        = vk::CompareOp::eNever;
             depth_stencil.depthBoundsTestEnable = false;
             depth_stencil.stencilTestEnable     = false;
-            // Add optional extras if not actually optional
             return *this;
         }
 
@@ -466,7 +468,6 @@ namespace sigil::renderer {
             depth_stencil.depthCompareOp        = op;
             depth_stencil.depthBoundsTestEnable = false;
             depth_stencil.stencilTestEnable     = false;
-            // Add optional extras if not actually optional
             return *this;
         }
 
@@ -527,15 +528,6 @@ namespace sigil::renderer {
         vk::PipelineLayout layout;
     } inline compute_pipeline;
 
-    struct {
-        vk::Pipeline handle;
-        u32 index;
-        vk::PipelineLayout layout;
-        vk::RenderPass pass;
-        u32 subpass;
-        std::vector<vk::PipelineShaderStageCreateInfo> shader_stages;
-    } inline graphics_pipeline;
-
     //_____________________________________
     struct {
         vk::Fence         fence;
@@ -585,6 +577,7 @@ namespace sigil::renderer {
     struct GPUDrawPushConstants {
         glm::mat4 world_matrix;
         vk::DeviceAddress vertex_buffer;
+        float time;
     };
 
     //_____________________________________
@@ -597,6 +590,7 @@ namespace sigil::renderer {
         MaterialPipeline* pipeline;
         vk::DescriptorSet material_set;
     } inline _default_material_instance;
+    inline MaterialInstance _wave_material_instance;
 
     struct RenderObject {
         u32 count;
@@ -718,6 +712,83 @@ namespace sigil::renderer {
     } inline _pbr_metallic_roughness;
 
     //_____________________________________
+    struct WaveMaterial {
+        struct MaterialConstants {
+            glm::vec4 color_factors;
+            glm::vec4 padding[15];
+        };
+        struct MaterialResources {
+            AllocatedImage color_img;
+            vk::Sampler color_sampler;
+            vk::Buffer data;
+            u32 offset;
+        };
+        MaterialPipeline pipeline;
+        vk::DescriptorSetLayout layout;
+        DescriptorWriter writer;
+
+        void build_pipelines() {
+            vk::ShaderModule vert = load_shader_module("res/shaders/wave.vert.spv").value;
+            vk::ShaderModule frag = load_shader_module("res/shaders/texture.frag.spv").value;
+
+            vk::PushConstantRange matrix_range {
+                .stageFlags = vk::ShaderStageFlagBits::eVertex,
+                .offset = 0,
+                .size = sizeof(GPUDrawPushConstants),
+            };
+
+            layout = DescriptorLayoutBuilder {}
+                .add_binding(0, vk::DescriptorType::eUniformBuffer)
+                .add_binding(1, vk::DescriptorType::eCombinedImageSampler)
+                .add_binding(2, vk::DescriptorType::eCombinedImageSampler)
+                .build(vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+
+            vk::DescriptorSetLayout layouts[] {
+                _scene_data_layout,
+                layout,
+            };
+
+            vk::PipelineLayoutCreateInfo mesh_layout_info {
+                .setLayoutCount = 2,
+                .pSetLayouts = layouts,
+                .pushConstantRangeCount = 1,
+                .pPushConstantRanges = &matrix_range,
+            };
+
+            VK_CHECK(device.createPipelineLayout(&mesh_layout_info, nullptr, &pipeline.layout));
+
+            pipeline.handle = PipelineBuilder {}
+                .set_shaders(vert, frag)
+                .set_input_topology(vk::PrimitiveTopology::eTriangleList)
+                .set_polygon_mode(vk::PolygonMode::eFill)
+                .set_cull_mode(vk::CullModeFlagBits::eNone, vk::FrontFace::eClockwise)
+                .set_multisampling_none()
+                .disable_blending()
+                .enable_depthtest(true, vk::CompareOp::eGreaterOrEqual)
+                .set_color_attachment_format(_draw.img.format)
+                .set_depth_format(_depth.img.format)
+                .set_layout(pipeline.layout)
+                .build();
+
+            device.destroyShaderModule(vert);
+            device.destroyShaderModule(frag);
+        }
+
+        MaterialInstance write_material(const MaterialResources& resources, DescriptorAllocator& descriptor_allocator) {
+            MaterialInstance instance {
+                .pipeline = &pipeline,
+                .material_set = descriptor_allocator.allocate(layout),
+            };
+            writer.clear()
+                .write_buffer(0, resources.data, sizeof(MaterialConstants), resources.offset, vk::DescriptorType::eUniformBuffer)
+                .write_img(1, resources.color_img.img.view, resources.color_sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+                //.write_img(1, resources.metal_roughness_img.img.view, resources.metal_roughness_sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+                .update_set(instance.material_set);
+            return instance;
+        }
+    } inline _wave_material;
+
+    //_____________________________________
     struct PbrMaterial {
         MaterialInstance data;
     };
@@ -816,6 +887,7 @@ namespace sigil::renderer {
         struct Plane {
             std::vector<Vertex> vertices;
             std::vector<u32> indices;
+            std::vector<u32> uvs;
             GeoSurface surface;
 
             Plane() : Plane(10, 10) {};
@@ -824,8 +896,19 @@ namespace sigil::renderer {
                 f32 triangle_side = width / div;
                 for( u32 row = 0; row < div + 1; row++ ) {
                     for( u32 col = 0; col < div + 1; col++ ) {
+                        auto pos = glm::vec3(col * triangle_side, row * -triangle_side, 0);
                         vertices.push_back(
-                            Vertex { .position = glm::vec3(col * triangle_side, row * -triangle_side, 0) }
+                            Vertex {
+                                .position = pos,
+                                .uv_x = (f32)col / div,
+                                .uv_y = (f32)row / div,
+                                .color = {
+                                    1.f,
+                                    1.f,
+                                    1.f,
+                                    1.f,
+                                },
+                            }
                         );
                     }
                 }
@@ -843,7 +926,6 @@ namespace sigil::renderer {
                 }
                 surface.count = (u32)indices.size();
             }
-            
             //rect_vertices = {
             //    Vertex {
             //        .position = { .5, -.5, 0 },
@@ -1366,6 +1448,7 @@ namespace sigil::renderer {
         return img;
     }
 
+    //_____________________________________
     inline void copy_img_to_img(vk::CommandBuffer cmd, vk::Image src, vk::Image dst, vk::Extent2D src_extent, vk::Extent2D dst_extent) {
 
         vk::ImageBlit2 blit_region {
@@ -1566,129 +1649,6 @@ namespace sigil::renderer {
     }
 
     //_____________________________________
-    inline void build_graphics_pipeline() {
-
-        //vk::ShaderModule vertex_shader   = load_shader_module("res/shaders/mesh.vert.spv").value;
-        //vk::ShaderModule fragment_shader = load_shader_module("res/shaders/texture.frag.spv").value;
-
-        //graphics_pipeline.shader_stages = {
-        //    vk::PipelineShaderStageCreateInfo {
-        //        .stage  = vk::ShaderStageFlagBits::eVertex,
-        //        .module = vertex_shader,
-        //        .pName  = "main",
-        //    },
-        //    vk::PipelineShaderStageCreateInfo {
-        //        .stage  = vk::ShaderStageFlagBits::eFragment,
-        //        .module = fragment_shader,
-        //        .pName  = "main",
-        //    }
-        //};
-
-        //vk::PipelineVertexInputStateCreateInfo vertex_input { };
-
-        //vk::PipelineInputAssemblyStateCreateInfo input_assembly {
-        //    .topology                = vk::PrimitiveTopology::eTriangleList,
-        //    .primitiveRestartEnable  = false,
-        //};
-
-        //vk::PipelineViewportStateCreateInfo viewport_state {
-        //    .viewportCount           = 1,
-        //    .scissorCount            = 1,
-        //};
-
-        //vk::PipelineRasterizationStateCreateInfo rasterization_state {
-        //    .polygonMode             = vk::PolygonMode::eFill,
-        //    .cullMode                = vk::CullModeFlagBits::eNone,
-        //    .frontFace               = vk::FrontFace::eClockwise,
-        //    .lineWidth               = 1.f,
-        //};
-
-        //vk::PipelineMultisampleStateCreateInfo multisample_state {
-        //    .rasterizationSamples    = vk::SampleCountFlagBits::e1,
-        //    .sampleShadingEnable     = false,
-        //    .minSampleShading        = 1.f,
-        //    .pSampleMask             = nullptr,
-        //    .alphaToCoverageEnable   = false,
-        //    .alphaToOneEnable        = false,
-        //};
-
-        //vk::PipelineDepthStencilStateCreateInfo depth_stencil {
-        //    .depthTestEnable         = true,
-        //    .depthWriteEnable        = true,
-        //    .depthCompareOp          = vk::CompareOp::eGreaterOrEqual,
-        //    .depthBoundsTestEnable   = false,
-        //    .stencilTestEnable       = false,
-        //};
-
-        //vk::PipelineColorBlendAttachmentState color_blend_attachment {
-        //    .blendEnable             = false,
-        //    .colorWriteMask          =  vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
-        //                              | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
-        //};
-
-        //vk::PipelineColorBlendStateCreateInfo blend_state {
-        //    .logicOpEnable           = false,
-        //    .logicOp                 = vk::LogicOp::eCopy,
-        //    .attachmentCount         = 1,
-        //    .pAttachments            = &color_blend_attachment,
-        //    .blendConstants          {{ 0.f, 0.f, 0.f, 0.f }},
-        //};
-
-        //std::vector<vk::DynamicState> dynamic_states {
-        //    vk::DynamicState::eViewport,
-        //    vk::DynamicState::eScissor,
-        //};
-        //vk::PipelineDynamicStateCreateInfo dyn_state {
-        //    .dynamicStateCount       = (u32)dynamic_states.size(),
-        //    .pDynamicStates          =      dynamic_states.data(),
-        //};
-
-        //vk::PushConstantRange buffer_range {
-        //    .stageFlags              = vk::ShaderStageFlagBits::eVertex,
-        //    .offset                  = 0,
-        //    .size                    = sizeof(GPUDrawPushConstants),
-        //};
-        //vk::PipelineLayoutCreateInfo layout_info {
-        //    .setLayoutCount          = 1,
-        //    .pSetLayouts             = &_single_img_layout,
-        //    .pushConstantRangeCount  = 1,
-        //    .pPushConstantRanges     = &buffer_range,
-        //};
-
-        //VK_CHECK(device.createPipelineLayout(&layout_info, nullptr, &graphics_pipeline.layout));
-
-        //vk::PipelineRenderingCreateInfo render_info {
-        //    .colorAttachmentCount    = 1,
-        //    .pColorAttachmentFormats = &_draw.img.format,
-        //    .depthAttachmentFormat   = _depth.img.format,
-        //};
-
-        //vk::GraphicsPipelineCreateInfo graphics_pipeline_info {
-        //    .pNext                   = &render_info,
-        //    .stageCount              = (u32)graphics_pipeline.shader_stages.size(),
-        //    .pStages                 = graphics_pipeline.shader_stages.data(),
-        //    .pVertexInputState       = &vertex_input,
-        //    .pInputAssemblyState     = &input_assembly,
-        //    .pViewportState          = &viewport_state,
-        //    .pRasterizationState     = &rasterization_state,
-        //    .pMultisampleState       = &multisample_state,
-        //    .pDepthStencilState      = &depth_stencil,
-        //    .pColorBlendState        = &blend_state,
-        //    .pDynamicState           = &dyn_state,
-        //    .layout                  = graphics_pipeline.layout,
-        //};
-
-        //graphics_pipeline.handle = device
-        //    .createGraphicsPipelines(nullptr, graphics_pipeline_info)
-        //    .value
-        //    .front();
-
-        //device.destroyShaderModule(vertex_shader);
-        //device.destroyShaderModule(fragment_shader);
-
-        _pbr_metallic_roughness.build_pipelines();
-    }
-
     inline void setup_imgui() {
         vk::DescriptorPoolSize pool_sizes[] {
             { vk::DescriptorType::eSampler,              1000 },
@@ -1901,7 +1861,8 @@ namespace sigil::renderer {
         build_sync_structures();
         build_descriptors();
         build_compute_pipeline();
-        build_graphics_pipeline();
+        _pbr_metallic_roughness.build_pipelines();
+        _wave_material.build_pipelines();
         setup_imgui();
 
         //Vertex rect_vertices[4] {
@@ -1962,22 +1923,42 @@ namespace sigil::renderer {
         //}
         
         ////
-        PbrMetallicRoughness::MaterialResources material_resources {
+        AllocatedBuffer pbr_material_constants = create_buffer(sizeof(PbrMetallicRoughness::MaterialConstants), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
+        PbrMetallicRoughness::MaterialConstants* pbr_scene_uniform_data = (PbrMetallicRoughness::MaterialConstants*)pbr_material_constants.info.pMappedData;
+        pbr_scene_uniform_data->color_factors = glm::vec4{ 1, 1, 1, 1 };
+        pbr_scene_uniform_data->metal_roughness_factors = glm::vec4 { 1, .5, 0, 0 };
+
+        PbrMetallicRoughness::MaterialResources pbr_material_resources {
             .color_img = _error_img,
             .color_sampler = _sampler_linear,
             .metal_roughness_img = _error_img,
             .metal_roughness_sampler = _sampler_linear,
+            .data = pbr_material_constants.handle,
+            .offset = 0,
         };
-        AllocatedBuffer material_constants = create_buffer(sizeof(PbrMetallicRoughness::MaterialConstants), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
-        PbrMetallicRoughness::MaterialConstants* scene_uniform_data = (PbrMetallicRoughness::MaterialConstants*)material_constants.info.pMappedData;
-        scene_uniform_data->color_factors = glm::vec4{ 1, 1, 1, 1 };
-        scene_uniform_data->metal_roughness_factors = glm::vec4 { 1, .5, 0, 0 };
+
         _deletion_queue.push_function([=]{
-            destroy_buffer(material_constants);
+            destroy_buffer(pbr_material_constants);
         });
-        material_resources.data = material_constants.handle;
-        material_resources.offset = 0;
-        _default_material_instance = _pbr_metallic_roughness.write_material(material_resources, _descriptor_allocator);
+
+        _default_material_instance = _pbr_metallic_roughness.write_material(pbr_material_resources, _descriptor_allocator);
+
+        AllocatedBuffer wave_material_constants = create_buffer(sizeof(WaveMaterial::MaterialConstants), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
+        WaveMaterial::MaterialConstants* wave_scene_uniform_data = (WaveMaterial::MaterialConstants*)wave_material_constants.info.pMappedData;
+        wave_scene_uniform_data->color_factors = glm::vec4{ 1, 1, 1, 1 };
+
+        WaveMaterial::MaterialResources wave_material_resources {
+            .color_img = _error_img,
+            .color_sampler = _sampler_linear,
+            .data = wave_material_constants.handle,
+            .offset = 0,
+        };
+
+        _deletion_queue.push_function([=]{
+            destroy_buffer(wave_material_constants);
+        });
+
+        _wave_material_instance = _wave_material.write_material(wave_material_resources, _descriptor_allocator);
 
         auto loaded_meshes = load_model("res/models/DamagedHelmet.gltf");
         if( !loaded_meshes.has_value() ) {
@@ -1999,7 +1980,7 @@ namespace sigil::renderer {
                 );
             }
         }
-        auto plane = primitives::Plane();
+        auto plane = primitives::Plane(100, 10);
         auto plane_buffer = upload_mesh(plane.indices, plane.vertices);
 
         _render_objects.push_back(
@@ -2007,8 +1988,8 @@ namespace sigil::renderer {
                 .count = plane.surface.count,
                 .first = plane.surface.start_index,
                 .index_buffer = plane_buffer.index_buffer.handle,
-                .material = &_default_material_instance,
-                .transform = glm::mat4 { 1 },
+                .material = &_wave_material_instance,
+                .transform = glm::mat4 { 1 },//glm::translate(glm::mat4 { 1 }, glm::vec3(0, 0, -1)),
                 .address = plane_buffer.vertex_buffer_address,
             }
         );
@@ -2065,8 +2046,6 @@ namespace sigil::renderer {
 
         cmd.beginRendering(&render_info);
 
-        //cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline.handle);
-
         vk::Viewport viewport {
             .x = 0,
             .y = 0,
@@ -2088,14 +2067,6 @@ namespace sigil::renderer {
             },
         };
         cmd.setScissor(0, 1, &scissor);
-
-        //vk::DescriptorSet img_set = frame.descriptors.allocate(_single_img_layout);
-        //{
-        //    DescriptorWriter {}
-        //        .write_img(0, _error_img.img.view, _sampler_nearest, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
-        //        .update_set(img_set);
-        //}
-        //cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, graphics_pipeline.layout, 0, img_set, nullptr);
 
         glm::mat4 projection = glm::perspective(
             glm::radians(70.f),
@@ -2128,6 +2099,7 @@ namespace sigil::renderer {
             GPUDrawPushConstants push_constants {
                 .world_matrix = render.transform * projection * camera.get_view(),
                 .vertex_buffer = render.address,
+                .time = (f32)glfwGetTime(),
             };
             cmd.pushConstants(render.material->pipeline->layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
@@ -2239,6 +2211,9 @@ namespace sigil::renderer {
     inline void terminate() {
         VK_CHECK(device.waitIdle());
 
+        for( auto& frame : frames ) {
+            frame.deletion_queue.flush();
+        }
         _deletion_queue.flush();
         for( auto& mesh : _meshes ) {
             vma_allocator.destroyBuffer(mesh.mesh_buffer.index_buffer.handle, mesh.mesh_buffer.index_buffer.allocation);
@@ -2247,14 +2222,6 @@ namespace sigil::renderer {
 
         device.destroyPipelineLayout(compute_pipeline.layout);
         device.destroyPipeline(compute_pipeline.handle);
-
-        device.destroyPipelineLayout(graphics_pipeline.layout);
-        device.destroyPipeline(graphics_pipeline.handle);
-
-        //for( auto effect : bg_effects ) {
-        //    device.destroyPipelineLayout(effect.pipeline_layout);
-        //    device.destroyPipeline(effect.pipeline);
-        //}
 
         device.destroySwapchainKHR(swapchain.handle);
         for( auto view : swapchain.img_views ) {
