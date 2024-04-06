@@ -8,7 +8,10 @@
 #include <assimp/mesh.h>
 #include <deque>
 #include <fstream>
+#include <glm/fwd.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <memory>
+#include <vulkan/vulkan_core.h>
 
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_CONSTRUCTORS
@@ -61,7 +64,8 @@ namespace sigil::renderer {
             const VkDebugUtilsMessengerCallbackDataEXT* p_callback_data,
             void* p_user_data
         ) {
-            std::cerr << "\n>> " << p_callback_data->pMessage << "\n";
+            std::cerr << ">> " << p_callback_data->pMessage << "\n"
+                      << "---------------------------------------\n";
             return false;
         }
     } inline debug;
@@ -317,6 +321,7 @@ namespace sigil::renderer {
     inline AllocatedImage _draw;
     inline AllocatedImage _depth;
     inline AllocatedImage _error_img;
+    inline AllocatedImage _white_img;
     inline vk::Sampler _sampler_linear;
     inline vk::Sampler _sampler_nearest;
 
@@ -342,6 +347,179 @@ namespace sigil::renderer {
     inline u32 current_frame = 0;
 
     inline DeletionQueue _deletion_queue;
+
+    //_____________________________________
+    struct PipelineBuilder {
+        std::vector<vk::PipelineShaderStageCreateInfo> shader_stages;
+        vk::PipelineInputAssemblyStateCreateInfo input_assembly;
+        vk::PipelineRasterizationStateCreateInfo rasterizer;
+        vk::PipelineColorBlendAttachmentState color_blend_attachment;
+        vk::PipelineMultisampleStateCreateInfo multisampling;
+        vk::PipelineDepthStencilStateCreateInfo depth_stencil;
+        vk::PipelineRenderingCreateInfo render_info;
+        vk::Format color_attachment_format;
+        vk::PipelineLayout layout;
+
+        PipelineBuilder& set_shaders(vk::ShaderModule vertex, vk::ShaderModule fragment) {
+            shader_stages.clear();
+            shader_stages = {
+                vk::PipelineShaderStageCreateInfo {
+                    .stage  = vk::ShaderStageFlagBits::eVertex,
+                    .module = vertex,
+                    .pName  = "main",
+                },
+                vk::PipelineShaderStageCreateInfo {
+                    .stage  = vk::ShaderStageFlagBits::eFragment,
+                    .module = fragment,
+                    .pName  = "main",
+                }
+            };
+            return *this;
+        }
+
+        PipelineBuilder& set_input_topology(vk::PrimitiveTopology topoloty) {
+            input_assembly.topology               = topoloty;
+            input_assembly.primitiveRestartEnable = false;
+            return *this;
+        }
+
+        PipelineBuilder& set_polygon_mode(vk::PolygonMode mode) {
+            rasterizer.polygonMode = mode;
+            rasterizer.lineWidth   = 1;
+            return *this;
+        }
+
+        PipelineBuilder& set_cull_mode(vk::CullModeFlagBits cull_mode, vk::FrontFace front_face) {
+            rasterizer.cullMode  = cull_mode;
+            rasterizer.frontFace = front_face;
+            return *this;
+        }
+
+        PipelineBuilder& set_multisampling_none() {
+            multisampling.sampleShadingEnable   = false;
+            multisampling.rasterizationSamples  = vk::SampleCountFlagBits::e1;
+            multisampling.minSampleShading      = 1.0f;
+            multisampling.pSampleMask           = nullptr;
+            multisampling.alphaToCoverageEnable = false;
+            multisampling.alphaToOneEnable      = false;
+            return *this;
+        }
+
+        PipelineBuilder& disable_blending() {
+            color_blend_attachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
+                                                  | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+            color_blend_attachment.blendEnable    = false;
+            return *this;
+        }
+
+        PipelineBuilder& enable_blending_addative() {
+            color_blend_attachment.colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
+                                                       | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+            color_blend_attachment.blendEnable         = true;
+            color_blend_attachment.srcColorBlendFactor = vk::BlendFactor::eOne;
+            color_blend_attachment.dstColorBlendFactor = vk::BlendFactor::eDstAlpha;
+            color_blend_attachment.colorBlendOp        = vk::BlendOp::eAdd;
+            color_blend_attachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+            color_blend_attachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+            color_blend_attachment.alphaBlendOp        = vk::BlendOp::eAdd;
+            return *this;
+        }
+
+        PipelineBuilder& enable_blending_alphablend() {
+            color_blend_attachment.colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
+                                                       | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+            color_blend_attachment.blendEnable         = true;
+            color_blend_attachment.srcColorBlendFactor = vk::BlendFactor::eOneMinusDstAlpha;
+            color_blend_attachment.dstColorBlendFactor = vk::BlendFactor::eDstAlpha;
+            color_blend_attachment.colorBlendOp        = vk::BlendOp::eAdd;
+            color_blend_attachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+            color_blend_attachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
+            color_blend_attachment.alphaBlendOp        = vk::BlendOp::eAdd;
+            return *this;
+        }
+
+        PipelineBuilder& set_color_attachment_format(vk::Format format) {
+            color_attachment_format             = format;
+            render_info.colorAttachmentCount    = 1;
+            render_info.pColorAttachmentFormats = &color_attachment_format;
+            return *this;
+        }
+
+        PipelineBuilder& set_depth_format(vk::Format format) {
+            render_info.depthAttachmentFormat = format;
+            return *this;
+        }
+
+        PipelineBuilder& disable_depthtest() {
+            depth_stencil.depthTestEnable       = false;
+            depth_stencil.depthWriteEnable      = false;
+            depth_stencil.depthCompareOp        = vk::CompareOp::eNever;
+            depth_stencil.depthBoundsTestEnable = false;
+            depth_stencil.stencilTestEnable     = false;
+            // Add optional extras if not actually optional
+            return *this;
+        }
+
+        PipelineBuilder& enable_depthtest(bool write_enable, vk::CompareOp op) {
+            depth_stencil.depthTestEnable       = true;
+            depth_stencil.depthWriteEnable      = write_enable;
+            depth_stencil.depthCompareOp        = op;
+            depth_stencil.depthBoundsTestEnable = false;
+            depth_stencil.stencilTestEnable     = false;
+            // Add optional extras if not actually optional
+            return *this;
+        }
+
+        PipelineBuilder& set_layout(vk::PipelineLayout in_layout) {
+            layout = in_layout;
+            return *this;
+        }
+
+        vk::Pipeline build() {
+            vk::PipelineViewportStateCreateInfo viewport_state {
+                .viewportCount = 1,
+                .scissorCount  = 1,
+            };
+
+            vk::PipelineColorBlendStateCreateInfo color_blending {
+                .logicOpEnable   = false,
+                .logicOp         = vk::LogicOp::eCopy,
+                .attachmentCount = 1,
+                .pAttachments    = &color_blend_attachment,
+            };
+
+            vk::PipelineVertexInputStateCreateInfo vertex_input {};
+
+            vk::DynamicState states[] {
+                vk::DynamicState::eViewport,
+                vk::DynamicState::eScissor,
+            };
+            vk::PipelineDynamicStateCreateInfo dynamic_state {
+                .dynamicStateCount = 2,
+                .pDynamicStates    = &states[0],
+            };
+
+            vk::GraphicsPipelineCreateInfo pipeline_info {
+                .pNext               = &render_info,
+                .stageCount          = (u32)shader_stages.size(),
+                .pStages             = shader_stages.data(),
+                .pVertexInputState   = &vertex_input,
+                .pInputAssemblyState = &input_assembly,
+                .pViewportState      = &viewport_state,
+                .pRasterizationState = &rasterizer,
+                .pMultisampleState   = &multisampling,
+                .pDepthStencilState  = &depth_stencil,
+                .pColorBlendState    = &color_blending,
+                .pDynamicState       = &dynamic_state,
+                .layout              = layout,
+            };
+
+            return device
+                .createGraphicsPipelines(nullptr, pipeline_info)
+                .value
+                .front();
+        }
+    };
 
     //_____________________________________
     struct {
@@ -389,6 +567,7 @@ namespace sigil::renderer {
         vma::AllocationInfo info;
     };
 
+    //_____________________________________
     struct Vertex {
         glm::vec3 position;
         float uv_x;
@@ -408,19 +587,46 @@ namespace sigil::renderer {
         vk::DeviceAddress vertex_buffer;
     };
 
-    struct GeoSurface {
-        u32 start_index;
+    //_____________________________________
+    struct MaterialPipeline {
+        vk::Pipeline       handle;
+        vk::PipelineLayout layout;
+    };
+
+    struct MaterialInstance {
+        MaterialPipeline* pipeline;
+        vk::DescriptorSet material_set;
+    } inline _default_material_instance;
+
+    struct RenderObject {
         u32 count;
+        u32 first;
+        vk::Buffer index_buffer;
+        MaterialInstance* material;
+        glm::mat4         transform;
+        vk::DeviceAddress address;
     };
 
-    struct Mesh {
-        std::string name;
-        std::vector<GeoSurface> surfaces;
-        GPUMeshBuffer mesh_buffer;
-    };
+    //_____________________________________
+    inline vk::ResultValue<vk::ShaderModule> load_shader_module(const char* path) {
+        std::cout << ">> Loading file at: " << path << "\n";
 
-    inline std::vector<Mesh> _meshes;
+        std::ifstream file(path, std::ios::ate | std::ios::binary);
+        if( !file.is_open() ) {
+            throw std::runtime_error("\tError: Failed to open file at:" + std::string(path));
+        }
+        size_t size = file.tellg();
+        std::vector<char> buffer(size);
+        file.seekg(0);
+        file.read((char*)buffer.data(), size);
+        file.close();
+        return device.createShaderModule(vk::ShaderModuleCreateInfo {
+            .codeSize = buffer.size(),
+            .pCode = (const u32*)buffer.data(),
+        });
+    }
 
+    //_____________________________________
     struct GPUSceneData {
         glm::mat4 view;
         glm::mat4 proj;
@@ -428,9 +634,110 @@ namespace sigil::renderer {
         glm::vec4 ambient_color;
         glm::vec4 sun_dir;
         glm::vec4 sun_color;
-    } inline __scene_data;
+    } inline _scene_data;
     inline vk::DescriptorSetLayout _scene_data_layout;
 
+    //_____________________________________
+    struct PbrMetallicRoughness {
+        struct MaterialConstants {
+            glm::vec4 color_factors;
+            glm::vec4 metal_roughness_factors;
+            glm::vec4 padding[14];
+        };
+        struct MaterialResources {
+            AllocatedImage color_img;
+            vk::Sampler color_sampler;
+            AllocatedImage metal_roughness_img;
+            vk::Sampler metal_roughness_sampler;
+            vk::Buffer data;
+            u32 offset;
+        };
+        MaterialPipeline pipeline;
+        vk::DescriptorSetLayout layout;
+        DescriptorWriter writer;
+
+        void build_pipelines() {
+            vk::ShaderModule vert = load_shader_module("res/shaders/mesh.vert.spv").value;
+            vk::ShaderModule frag = load_shader_module("res/shaders/texture.frag.spv").value;
+
+            vk::PushConstantRange matrix_range {
+                .stageFlags = vk::ShaderStageFlagBits::eVertex,
+                .offset = 0,
+                .size = sizeof(GPUDrawPushConstants),
+            };
+
+            layout = DescriptorLayoutBuilder {}
+                .add_binding(0, vk::DescriptorType::eUniformBuffer)
+                .add_binding(1, vk::DescriptorType::eCombinedImageSampler)
+                .add_binding(2, vk::DescriptorType::eCombinedImageSampler)
+                .build(vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
+
+            vk::DescriptorSetLayout layouts[] {
+                _scene_data_layout,
+                layout,
+            };
+
+            vk::PipelineLayoutCreateInfo mesh_layout_info {
+                .setLayoutCount = 2,
+                .pSetLayouts = layouts,
+                .pushConstantRangeCount = 1,
+                .pPushConstantRanges = &matrix_range,
+            };
+
+            VK_CHECK(device.createPipelineLayout(&mesh_layout_info, nullptr, &pipeline.layout));
+
+            pipeline.handle = PipelineBuilder {}
+                .set_shaders(vert, frag)
+                .set_input_topology(vk::PrimitiveTopology::eTriangleList)
+                .set_polygon_mode(vk::PolygonMode::eFill)
+                .set_cull_mode(vk::CullModeFlagBits::eNone, vk::FrontFace::eClockwise)
+                .set_multisampling_none()
+                .disable_blending()
+                .enable_depthtest(true, vk::CompareOp::eGreaterOrEqual)
+                .set_color_attachment_format(_draw.img.format)
+                .set_depth_format(_depth.img.format)
+                .set_layout(pipeline.layout)
+                .build();
+
+            device.destroyShaderModule(vert);
+            device.destroyShaderModule(frag);
+        }
+
+        MaterialInstance write_material(const MaterialResources& resources, DescriptorAllocator& descriptor_allocator) {
+            MaterialInstance instance {
+                .pipeline = &pipeline,
+                .material_set = descriptor_allocator.allocate(layout),
+            };
+            writer.clear()
+                .write_buffer(0, resources.data, sizeof(MaterialConstants), resources.offset, vk::DescriptorType::eUniformBuffer)
+                .write_img(1, resources.color_img.img.view, resources.color_sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+                .write_img(1, resources.metal_roughness_img.img.view, resources.metal_roughness_sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+                .update_set(instance.material_set);
+            return instance;
+        }
+    } inline _pbr_metallic_roughness;
+
+    //_____________________________________
+    struct PbrMaterial {
+        MaterialInstance data;
+    };
+
+    struct GeoSurface {
+        u32 start_index;
+        u32 count;
+        std::shared_ptr<PbrMaterial> material;
+    };
+
+    struct Mesh {
+        size_t id;
+        std::vector<GeoSurface> surfaces;
+        GPUMeshBuffer mesh_buffer;
+    };
+
+    inline std::vector<Mesh> _meshes;
+    inline std::vector<RenderObject> _render_objects;
+
+    // Camera
     //_____________________________________
     inline static glm::vec3 world_up = glm::vec3(0.f, 0.f, -1.f);
 
@@ -507,28 +814,58 @@ namespace sigil::renderer {
     namespace primitives {
 
         struct Plane {
-            Vertex rect_vertices[4] {
-                Vertex {
-                    .position = { .5, -.5, 0 },
-                    .color    = { .5, .5, .5, 1 },
-                },
-                Vertex {
-                    .position = { .5, .5, 0 },
-                    .color    = { .5, .5, .5, 1 },
-                },
-                Vertex {
-                    .position = { -.5, -.5, 0 },
-                    .color    = { .5, .5, .5, 1 },
-                },
-                Vertex {
-                    .position = { -.5, .5, 0 },
-                    .color    = { .5, .5, .5, 1 },
-                },
-            };
-            u32 rect_indices[6] {
-                0, 1, 2,
-                2, 1, 3,
-            };
+            std::vector<Vertex> vertices;
+            std::vector<u32> indices;
+            GeoSurface surface;
+
+            Plane() : Plane(10, 10) {};
+
+            Plane(u32 div, f32 width) {
+                f32 triangle_side = width / div;
+                for( u32 row = 0; row < div + 1; row++ ) {
+                    for( u32 col = 0; col < div + 1; col++ ) {
+                        vertices.push_back(
+                            Vertex { .position = glm::vec3(col * triangle_side, row * -triangle_side, 0) }
+                        );
+                    }
+                }
+                surface.start_index = (u32)indices.size();
+                for( u32 row = 0; row < div; row++ ) {
+                    for( u32 col = 0; col < div; col++ ) {
+                        u32 index = row * (div + 1) + col;
+                        indices.push_back(index);
+                        indices.push_back(index + (div + 1) + 1);
+                        indices.push_back(index + (div + 1));
+                        indices.push_back(index);
+                        indices.push_back(index + 1);
+                        indices.push_back(index + (div + 1) + 1);
+                    }
+                }
+                surface.count = (u32)indices.size();
+            }
+            
+            //rect_vertices = {
+            //    Vertex {
+            //        .position = { .5, -.5, 0 },
+            //        .color    = { .5, .5, .5, 1 },
+            //    },
+            //    Vertex {
+            //        .position = { .5, .5, 0 },
+            //        .color    = { .5, .5, .5, 1 },
+            //    },
+            //    Vertex {
+            //        .position = { -.5, -.5, 0 },
+            //        .color    = { .5, .5, .5, 1 },
+            //    },
+            //    Vertex {
+            //        .position = { -.5, .5, 0 },
+            //        .color    = { .5, .5, .5, 1 },
+            //    },
+            //};
+            //rect_indices = {
+            //    0, 1, 2,
+            //    2, 1, 3,
+            //};
         };
     } // primitives
 
@@ -572,7 +909,7 @@ namespace sigil::renderer {
                     input::get_mouse_movement().x, input::get_mouse_movement().y).c_str()
                 );
 
-                ImGui::SetWindowSize(ImVec2(108, 256));
+                ImGui::SetWindowSize(ImVec2(108, 174));
                 ImGui::SetWindowPos(ImVec2(8, 8));
             }
             ImGui::End();
@@ -990,11 +1327,6 @@ namespace sigil::renderer {
                 .layerCount     = 1,
             },
         };
-        if(format == vk::Format::eD32Sfloat) {
-            std::cout << "depth\n";
-        } else {
-            std::cout << "color\n";
-        }
         VK_CHECK(device.createImageView(&view_info, nullptr, &alloc.img.view));
         return alloc;
     }
@@ -1117,80 +1449,68 @@ namespace sigil::renderer {
     }
 
     //_____________________________________
-    inline vk::ResultValue<vk::ShaderModule> load_shader_module(const char* path) {
-        std::cout << "\n>> Loading file at: " << path << "\n";
-
-        std::ifstream file(path, std::ios::ate | std::ios::binary);
-        if( !file.is_open() ) {
-            throw std::runtime_error("\tError: Failed to open file at:" + std::string(path));
-        }
-        size_t size = file.tellg();
-        std::vector<char> buffer(size);
-        file.seekg(0);
-        file.read((char*)buffer.data(), size);
-        file.close();
-        return device.createShaderModule(vk::ShaderModuleCreateInfo {
-            .codeSize = buffer.size(),
-            .pCode = (const u32*)buffer.data(),
-        });
-    }
-
     inline std::optional<std::vector<std::shared_ptr<Mesh>>> load_model(const char* path) {
-        std::cout << "\n>> Loading file at: " << path << "\n";
+        std::cout << ">> Loading file at: " << path << "\n";
 
         std::vector<std::shared_ptr<Mesh>> new_meshes;
         Assimp::Importer importer;
         if( auto file = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs) ) {
             std::vector<u32> indices;
             std::vector<Vertex> vertices;
-            for( uint32_t i = 0; i < file->mNumMeshes; i++ ) {
-                Mesh mesh {
-                    .name = "none",
-                };
-                indices.clear();
-                vertices.clear();
 
-                for( u32 j = 0; j < file->mNumMeshes; j++ ) {
-                    aiMesh* submesh = file->mMeshes[j];
-                    GeoSurface surface;
+            if( file->HasMeshes() ) {
+                for( uint32_t i = 0; i < file->mNumMeshes; i++ ) {
+                    Mesh mesh {
+                        .id = _meshes.size(),
+                    };
+                    indices.clear();
+                    vertices.clear();
 
-                    surface.start_index = (u32)indices.size();
-                    for( u32 f = 0; f < submesh->mNumFaces; f++ ) {
-                        aiFace& face = submesh->mFaces[f];
-                        assert(face.mNumIndices == 3);
-                        indices.push_back(face.mIndices[0]);
-                        indices.push_back(face.mIndices[1]);
-                        indices.push_back(face.mIndices[2]);
+                    for( u32 j = 0; j < file->mNumMeshes; j++ ) {
+                        aiMesh* submesh = file->mMeshes[j];
+                        GeoSurface surface;
+
+                        surface.start_index = (u32)indices.size();
+                        for( u32 f = 0; f < submesh->mNumFaces; f++ ) {
+                            aiFace& face = submesh->mFaces[f];
+                            assert(face.mNumIndices == 3);
+                            indices.push_back(face.mIndices[0]);
+                            indices.push_back(face.mIndices[1]);
+                            indices.push_back(face.mIndices[2]);
+                        }
+                        surface.count = (u32)indices.size();
+
+                        //std::cout << submesh->GetNumColorChannels() << "\n";
+                        for( uint32_t j = 0; j <= submesh->mNumVertices; j++ ) {
+                            vertices.push_back(Vertex {
+                                .position = {
+                                    submesh->mVertices[j].x,
+                                    submesh->mVertices[j].y,
+                                    submesh->mVertices[j].z,
+                                },
+                                .uv_x = submesh->mTextureCoords[0][j].x,
+                                .normal = {
+                                    submesh->mNormals[j].x,
+                                    submesh->mNormals[j].y,
+                                    submesh->mNormals[j].z,
+                                },
+                                .uv_y = submesh->mTextureCoords[0][j].y,
+                                .color = {
+                                    1.f,//submesh->mColors[0][j]->r,
+                                    1.f,//submesh->mColors[0][j]->g,
+                                    1.f,//submesh->mColors[0][j]->b,
+                                    1.f,//submesh->mColors[0][j]->a,
+                                },
+                            });
+                        }
+                        mesh.surfaces.push_back(surface);
                     }
-                    surface.count = (u32)indices.size();
-
-                    std::cout << submesh->GetNumColorChannels() << "\n";
-                    for( uint32_t j = 0; j <= submesh->mNumVertices; j++ ) {
-                        vertices.push_back(Vertex {
-                            .position = {
-                                submesh->mVertices[j].x,
-                                submesh->mVertices[j].y,
-                                submesh->mVertices[j].z,
-                            },
-                            .uv_x = submesh->mTextureCoords[0][j].x,
-                            .normal = {
-                                submesh->mNormals[j].x,
-                                submesh->mNormals[j].y,
-                                submesh->mNormals[j].z,
-                            },
-                            .uv_y = submesh->mTextureCoords[0][j].y,
-                            .color = {
-                                1.f,//submesh->mColors[0][j]->r,
-                                1.f,//submesh->mColors[0][j]->g,
-                                1.f,//submesh->mColors[0][j]->b,
-                                1.f,//submesh->mColors[0][j]->a,
-                            },
-                        });
-                    }
-                    mesh.surfaces.push_back(surface);
+                    mesh.mesh_buffer = upload_mesh(indices, vertices);
+                    new_meshes.push_back(std::make_shared<Mesh>(mesh));
                 }
-                mesh.mesh_buffer = upload_mesh(indices, vertices);
-                new_meshes.push_back(std::make_shared<Mesh>(mesh));
+            }
+            else {
+                std::cout << "Error:\n>>\tNo models found in file.\n";
             }
         } else {
             std::cout << "Error:\n>>\tFailed to load model.\n";
@@ -1248,123 +1568,125 @@ namespace sigil::renderer {
     //_____________________________________
     inline void build_graphics_pipeline() {
 
-        vk::ShaderModule vertex_shader   = load_shader_module("res/shaders/mesh.vert.spv").value;
-        vk::ShaderModule fragment_shader = load_shader_module("res/shaders/texture.frag.spv").value;
+        //vk::ShaderModule vertex_shader   = load_shader_module("res/shaders/mesh.vert.spv").value;
+        //vk::ShaderModule fragment_shader = load_shader_module("res/shaders/texture.frag.spv").value;
 
-        graphics_pipeline.shader_stages = {
-            vk::PipelineShaderStageCreateInfo {
-                .stage  = vk::ShaderStageFlagBits::eVertex,
-                .module = vertex_shader,
-                .pName  = "main",
-            },
-            vk::PipelineShaderStageCreateInfo {
-                .stage  = vk::ShaderStageFlagBits::eFragment,
-                .module = fragment_shader,
-                .pName  = "main",
-            }
-        };
+        //graphics_pipeline.shader_stages = {
+        //    vk::PipelineShaderStageCreateInfo {
+        //        .stage  = vk::ShaderStageFlagBits::eVertex,
+        //        .module = vertex_shader,
+        //        .pName  = "main",
+        //    },
+        //    vk::PipelineShaderStageCreateInfo {
+        //        .stage  = vk::ShaderStageFlagBits::eFragment,
+        //        .module = fragment_shader,
+        //        .pName  = "main",
+        //    }
+        //};
 
-        vk::PipelineVertexInputStateCreateInfo vertex_input { };
+        //vk::PipelineVertexInputStateCreateInfo vertex_input { };
 
-        vk::PipelineInputAssemblyStateCreateInfo input_assembly {
-            .topology                = vk::PrimitiveTopology::eTriangleList,
-            .primitiveRestartEnable  = false,
-        };
+        //vk::PipelineInputAssemblyStateCreateInfo input_assembly {
+        //    .topology                = vk::PrimitiveTopology::eTriangleList,
+        //    .primitiveRestartEnable  = false,
+        //};
 
-        vk::PipelineViewportStateCreateInfo viewport_state {
-            .viewportCount           = 1,
-            .scissorCount            = 1,
-        };
+        //vk::PipelineViewportStateCreateInfo viewport_state {
+        //    .viewportCount           = 1,
+        //    .scissorCount            = 1,
+        //};
 
-        vk::PipelineRasterizationStateCreateInfo rasterization_state {
-            .polygonMode             = vk::PolygonMode::eFill,
-            .cullMode                = vk::CullModeFlagBits::eNone,
-            .frontFace               = vk::FrontFace::eClockwise,
-            .lineWidth               = 1.f,
-        };
+        //vk::PipelineRasterizationStateCreateInfo rasterization_state {
+        //    .polygonMode             = vk::PolygonMode::eFill,
+        //    .cullMode                = vk::CullModeFlagBits::eNone,
+        //    .frontFace               = vk::FrontFace::eClockwise,
+        //    .lineWidth               = 1.f,
+        //};
 
-        vk::PipelineMultisampleStateCreateInfo multisample_state {
-            .rasterizationSamples    = vk::SampleCountFlagBits::e1,
-            .sampleShadingEnable     = false,
-            .minSampleShading        = 1.f,
-            .pSampleMask             = nullptr,
-            .alphaToCoverageEnable   = false,
-            .alphaToOneEnable        = false,
-        };
+        //vk::PipelineMultisampleStateCreateInfo multisample_state {
+        //    .rasterizationSamples    = vk::SampleCountFlagBits::e1,
+        //    .sampleShadingEnable     = false,
+        //    .minSampleShading        = 1.f,
+        //    .pSampleMask             = nullptr,
+        //    .alphaToCoverageEnable   = false,
+        //    .alphaToOneEnable        = false,
+        //};
 
-        vk::PipelineDepthStencilStateCreateInfo depth_stencil {
-            .depthTestEnable         = true,
-            .depthWriteEnable        = true,
-            .depthCompareOp          = vk::CompareOp::eGreaterOrEqual,
-            .depthBoundsTestEnable   = false,
-            .stencilTestEnable       = false,
-        };
+        //vk::PipelineDepthStencilStateCreateInfo depth_stencil {
+        //    .depthTestEnable         = true,
+        //    .depthWriteEnable        = true,
+        //    .depthCompareOp          = vk::CompareOp::eGreaterOrEqual,
+        //    .depthBoundsTestEnable   = false,
+        //    .stencilTestEnable       = false,
+        //};
 
-        vk::PipelineColorBlendAttachmentState color_blend_attachment {
-            .blendEnable             = false,
-            .colorWriteMask          =  vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
-                                      | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
-        };
+        //vk::PipelineColorBlendAttachmentState color_blend_attachment {
+        //    .blendEnable             = false,
+        //    .colorWriteMask          =  vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
+        //                              | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
+        //};
 
-        vk::PipelineColorBlendStateCreateInfo blend_state {
-            .logicOpEnable           = false,
-            .logicOp                 = vk::LogicOp::eCopy,
-            .attachmentCount         = 1,
-            .pAttachments            = &color_blend_attachment,
-            .blendConstants          {{ 0.f, 0.f, 0.f, 0.f }},
-        };
+        //vk::PipelineColorBlendStateCreateInfo blend_state {
+        //    .logicOpEnable           = false,
+        //    .logicOp                 = vk::LogicOp::eCopy,
+        //    .attachmentCount         = 1,
+        //    .pAttachments            = &color_blend_attachment,
+        //    .blendConstants          {{ 0.f, 0.f, 0.f, 0.f }},
+        //};
 
-        std::vector<vk::DynamicState> dynamic_states {
-            vk::DynamicState::eViewport,
-            vk::DynamicState::eScissor,
-        };
-        vk::PipelineDynamicStateCreateInfo dyn_state {
-            .dynamicStateCount       = (u32)dynamic_states.size(),
-            .pDynamicStates          =      dynamic_states.data(),
-        };
+        //std::vector<vk::DynamicState> dynamic_states {
+        //    vk::DynamicState::eViewport,
+        //    vk::DynamicState::eScissor,
+        //};
+        //vk::PipelineDynamicStateCreateInfo dyn_state {
+        //    .dynamicStateCount       = (u32)dynamic_states.size(),
+        //    .pDynamicStates          =      dynamic_states.data(),
+        //};
 
-        vk::PushConstantRange buffer_range {
-            .stageFlags              = vk::ShaderStageFlagBits::eVertex,
-            .offset                  = 0,
-            .size                    = sizeof(GPUDrawPushConstants),
-        };
-        vk::PipelineLayoutCreateInfo layout_info {
-            .setLayoutCount          = 1,
-            .pSetLayouts             = &_single_img_layout,
-            .pushConstantRangeCount  = 1,
-            .pPushConstantRanges     = &buffer_range,
-        };
+        //vk::PushConstantRange buffer_range {
+        //    .stageFlags              = vk::ShaderStageFlagBits::eVertex,
+        //    .offset                  = 0,
+        //    .size                    = sizeof(GPUDrawPushConstants),
+        //};
+        //vk::PipelineLayoutCreateInfo layout_info {
+        //    .setLayoutCount          = 1,
+        //    .pSetLayouts             = &_single_img_layout,
+        //    .pushConstantRangeCount  = 1,
+        //    .pPushConstantRanges     = &buffer_range,
+        //};
 
-        VK_CHECK(device.createPipelineLayout(&layout_info, nullptr, &graphics_pipeline.layout));
+        //VK_CHECK(device.createPipelineLayout(&layout_info, nullptr, &graphics_pipeline.layout));
 
-        vk::PipelineRenderingCreateInfo render_info {
-            .colorAttachmentCount    = 1,
-            .pColorAttachmentFormats = &_draw.img.format,
-            .depthAttachmentFormat   = _depth.img.format,
-        };
+        //vk::PipelineRenderingCreateInfo render_info {
+        //    .colorAttachmentCount    = 1,
+        //    .pColorAttachmentFormats = &_draw.img.format,
+        //    .depthAttachmentFormat   = _depth.img.format,
+        //};
 
-        vk::GraphicsPipelineCreateInfo graphics_pipeline_info {
-            .pNext                   = &render_info,
-            .stageCount              = (u32)graphics_pipeline.shader_stages.size(),
-            .pStages                 = graphics_pipeline.shader_stages.data(),
-            .pVertexInputState       = &vertex_input,
-            .pInputAssemblyState     = &input_assembly,
-            .pViewportState          = &viewport_state,
-            .pRasterizationState     = &rasterization_state,
-            .pMultisampleState       = &multisample_state,
-            .pDepthStencilState      = &depth_stencil,
-            .pColorBlendState        = &blend_state,
-            .pDynamicState           = &dyn_state,
-            .layout                  = graphics_pipeline.layout,
-        };
+        //vk::GraphicsPipelineCreateInfo graphics_pipeline_info {
+        //    .pNext                   = &render_info,
+        //    .stageCount              = (u32)graphics_pipeline.shader_stages.size(),
+        //    .pStages                 = graphics_pipeline.shader_stages.data(),
+        //    .pVertexInputState       = &vertex_input,
+        //    .pInputAssemblyState     = &input_assembly,
+        //    .pViewportState          = &viewport_state,
+        //    .pRasterizationState     = &rasterization_state,
+        //    .pMultisampleState       = &multisample_state,
+        //    .pDepthStencilState      = &depth_stencil,
+        //    .pColorBlendState        = &blend_state,
+        //    .pDynamicState           = &dyn_state,
+        //    .layout                  = graphics_pipeline.layout,
+        //};
 
-        graphics_pipeline.handle = device
-            .createGraphicsPipelines(nullptr, graphics_pipeline_info)
-            .value
-            .front();
+        //graphics_pipeline.handle = device
+        //    .createGraphicsPipelines(nullptr, graphics_pipeline_info)
+        //    .value
+        //    .front();
 
-        device.destroyShaderModule(vertex_shader);
-        device.destroyShaderModule(fragment_shader);
+        //device.destroyShaderModule(vertex_shader);
+        //device.destroyShaderModule(fragment_shader);
+
+        _pbr_metallic_roughness.build_pipelines();
     }
 
     inline void setup_imgui() {
@@ -1605,6 +1927,8 @@ namespace sigil::renderer {
         //    2, 1, 3,
         //};
         //auto rect = upload_mesh(rect_indices, rect_vertices);
+        u32 white = 0xFFFFFFFF;
+        _white_img = create_img((void*)&white, vk::Extent3D { 16, 16, 1 }, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled);
 
         u32 black = 0x00000000;
         u32 magenta = 0x00FF00FF;
@@ -1629,29 +1953,101 @@ namespace sigil::renderer {
 
         //auto loaded_meshes = load_model("res/models/SciFiHelmet.gltf");
         //auto loaded_meshes = load_model("res/models/model.obj");
+        //auto loaded_meshes = load_model("res/models/DamagedHelmet.gltf");
+        //if( !loaded_meshes.has_value() ) {
+        //    std::cout << "\nError:\n>>\tFailed to load meshes.\n";
+        //}
+        //for( auto& mesh : loaded_meshes.value()) {
+        //    _meshes.push_back(*mesh);
+        //}
+        
+        ////
+        PbrMetallicRoughness::MaterialResources material_resources {
+            .color_img = _error_img,
+            .color_sampler = _sampler_linear,
+            .metal_roughness_img = _error_img,
+            .metal_roughness_sampler = _sampler_linear,
+        };
+        AllocatedBuffer material_constants = create_buffer(sizeof(PbrMetallicRoughness::MaterialConstants), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
+        PbrMetallicRoughness::MaterialConstants* scene_uniform_data = (PbrMetallicRoughness::MaterialConstants*)material_constants.info.pMappedData;
+        scene_uniform_data->color_factors = glm::vec4{ 1, 1, 1, 1 };
+        scene_uniform_data->metal_roughness_factors = glm::vec4 { 1, .5, 0, 0 };
+        _deletion_queue.push_function([=]{
+            destroy_buffer(material_constants);
+        });
+        material_resources.data = material_constants.handle;
+        material_resources.offset = 0;
+        _default_material_instance = _pbr_metallic_roughness.write_material(material_resources, _descriptor_allocator);
+
         auto loaded_meshes = load_model("res/models/DamagedHelmet.gltf");
         if( !loaded_meshes.has_value() ) {
             std::cout << "\nError:\n>>\tFailed to load meshes.\n";
         }
         for( auto& mesh : loaded_meshes.value()) {
             _meshes.push_back(*mesh);
+
+            for( auto& surface : mesh->surfaces ) {
+                _render_objects.push_back(
+                    RenderObject {
+                        .count = surface.count,
+                        .first = surface.start_index,
+                        .index_buffer = mesh->mesh_buffer.index_buffer.handle,
+                        .material = &_default_material_instance,//&surface.material->data,
+                        .transform = glm::mat4 { 1 },
+                        .address = mesh->mesh_buffer.vertex_buffer_address,
+                    }
+                );
+            }
         }
+        auto plane = primitives::Plane();
+        auto plane_buffer = upload_mesh(plane.indices, plane.vertices);
+
+        _render_objects.push_back(
+            RenderObject {
+                .count = plane.surface.count,
+                .first = plane.surface.start_index,
+                .index_buffer = plane_buffer.index_buffer.handle,
+                .material = &_default_material_instance,
+                .transform = glm::mat4 { 1 },
+                .address = plane_buffer.vertex_buffer_address,
+            }
+        );
+    }
+
+    //_____________________________________
+    inline void update_scene() {
+        _scene_data = {
+            .view = camera.get_view(),
+            .proj = glm::perspective(
+                glm::radians(70.f),
+                (f32)swapchain.extent.width/(f32)swapchain.extent.height,
+                camera.clip_plane.near,
+                camera.clip_plane.far
+            ),
+            .ambient_color = glm::vec4 { .1f },
+            .sun_dir = glm::vec4 { 0, 1, .5, 1.f },
+            .sun_color = glm::vec4 { 1.f },
+        };
+        _scene_data.proj[1][1] *= -1;
     }
 
     //_____________________________________
     inline void draw_geometry(FrameData& frame, vk::CommandBuffer cmd) {
+
         vk::RenderingAttachmentInfo attach_info {
             .imageView = _draw.img.view,
             .imageLayout = vk::ImageLayout::eGeneral,
             .loadOp = vk::AttachmentLoadOp::eLoad,
             .storeOp = vk::AttachmentStoreOp::eStore,
         };
+
         vk::RenderingAttachmentInfo depth_info {
             .imageView = _depth.img.view,
             .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
             .loadOp = vk::AttachmentLoadOp::eClear,
             .storeOp = vk::AttachmentStoreOp::eStore,
         };
+
         vk::RenderingInfo render_info {
             .renderArea = {
                 .offset = vk::Offset2D {
@@ -1666,9 +2062,10 @@ namespace sigil::renderer {
             .pDepthAttachment = &depth_info,
             .pStencilAttachment = nullptr,
         };
+
         cmd.beginRendering(&render_info);
 
-        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline.handle);
+        //cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, graphics_pipeline.handle);
 
         vk::Viewport viewport {
             .x = 0,
@@ -1692,13 +2089,13 @@ namespace sigil::renderer {
         };
         cmd.setScissor(0, 1, &scissor);
 
-        vk::DescriptorSet img_set = frame.descriptors.allocate(_single_img_layout);
-        {
-            DescriptorWriter {}
-                .write_img(0, _error_img.img.view, _sampler_nearest, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
-                .update_set(img_set);
-        }
-        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, graphics_pipeline.layout, 0, img_set, nullptr);
+        //vk::DescriptorSet img_set = frame.descriptors.allocate(_single_img_layout);
+        //{
+        //    DescriptorWriter {}
+        //        .write_img(0, _error_img.img.view, _sampler_nearest, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+        //        .update_set(img_set);
+        //}
+        //cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, graphics_pipeline.layout, 0, img_set, nullptr);
 
         glm::mat4 projection = glm::perspective(
             glm::radians(70.f),
@@ -1706,33 +2103,36 @@ namespace sigil::renderer {
             camera.clip_plane.near,
             camera.clip_plane.far
         );
-        //projection[1][1] *= -1;
 
-        //glm::mat4 model = glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(1.f, 0.f, 0.f));
-        //glm::mat4 position = glm::vec4(glm::vec3(0, 0, 0), 1.f);
-        GPUDrawPushConstants push_constants {
-            .world_matrix = projection * camera.get_view(),// * model,
-            .vertex_buffer = _meshes[0].mesh_buffer.vertex_buffer_address,
-        };
+        AllocatedBuffer gpu_scene_data_buffer = create_buffer(sizeof(GPUSceneData), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
 
-        //AllocatedBuffer gpu_scene_data_buffer = create_buffer(sizeof(GPUSceneData), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
+        frame.deletion_queue.push_function([=] {
+            destroy_buffer(gpu_scene_data_buffer);
+        });
 
-        //frame.deletion_queue.push_function([=] {
-        //    destroy_buffer(gpu_scene_data_buffer);
-        //});
+        GPUSceneData* scene_uniform_data = (GPUSceneData*)gpu_scene_data_buffer.info.pMappedData;
+        *scene_uniform_data = _scene_data;
 
-        //GPUSceneData* scene_uniform_data = (GPUSceneData*)gpu_scene_data_buffer.info.pMappedData;
-        //*scene_uniform_data = __scene_data;
+        vk::DescriptorSet descriptor_set = frame.descriptors.allocate(_scene_data_layout);
 
-        //vk::DescriptorSet descriptor_set = frame.descriptors.allocate(_scene_data_layout);
+        DescriptorWriter {}
+            .write_buffer(0, gpu_scene_data_buffer.handle, sizeof(GPUSceneData), 0, vk::DescriptorType::eUniformBuffer)
+            .update_set(descriptor_set);
+        
+        for( auto& render : _render_objects ) {
+            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, render.material->pipeline->handle);
+            cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render.material->pipeline->layout, 0, 1, &descriptor_set, 0, nullptr);
+            cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, render.material->pipeline->layout, 1, 1, &render.material->material_set, 0, nullptr);
 
-        //DescriptorWriter {}
-        //    .write_buffer(0, gpu_scene_data_buffer.handle, sizeof(GPUSceneData), 0, vk::DescriptorType::eUniformBuffer)
-        //    .update_set(descriptor_set);
+            cmd.bindIndexBuffer(render.index_buffer, 0, vk::IndexType::eUint32);
+            GPUDrawPushConstants push_constants {
+                .world_matrix = render.transform * projection * camera.get_view(),
+                .vertex_buffer = render.address,
+            };
+            cmd.pushConstants(render.material->pipeline->layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &push_constants);
 
-        cmd.pushConstants(graphics_pipeline.layout, vk::ShaderStageFlagBits::eVertex, 0, sizeof(GPUDrawPushConstants), &push_constants);
-        cmd.bindIndexBuffer(_meshes[0].mesh_buffer.index_buffer.handle, 0, vk::IndexType::eUint32);
-        cmd.drawIndexed(_meshes[0].surfaces[0].count, 1, _meshes[0].surfaces[0].start_index, 0, 0);
+            cmd.drawIndexed(render.count, 1, render.first, 0, 0);
+        }
         cmd.endRendering();
     };
     
@@ -1774,6 +2174,7 @@ namespace sigil::renderer {
             transition_img(frame.cmd.buffer, _draw.img.handle, vk::ImageLayout::eGeneral, vk::ImageLayout::eColorAttachmentOptimal);
             transition_img(frame.cmd.buffer, _depth.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthAttachmentOptimal);
 
+            update_scene();
             draw_geometry(frame, frame.cmd.buffer);
 
             transition_img(frame.cmd.buffer, _draw.img.handle, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eTransferSrcOptimal);
