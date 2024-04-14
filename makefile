@@ -13,11 +13,11 @@ debug d:
 clean cln:
 	rm -f ./build/sigil
 vertexc scv:
-	glslc -c ./res/shaders/$(NAME).vert -o ./res/shaders/$(NAME).vert.spv
+	glslc -c ./src/shaders/$(NAME).vert -o ./res/shaders/$(NAME).vert.spv
 fragmentc scf:
-	glslc -c ./res/shaders/$(NAME).frag -o ./res/shaders/$(NAME).frag.spv
+	glslc -c ./src/shaders/$(NAME).frag -o ./res/shaders/$(NAME).frag.spv
 computec scc:
-	glslc -c ./res/shaders/$(NAME).comp -o ./res/shaders/$(NAME).comp.spv
+	glslc -c ./src/shaders/$(NAME).comp -o ./res/shaders/$(NAME).comp.spv
 shaderc sc:
 	$(MAKE) vertexc && $(MAKE) fragmentc && $(MAKE) fragmentc
 

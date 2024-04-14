@@ -8,11 +8,12 @@ project( 'sigil', 'cpp',
 #add_project_link_arguments('-fuse-ld=mold', language: ['cpp'])
 add_project_arguments('-w', language: ['c', 'cpp'])
 
-sources = ['src/main.cc', 'src/systems/vk_debug.cc']
+sources = ['src/main.cc', 'src/systems/vulkan/vk_debug.cc']
 executable('sigil', sources,
   include_directories: [
     include_directories('src/core'),
     include_directories('src/systems'),
+    include_directories('src/systems/vulkan'),
   ],
   dependencies: [
     dependency('vulkan', version: ['>=1.3.0']),

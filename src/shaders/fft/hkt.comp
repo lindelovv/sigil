@@ -1,0 +1,66 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_buffer_reference     : require
+
+#include "complex.glsl"
+
+const float PI = 3.1415926535897932384626433832795;
+const float gravity = 9.81;
+
+layout( local_size_x = 16, local_size_y = 16, local_size_z = 1 ) in;
+
+layout( binding = 0, rgba32f ) writeonly uniform image2D tilde_hkt_dy;
+layout( binding = 1, rgba32f ) writeonly uniform image2D tilde_hkt_dx;
+layout( binding = 2, rgba32f ) writeonly uniform image2D tilde_hkt_dz;
+
+layout( binding = 3, rgba32f ) readonly uniform image2D tilde_h0k;
+layout( binding = 4, rgba32f ) readonly uniform image2D tilde_h0_minus_k;
+
+layout( set = 0, binding = 5 ) uniform SceneData {
+    mat4 view;
+    mat4 proj;
+    mat4 viewproj;
+    vec4 ambient_color;
+    vec4 sunlight_direction;
+    vec4 sunlight_color;
+    float time;
+} _scene_data;
+
+layout ( push_constant ) uniform push_constants {
+    int N;
+    int L;
+} push_const;
+
+void main() {
+    vec2 x = ivec2(gl_GlobalInvocationID.xy) - float(push_const.N) / 2.0;
+    vec2 k = vec2(2.0 * PI * x.x / push_const.L, 2.0 * PI * x.y / push_const.L);
+    float magnitude = length(k);
+    if( magnitude < 0.00001 ) {
+        magnitude = 0.00001;
+    }
+    float w = sqrt(gravity * magnitude);
+
+    complex fourier_amp = complex(
+        imageLoad(tilde_h0k, ivec2(gl_GlobalInvocationID.xy)).r,
+        imageLoad(tilde_h0k, ivec2(gl_GlobalInvocationID.xy)).g
+    );
+    complex fourier_amp_conj = conj(complex(
+        imageLoad(tilde_h0_minus_k, ivec2(gl_GlobalInvocationID.xy)).r,
+        imageLoad(tilde_h0_minus_k, ivec2(gl_GlobalInvocationID.xy)).g
+    ));
+
+    float cosinus = cos(w * _scene_data.time);
+    float sinus   = sin(w * _scene_data.time);
+
+    complex exp_iwt     = complex(cosinus,  sinus);
+    complex exp_iwt_inv = complex(cosinus, -sinus);
+
+    complex h_k_t_dy = add(mul(fourier_amp, exp_iwt), (mul(fourier_amp_conj, exp_iwt_inv)));
+    complex h_k_t_dx = mul(complex(0.0, -k.x / magnitude), h_k_t_dy);
+    complex h_k_t_dz = mul(complex(0.0, -k.y / magnitude), h_k_t_dy);
+
+    imageStore(tilde_hkt_dy, ivec2(gl_GlobalInvocationID.xy), vec4(h_k_t_dy.real, h_k_t_dy.imaginary, 0, 1));
+    imageStore(tilde_hkt_dy, ivec2(gl_GlobalInvocationID.xy), vec4(h_k_t_dx.real, h_k_t_dx.imaginary, 0, 1));
+    imageStore(tilde_hkt_dy, ivec2(gl_GlobalInvocationID.xy), vec4(h_k_t_dz.real, h_k_t_dz.imaginary, 0, 1));
+}
+

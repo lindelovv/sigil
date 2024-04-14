@@ -1,0 +1,58 @@
+#version 460
+#extension GL_EXT_buffer_reference     : require
+
+const float PI = 3.1415926535897932384626433832795;
+const float gravity = 9.81;
+
+layout( local_size_x = 16, local_size_y = 16, local_size_z = 1 ) in;
+
+layout( binding = 0, rgba32f ) writeonly uniform image2D tilde_h0k;
+layout( binding = 1, rgba32f ) writeonly uniform image2D tilde_h0_minus_k;
+
+layout ( push_constant ) uniform push_constants {
+    int N;
+    int L;
+    float amplitude;
+    float windspeed;
+    vec2 w;
+    float capillar_supress_factor;
+} push_const;
+
+float hash(uint n) {
+    n = (n << 13U) ^ n;
+    n = n * (n * n * 15731U + 0x789221U)  + 0x137631U; // 2589
+    return float(n & uint(0x7ffffffU)) / float(0x7ffffff);
+}
+
+vec2 uniform_to_gaussian(float u1, float u2) {
+    float R = sqrt(-2.f * log(u1));
+    float theta = 2.f * PI * u2;
+    return vec2(R * cos(theta), R * sin(theta));
+}
+
+void main() {
+    vec2 x = vec2(gl_GlobalInvocationID.xy) - float(push_const.N) / 2.0;
+    vec2 k = vec2(2.0 * PI * x.x / push_const.L, 2.0 * PI * x.y / push_const.L);
+
+    float _L = (push_const.windspeed * push_const.windspeed) / gravity;
+    float mag = length(k);
+    if( mag < 0.00001 ) {
+        mag = 0.00001;
+    }
+    float mag2 = mag * mag;
+    
+    float h0k = clamp(sqrt((push_const.amplitude / (mag2 * mag2)) * pow(dot(normalize(k), normalize(push_const.w)), 4.0)
+        * exp(-(1.0 / (mag2 * _L * _L))) * exp(-mag2 * pow(push_const.capillar_supress_factor, 2.0))) / sqrt(2.0), -4000.0, 4000.0);
+
+    float h0k_minus_k = clamp(sqrt((push_const.amplitude / (mag2 * mag2)) * pow(dot(normalize(-k), normalize(push_const.w)), 4.0)
+        * exp(-(1.0 / (mag2 * _L * _L))) * exp(-mag2 * pow(push_const.capillar_supress_factor, 2.0))) / sqrt(2.0), -4000.0, 4000.0);
+
+    uint seed = 1;
+    vec4 uniform_random_samples = vec4(hash(seed), hash(seed * 2), hash(seed * 3), hash(seed * 4));
+    vec2 gauss1 = uniform_to_gaussian(uniform_random_samples.x, uniform_random_samples.y);
+    vec2 gauss2 = uniform_to_gaussian(uniform_random_samples.z, uniform_random_samples.w);
+ 
+    imageStore(tilde_h0k, ivec2(gl_GlobalInvocationID.xy), vec4(gauss1 * h0k, 0, 1));
+    imageStore(tilde_h0_minus_k, ivec2(gl_GlobalInvocationID.xy), vec4(gauss2 * h0k_minus_k, 0, 1));
+}
+

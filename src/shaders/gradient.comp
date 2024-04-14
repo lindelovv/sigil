@@ -19,8 +19,9 @@ void main() {
     vec4 bottom_color = push_const.data2;
 
     if( texel_coord.x < size.x && texel_coord.y < size.y ) {
-        float blend = float(texel_coord.y)/(size.y);
-        imageStore(img, texel_coord, mix(top_color, bottom_color, blend));
+        float blend_x = float(texel_coord.x)/(size.x);
+        float blend_y = float(texel_coord.y)/(size.y);
+        imageStore(img, texel_coord, mix(top_color, bottom_color, blend_x + blend_y));
     }
 }
 

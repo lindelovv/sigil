@@ -36,6 +36,8 @@ void main() {
     float wave = sin(3.0 * PI * distance * 0.3 + _push_constants.time) * 0.5;
 
     pos.z += wave;
+    // pos.z += update_z(); // height
+    // pos.xy += update_xy(); // side motion
 
     gl_Position = _push_constants.render_matrix * vec4(pos, 1.f);
 
@@ -44,4 +46,21 @@ void main() {
     _out_uv.x = v.uv_x;
     _out_uv.y = v.uv_y;
 }
+
+vec2 complex_multi(vec2 a, vec2 b) {
+    return vec2(
+        a.x * b.x - a.y * b.y,
+        a.x * b.y + a.y * b.x
+    );
+}
+
+vec2 euler_formula(float x) {
+    return vec2(cos(x), sin(x));
+}
+
+float update_z() {
+    
+}
+
+
 

@@ -1,0 +1,49 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_buffer_reference     : require
+
+#include "complex.glsl"
+
+const float PI = 3.1415926535897932384626433832795;
+const float gravity = 9.81;
+
+layout( local_size_x = 16, local_size_y = 16, local_size_z = 1 ) in;
+
+layout( binding = 0, rgba32f ) writeonly uniform image2D twindle_indices;;
+
+layout( binding = 1 ) buffer indices {
+    int j[];
+} bit_reversed;
+
+layout ( push_constant ) uniform push_constants {
+    int N;
+} push_const;
+
+void main() {
+    vec2 x = gl_GlobalInvocationID.xy;
+    float k = mod(x.y * (float(push_const.N) / pow(2, x.x + 1)), push_const.N);
+    complex twiddle = complex(cos(2.0 * PI * k / float(push_const.N)), sin(2.0 * PI * k / float(push_const.N)));
+
+    int butterfly_span = int(pow(2, x.x));
+    int butterfly_wing;
+
+    if( mod(x.y, pow(2, x.x + 1)) < pow(2, x.x) ) {
+        butterfly_wing = 1;
+    } else {
+        butterfly_wing = 0;
+    }
+    if( x.x == 0 ) {
+        if( butterfly_wing == 1 ) {
+            imageStore(twindle_indices, ivec2(x), vec4(twiddle.real, twiddle.imaginary, bit_reversed.j[int(x.y)], bit_reversed.j[int(x.y + 1)]));
+        } else {
+            imageStore(twindle_indices, ivec2(x), vec4(twiddle.real, twiddle.imaginary, bit_reversed.j[int(x.y - 1)], bit_reversed.j[int(x.y)]));
+        }
+    } else {
+        if( butterfly_wing == 1 ) {
+            imageStore(twindle_indices, ivec2(x), vec4(twiddle.real, twiddle.imaginary, x.y, x.y + butterfly_span));
+        } else {
+            imageStore(twindle_indices, ivec2(x), vec4(twiddle.real, twiddle.imaginary, x.y - butterfly_span, x.y));
+        }
+    }
+}
+

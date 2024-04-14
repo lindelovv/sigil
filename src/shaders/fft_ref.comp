@@ -1,0 +1,345 @@
+#version 460
+
+#define PI 3.141592658979323846
+
+
+//// TO REFERENCE
+
+layout ( rgba16f, set = 0, binding = 0 ) uniform image2D _ping_tex;
+    //Texture2D<vec2> _ping_tex;
+
+layout ( rgba16f, set = 0, binding = 1 ) uniform image2D[] _spectrum_textures, _initial_spectrum_textures, _displacement_textures;
+    //RWTexture2DArray<float4> _spectrum_textures, _initial_spectrum_textures, _displacement_textures;
+
+layout ( rgba16f, set = 0, binding = 2 ) uniform image2D[] _slope_textures;
+    //RWTexture2DArray<vec2> _slope_textures;
+
+layout ( rgba16f, set = 0, binding = 3 ) uniform image2D _buoyancy_data;
+    //RWTexture2D<half> _buoyancy_data;
+
+float _frame_time, _a, _gravity, _repeat_time, _damping, _depth, _low_cutoff, _high_cutoff;
+int _seed;
+vec2 _wind, _lambda, _normal_strength;
+uint _n, _length_scale_0, _length_scale_1, _length_scale_2, _length_scale_3;
+float _foam_bias, _foam_decay_rate, _foam_add, _foam_threshold;
+
+vec2 complex_multi(vec2 a, vec2 b) {
+    return vec2(
+        a.x * b.x - a.y * b.y,
+        a.x * b.y + a.y * b.x
+    );
+}
+
+vec2 euler_formula(float x) {
+    return vec2(cos(x), sin(x));
+}
+
+float hash(uint n) {
+    n = (n << 13U) ^ n;
+    n = n * (n * n * 15731U + 0x789221U)  + 0x137631U; // 2589
+    return float(n & uint(0x7ffffffU)) / float(0x7ffffff);
+}
+
+vec2 uniform_to_gaussian(float u1, float u2) {
+    float R = sqrt(-2.f * log(u1));
+    float theta = 2.f * PI * u2;
+    return vec2(R * cos(theta), R * sin(theta));
+}
+
+struct SpectrumParams {
+    float scale;
+    float angle;
+    float spread_blend;
+    float swell;
+    float alpha;
+    float peak_omega;
+    float gamma;
+    float short_waves_fade;
+} _params[];
+
+float dispersion(float k_mag) {
+    return sqrt(_gravity * k_mag * tanh(min(k_mag * _depth, 20)));
+}
+
+float dispersion_derivative(float k_mag) {
+    float th = tanh(min(k_mag * _depth, 20));
+    float ch = cosh(k_mag * _depth);
+    return _gravity * (_depth * k_mag / ch / ch + th) / dispersion(k_mag) / 2.f;
+}
+
+float normalization_factor(float s) {
+    float s2 = s * s;
+    float s3 = s2 * s;
+    float s4 = s3 * s;
+    if( s < 5 ) return -0.00564f * s4 + 0.00776f * s3 - 0.044f * s2 + 0.192f * s + 0.163f;
+    else return -4.80e-08f * s4 + 1.07e-05f * s3 - 9.53e-04f * s2 + 5.90e-02f * s + 3.93e-01f;
+}
+
+float donelan_banner_beta(float x) {
+    if( x < 0.95f ) return 2.61f * pow(abs(x), 1.3f);
+    if( x < 1.6f ) return 2.28f * pow(abs(x), -1.3f);
+    return pow(10.f, (-.4f + 0.8393f * exp(-0.567f * log(x * x))));
+}
+
+float donelan_banner(float theta, float omega, float peak_omega) {
+    float beta = donelan_banner_beta(omega / peak_omega);
+    float sech = 1.f / cosh(beta * theta);
+    return beta / 2.f / tanh(beta * 3.1416f) * sech * sech;
+}
+
+float cosine2s(float theta, float s) {
+    return normalization_factor(s) * pow(abs(cos(.5f * theta)), 2.f * s);
+}
+
+float spread_power(float omega, float peak_omega) {
+    if( omega > peak_omega ) {
+        return 9.77f * pow(abs(omega / peak_omega), -2.5f);
+    } else {
+        return 6.97f * pow(abs(omega / peak_omega), 5.f);
+    }
+}
+
+float direction_spectrum(float theta, float omega, SpectrumParams spectrum) {
+    float s = spread_power(omega, spectrum.peak_omega) + 16 * tanh(min(omega / spectrum.peak_omega, 20)) * spectrum.swell * spectrum.swell;
+    return lerp(2 / 3.1415f * cos(theta), cosine2s(theta - spectrum.angle, s), spectrum.spread_blend);
+}
+
+float tma_correction(float omega) {
+    float omega_h = omega * sqrt(_depth / _gravity);
+    if( omega_h <= 1.f ) { return .5f * omega_h * omega_h; }
+    if( omega_h < 2.f ) { return 1.f - .5f * (2.f - omega_h) * (2.f - omega_h); }
+    return 1.f;
+}
+
+float jonswap(float omega, SpectrumParams spectrum) {
+    float sigma = (omega <= spectrum.peak_omega) ? 0.07f : 0.09f;
+    float r = exp(-(omega - spectrum.peak_omega) * (omega - spectrum.peak_omega) / 2.f / sigma / sigma / spectrum.peak_omega / spectrum.peak_omega);
+    float one_over_omega = 1.f / omega;
+    float peak_omega_over_omega = spectrum.peak_omega / omega;
+    return spectrum.scale * tma_correction(omega) * spectrum.alpha * _gravity * _gravity
+            * one_over_omega * one_over_omega * one_over_omega * one_over_omega * peak_omega_over_omega
+            * exp(-1.25f * peak_omega_over_omega * peak_omega_over_omega * peak_omega_over_omega * peak_omega_over_omega)
+            * pow(abs(spectrum.gamma), r);
+}
+
+float short_waves_fade(float k_length, SpectrumParams spectrum) {
+    return exp(-spectrum.short_waves_fade * spectrum.short_waves_fade * k_length * k_length);
+}
+
+layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 )
+void init_spectrum(uint3 id : SV_DISPATCHTHREADID) {
+    uint seed = id.x + _n * id.y + _n;
+    seed += _seed;
+
+    float length_scales[4] = {
+        _length_scale_0,
+        _length_scale_1,
+        _length_scale_2,
+        _length_scale_3,
+    };
+    for( uint i = 0; i < 4; ++i ) {
+        float half_n = _n / 2.f;
+        float delta_k = 2.f * PI / length_scales[i];
+        vec2 k = (id.xy - half_n) * delta_k;
+        float k_length = length(k);
+        
+        seed += i + hash(seed) * 10;
+        float4 uniform_random_samples = float4(hash(seed), hash(seed * 2), hash(seed * 3), hash(seed * 4));
+        vec2 gauss1 = uniform_to_gaussian(uniform_random_samples.x, uniform_random_samples.y);
+        vec2 gauss2 = uniform_to_gaussian(uniform_random_samples.z, uniform_random_samples.w);
+
+        if( _low_cutoff <= k_length && k_length <= _high_cutoff ) {
+            float k_angle = atan2(k.y, k.x);
+            float omega = dispersion(k_length);
+            float d_omega_dk = dispersion_derivative(k_length);
+            float spectrum = jonswap(omega, _Spectrums[i * 2] * direction_spectrum(k_angle, omega, _Spectrums[i * 2]) * short_waves_fade(k_length, _Spectrums[i * 2]));
+            if( _Spectrums[i * 2 + 1].scale > 0 ) {
+                spectrum += jonswap(omega, _Spectrums[i * 2 +1]) * direction_spectrum(k_angle, omega, _Spectrums[i * 2 + 1]) * short_waves_fade(k_length, _Spectrums[i * 2 + 1]))
+            }
+            _initial_spectrum_textures[uint3(id.xy, i)] = float4(vec2(gauss2.x, gauss1.y) * sqrt(2 * spectrum * abs(d_omega_dk) / k_length * delta_k * delta_k), 0.f, 0.f);
+        } else {
+            _initial_spectrum_textures[uint3(id.xy, i)] =  0.f
+        }
+    }
+}
+
+layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 )
+void pack_spectrum_conjugate(uint3 id : SV_DISPATCHTHREADID) {
+    for( int i = 0; i < 4; ++i ) {
+        vec2 h0 = _initial_spectrum_textures[uint3(id.xy, i)].rg;
+        vec2 h0conj = _initial_spectrum_textures[uin3((_n - id.x) % _n, (_n - id.y) % _n, i)].rg;
+        _initial_spectrum_textures[uint3(id.xy, i)] = float4(h0, h0conj.x, -h0conj.y);
+    }
+}
+
+layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 )
+void update_spectrum_for_fft(uint3 id : SV_DISPATCHTHREADID) {
+    float length_scales[4] = {
+        _length_scale_0,
+        _length_scale_1,
+        _length_scale_2,
+        _length_scale_3,
+    };
+    for( int i = 0; i < 4; ++i ) {
+        float4 inital_signal = _initial_spectrum_textures[uint3(id.xy, i)];
+        vec2 h0 = inital_signal.xy;
+        vec2 h0conj = inital_signal.zw;
+        float half_n = _n / 2.f;
+        vec2 k = (id.xy - half_n) * 2.f * PI / length_scales[i];
+        float k_mag = length(k);
+        float k_mag_rcp = rcp(k_mag);
+
+        if( k_mag < .0001f ) {
+            k_mag_rcp = 1.f;
+        }
+        float w0 = 2.f * PI / _repeat_time;
+        float dispersion = floor(sqrt(_gravity * k_mag) / w0) * w0 * _frame_time;
+        vec2 exponent = euler_formula(dispersion);
+        vec2 htilde = complex_multi(h0, exponent) + complex_multi(h0conj, flat2(exponent.x, -exponent.y));
+        vec2 ih = vec2(-htilde.y, htilde.x);
+
+        vec2 displament_x = ih * k.x * k_mag_rcp;
+        vec2 displament_y = htilde;
+        vec2 displament_z = ih * k.y * k_mag_rcp;
+
+        vec2 displament_x_dx = -htilde * k.x * k.x * k_mag_rcp;
+        vec2 displament_y_dx = ih * k.x;
+        vec2 displament_z_dx = -htilde * k.y * k.y * k_mag_rcp;
+
+        vec2 displament_y_dz = ih * k.y;
+        vec2 displament_z_dz = -htilde * k.y * k.y * k_mag_rcp;
+
+        vec2 htilde_displacment_x = vec2(displament_x.x - displament_z.y, displament_x.y + displament_z.x);
+        vec2 htilde_displacment_z = vec2(displament_y.x - displament_z_dx.y, displament_y.y + displament_z_dx.x);
+
+        vec2 htilde_slope_x = vec2(displament_y_dx.x - displament_y_dz.y, displament_y_dx.y + displament_y_dz.x);
+        vec2 htilde_slope_z = vec2(displament_x_dx.x - displament_z_dz.y, displament_x_dx.y + displament_z_dz.x);
+
+        _spectrum_textures[uint3(id.xy, i * 2)] = float4(htilde_displacment_x, htilde_displacment_z);
+        _spectrum_textures[uint3(id.xy, i * 2 + 1)] = float4(htilde_slope_x, htilde_slope_z);
+    }
+}
+
+vec2 complex_exp(vec2 a) {
+    return vec2(cos(a.y), sin(a.y) * exp(a.x));
+}
+
+RWTexture<float4> _Buffer0, _Buffer1, _Buffer2, _Buffer3;
+uint _Step;
+
+float4 compute_twiddle_factor_and_input_indices(uint2 id) {
+    uint b = _n >> (id.x + 1);
+    vec2 mult = 2 * PI * vec2(0.f, 1.f) / _n;
+    uint i = (2 * b * (id.y / b) + id.y % b) & _n;
+    float 2 twiddle = complex_exp(-mult * ((id,y / b) * b));
+    return float4(twiddle, i, i + b);
+}
+
+#define SIZE 1024;
+#define LOG_SIZE 10
+
+RWTexture2DArray<float4> _FourierTarget;
+bool _Direction;
+
+groupshared float4 fft_group_buffer[2][SIZE];
+
+void butterfly_values(uint step, uint index, out uint2 indices, out vec2 twiddle) {
+    const float twoPi = 6.28318530718;
+    uint b = SIZE >> (step + 1);
+    uint w = b * (index / b);
+    uint i = (w + index) % SIZE;
+    sincos(-twoPi / SIZE * w, twiddle.y, twiddle.x);
+    twiddle.y = -twiddle.y;
+    indices = uint2(i, i + b);
+}
+
+float4 fft(uint thread_index, float4 input) {
+    fft_group_buffer[0][thread_index] = input;
+    GroupMemoryBarrierWithGroupSync();
+    bool flag = false;
+
+    [unroll]
+    for( uint step = 0; step < LOG_SIZE; ++step ) {
+        uint2 input_indices;
+        vec2 twiddle;
+        butterfly_values(step, thread_index, input_indices, twiddle);
+        float4 v = fft_group_buffer[flag][input_indices.y];
+        fft_group_buffer[!flag][thread_index] = fft_group_buffer[flag][input_indices.x] + float4(complex_multi(twiddle, v.xy), complex_multi(twiddle, v.zw));
+        flag = !flag;
+        GroupMemoryBarrierWithGroupSync();
+    }
+    return fft_group_buffer[flag][thread_index];
+}
+
+//[numthreads(SIZE, 1, 1)]
+layout( local_size_x = SIZE, local_size_y = 1, local_size_z = 1 )
+void horizontal_fft(uint3 _ SV_DISPATCHTHREADID) {
+    for( int i = 0; i < 8; ++i ) {
+        _FourierTarget[uint3(id.xy, i)] = fft(id.x, _FourierTarget[uint3(id.xy, i)]);
+    }
+}
+
+//[numthreads(SIZE, 1, 1)]
+layout( local_size_x = SIZE, local_size_y = 1, local_size_z = 1 )
+void vertical_fft(uint3 _ SV_DISPATCHTHREADID) {
+    for( int i = 0; i < 8; ++i ) {
+        _FourierTarget[uint3(id.yx, i)] = fft(id.x, _FourierTarget[uint3(id.yx, i)]);
+    }
+}
+
+float4 permute(float4 data, float3 id) {
+    return data * (1.f - 2.f * ((id.x + id.y) % 2));
+}
+
+//[numthreads(SIZE, 1, 1)]
+layout( local_size_x = SIZE, local_size_y = 1, local_size_z = 1 )
+void assemple_maps(uint3 id : SV_DISPATCHTHREADID) {
+    for( int i = 0; i < 4; ++i ) {
+        float4 htilde_displacment = permute(_spectrum_textures[uint3(id.xy, i * 2)], id);
+        float4 htilde_slope = permute(_spectrum_textures[uint3(id.xy, i * 2 + 1)], id);
+
+        vec2 dxdz = htilde_displacment.rg;
+        vec2 dydxz = htilde_displacment.ba;
+        vec2 dyxdyz = htilde_slope.rg;
+        vec2 dxxdzz = htilde_slope.ba;
+
+        float jacobian = (1.f + _lambda.x * dxxdzz.x) * (1.f + _lambda.y * dxxdzz.y) - _lambda.x * _lambda.y * dydxz.y * dydxz.y;
+
+        float3 displament = flaot3(_lambda.x * dxdz.x, dydxz.x, _lambda.y * dxdz.y);
+
+        vec2 slopes = dyxdyz.xy / (1 + abs(dxxdzz * _lambda));
+        float covariance = slopes.x * slopes.y;
+
+        float foam = _displacement_textures[uint3(id.xy, i)].a;
+        foam *= exp(-_foam_decay_rate);
+        foam = saturate(foam);
+
+        float biased_jacobian = max(0.f, -(jacobian - _foam_bias));
+
+        if( biased_jacobian > _foam_threshold ) {
+            foam += _foam_add * biased_jacobian;
+        }
+
+        _displacement_textures[uint3(id.xy, i)] = float4(displament, foam);
+        _slope_textures[uint3(id.xy, i)] = vec2(slopes);
+
+        if( i == 0 ) {
+            _buoyancy_data[id.xy] = displament.x;
+        }
+    }
+}
+
+float gaussian(int x, int y) {
+    float _Spread = .5f;
+    float sigma_squ = _Spread * _Spread;
+    return (1 / sqrt(2 * PI * sigma_squ)) * exp(-((x * x) + (y * y)) / (2 * sigma_squ));
+}
+
+SamplerState linear_repeat_sampler;
+
+//[numthreads(8,8,1)]
+layout( local_size_x = 8, local_size_y = 8, local_size_z = 1 )
+void accumulate_foam(uint3 id : SV_DISPATCHTHREADID) {
+    _spectrum_textures[uint3(id.xy, i)] = 0;
+}
+

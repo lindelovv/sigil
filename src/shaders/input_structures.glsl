@@ -5,6 +5,7 @@ layout( set = 0, binding = 0 ) uniform SceneData {
     vec4 ambient_color;
     vec4 sunlight_direction;
     vec4 sunlight_color;
+    float time;
 } _scene_data;
 
 layout( set = 1, binding = 0 ) uniform GLTFMaterialData {

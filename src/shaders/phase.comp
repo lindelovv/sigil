@@ -1,0 +1,42 @@
+#version 460 core
+
+#define COMPUTE_WORK_GROUP_DIM 32
+
+const float PI = 3.14159265359;
+const float g = 9.81;
+const float KM = 370.0;
+
+layout (local_size_x = COMPUTE_WORK_GROUP_DIM, local_size_y = COMPUTE_WORK_GROUP_DIM) in;
+
+layout (binding = 0, r32f) readonly uniform image2D _phases;
+layout (binding = 1, r32f) writeonly uniform image2D _delta_phases;
+
+uniform float _delta_time;
+uniform int _ocean_size;
+uniform int _resolution;
+
+float omega(float k)
+{
+    return sqrt(g * k * (1.0 + k * k / KM * KM));
+}
+
+void main()
+{
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+
+    float n = (id.x < 0.5f * u_resolution) ? id.x : id.x - u_resolution;
+	float m = (id.y < 0.5f * u_resolution) ? id.y : id.y - u_resolution;
+
+    vec2 wave_vector = (2.f * PI * vec2(n, m)) / u_ocean_size;
+	float k = length(wave_vector);
+
+    // Note: An ad-hoc factor to make the phase change per-frame slow
+    float slowdown_factor = 1.f;
+
+    float delta_phase = omega(k) * _delta_time * slowdown_factor;
+    float phase = imageLoad(u_phases, id).r;
+    phase = mod(phase + delta_phase, 2.f * PI);
+
+    imageStore(_delta_phases, id, vec4(phase, 0.f, 0.f, 0.f));
+}
+
