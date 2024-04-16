@@ -1532,7 +1532,7 @@ namespace sigil::renderer {
     }
 
     //_____________________________________
-    inline std::optional<std::vector<std::shared_ptr<Mesh>>> load_model(const char* path) {
+    inline std::vector<std::shared_ptr<Mesh>> load_model(const char* path) {
         std::cout << ">> Loading file at: " << path << "\n";
 
         std::vector<std::shared_ptr<Mesh>> new_meshes;
@@ -1918,7 +1918,7 @@ namespace sigil::renderer {
         //if( !loaded_meshes.has_value() ) {
         //    std::cout << "\nError:\n>>\tFailed to load meshes.\n";
         //}
-        //for( auto& mesh : loaded_meshes.value()) {
+        //for( auto& mesh : loaded_meshes) {
         //    _meshes.push_back(*mesh);
         //}
         
@@ -1961,10 +1961,10 @@ namespace sigil::renderer {
         _wave_material_instance = _wave_material.write_material(wave_material_resources, _descriptor_allocator);
 
         auto loaded_meshes = load_model("res/models/DamagedHelmet.gltf");
-        if( !loaded_meshes.has_value() ) {
-            std::cout << "\nError:\n>>\tFailed to load meshes.\n";
-        }
-        for( auto& mesh : loaded_meshes.value()) {
+        //if( !loaded_meshes ) {
+        //    std::cout << "\nError:\n>>\tFailed to load meshes.\n";
+        //}
+        for( auto& mesh : loaded_meshes) {
             _meshes.push_back(*mesh);
 
             for( auto& surface : mesh->surfaces ) {
