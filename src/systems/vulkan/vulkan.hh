@@ -16,7 +16,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <iostream>
 #include <memory>
-#include <vulkan/vulkan_core.h>
 
 #define VULKAN_HPP_NO_EXCEPTIONS
 #define VULKAN_HPP_NO_CONSTRUCTORS
@@ -37,10 +36,11 @@
 namespace sigil::renderer {
 
 // TODO: VkResult checker that can return value and result or just value
-#define VK_CHECK(x) { vk::Result e = (vk::Result)x; if((VkResult)e) {       \
-    std::cout << "__VK_CHECK failed__ "                                      \
-    << vk::to_string(e) << " @ " << __FILE_NAME__ << "_" << __LINE__ << "\n"; \
+#define VK_CHECK(x) { vk::Result e = (vk::Result)x; if((VkResult)e) {  \
+    std::cout << "__VK_CHECK failed__ "                                 \
+    << vk::to_string(e) << " @ " << __FILE__ << "_" << __LINE__ << "\n"; \
 } }
+
 #define SIGIL_V VK_MAKE_VERSION(version::major, version::minor, version::patch)
 
     const vk::ApplicationInfo engine_info = {
@@ -76,12 +76,19 @@ namespace sigil::renderer {
     } inline debug;
 
     //_____________________________________
+    static vma::Allocator vma_allocator;
+
+    //_____________________________________
+    inline DeletionQueue _deletion_queue;
+
+    //_____________________________________
     inline vk::Instance         instance;
     inline vk::SurfaceKHR       surface;
     inline vk::PhysicalDevice   phys_device;
     inline vk::Device           device;
 
     //_____________________________________
+    // Swapchain
     struct {
         vk::SwapchainKHR           handle;
         vk::Format                 img_format;
@@ -101,107 +108,28 @@ namespace sigil::renderer {
     //_____________________________________
     struct DescriptorAllocator {
 
-        void init(u32 nr_sets, std::span<std::pair<vk::DescriptorType, f32>> pool_ratios) {
-            ratios.clear();
-            for( auto ratio : pool_ratios ) {
-                ratios.push_back(ratio);
-            }
-            vk::DescriptorPool new_pool = create_pool(nr_sets, pool_ratios);
-            sets_per_pool = nr_sets * 1.5f;
-            ready_pools.push_back(new_pool);
-        }
-
-        vk::DescriptorSet allocate(vk::DescriptorSetLayout layout) {
-            vk::DescriptorPool pool = get_pool();
-            vk::DescriptorSet set;
-            vk::DescriptorSetAllocateInfo allocate_info {
-                .descriptorPool = pool,
-                .descriptorSetCount = 1,
-                .pSetLayouts = &layout,
-            };
-            vk::Result result = device.allocateDescriptorSets(&allocate_info, &set);
-            if( result == vk::Result::eErrorOutOfPoolMemory || result == vk::Result::eErrorFragmentedPool ) {
-                full_pools.push_back(pool);
-                pool = get_pool();
-                allocate_info.descriptorPool = pool;
-                VK_CHECK(device.allocateDescriptorSets(&allocate_info, &set));
-            }
-            ready_pools.push_back(pool);
-            return set;
-        }
-
-        void clear() {
-            for( auto pool : ready_pools ) {
-                device.resetDescriptorPool(pool);
-            }
-            for( auto pool : full_pools ) {
-                device.resetDescriptorPool(pool);
-                ready_pools.push_back(pool);
-            }
-            full_pools.clear();
-        }
-
-        void destroy() {
-            for( auto pool : ready_pools ) {
-                device.destroyDescriptorPool(pool);
-            }
-            ready_pools.clear();
-            for( auto pool : full_pools ) {
-                device.destroyDescriptorPool(pool);
-            }
-            full_pools.clear();
-        }
+        void init(u32 nr_sets, std::span<std::pair<vk::DescriptorType, f32>> pool_ratios);
+        vk::DescriptorSet allocate(vk::DescriptorSetLayout layout);
+        void clear();
+        void destroy();
 
     private:
-
-        vk::DescriptorPool get_pool() {
-            vk::DescriptorPool new_pool;
-            if( ready_pools.size() != 0 ) {
-                new_pool = ready_pools.back();
-                ready_pools.pop_back();
-            }
-            else {
-                new_pool = create_pool(sets_per_pool, ratios);
-                if( sets_per_pool > 4092 ) {
-                    sets_per_pool = 4092;
-                }
-            }
-            return new_pool;
-        }
-
-        vk::DescriptorPool create_pool(u32 set_count, std::span<std::pair<vk::DescriptorType, f32>> ratios) {
-            std::vector<vk::DescriptorPoolSize> pool_sizes;
-            for( auto [type, ratio] : ratios ) {
-                pool_sizes.push_back(
-                    vk::DescriptorPoolSize {
-                        .type = type,
-                        .descriptorCount = (u32)ratio * set_count,
-                    }
-                );
-            }
-            return device.createDescriptorPool(
-                    vk::DescriptorPoolCreateInfo {
-                        .flags = vk::DescriptorPoolCreateFlags(),
-                        .maxSets = set_count,
-                        .poolSizeCount = (u32)pool_sizes.size(),
-                        .pPoolSizes = pool_sizes.data(),
-                    },
-                    nullptr
-                ).value;
-        }
+        vk::DescriptorPool get_pool();
+        vk::DescriptorPool create_pool(u32 set_count, std::span<std::pair<vk::DescriptorType, f32>> ratios);
 
         std::vector<std::pair<vk::DescriptorType, f32>> ratios;
         std::vector<vk::DescriptorPool> full_pools;
         std::vector<vk::DescriptorPool> ready_pools;
         u32 sets_per_pool;
+
     } inline _descriptor_allocator;
 
     //_____________________________________
     struct DescriptorWriter {
 
-        std::deque<vk::DescriptorImageInfo> img_info;
+        std::deque<vk::DescriptorImageInfo>  img_info;
         std::deque<vk::DescriptorBufferInfo> buffer_info;
-        std::vector<vk::WriteDescriptorSet> writes;
+        std::vector<vk::WriteDescriptorSet>  writes;
 
         DescriptorWriter& write_img(
             u32 binding,
@@ -209,67 +137,17 @@ namespace sigil::renderer {
             vk::Sampler sampler,
             vk::ImageLayout layout,
             vk::DescriptorType type
-        ) {
-            vk::DescriptorImageInfo& info = img_info.emplace_back(
-                vk::DescriptorImageInfo {
-                    .sampler = sampler,
-                    .imageView = img_view,
-                    .imageLayout = layout,
-                }
-            );
-            writes.push_back(
-                vk::WriteDescriptorSet {
-                    .dstSet = VK_NULL_HANDLE,
-                    .dstBinding = binding,
-                    .descriptorCount = 1,
-                    .descriptorType = type,
-                    .pImageInfo = &info,
-                }
-            );
-            return *this;
-        }
-
+        );
         DescriptorWriter& write_buffer(
             u32 binding,
             vk::Buffer buffer,
             size_t size,
             size_t offset,
             vk::DescriptorType type
-        ) {
-            vk::DescriptorBufferInfo& info = buffer_info.emplace_back(
-                vk::DescriptorBufferInfo {
-                    .buffer = buffer,
-                    .offset = offset,
-                    .range  = size,
-                }
-            );
-            writes.push_back(
-                vk::WriteDescriptorSet {
-                    .dstSet = VK_NULL_HANDLE,
-                    .dstBinding = binding,
-                    .descriptorCount = 1,
-                    .descriptorType = type,
-                    .pBufferInfo = &info,
-                }
-            );
-            return *this;
-        }
+        );
+        DescriptorWriter& update_set(vk::DescriptorSet set);
+        DescriptorWriter& clear();
 
-        DescriptorWriter& update_set(vk::DescriptorSet set) {
-            for( vk::WriteDescriptorSet& write : writes ) {
-                write.dstSet = set;
-            }
-            device.updateDescriptorSets((u32)writes.size(), writes.data(), 0, nullptr);
-            return *this;
-        }
-
-        DescriptorWriter& clear() {
-            img_info.clear();
-            buffer_info.clear();
-            writes.clear();
-            return *this;
-        }
-        
     } inline _descriptor_writer;
 
     //_____________________________________
@@ -282,35 +160,12 @@ namespace sigil::renderer {
         } set;
     };
 
+    //_____________________________________
     struct DescriptorLayoutBuilder {
         std::vector<vk::DescriptorSetLayoutBinding> bindings;
-
-        DescriptorLayoutBuilder& add_binding(u32 binding, vk::DescriptorType type) {
-            bindings.push_back(
-                vk::DescriptorSetLayoutBinding {
-                    .binding = binding,
-                    .descriptorType = type,
-                    .descriptorCount = 1,
-                }
-            );
-            return *this;
-        }
-
-        DescriptorLayoutBuilder& clear() { bindings.clear(); return *this; }
-
-        vk::DescriptorSetLayout build(vk::ShaderStageFlags shader_stages) {
-            for( auto& bind : bindings ) {
-                bind.stageFlags |= shader_stages;
-            }
-            vk::DescriptorSetLayoutCreateInfo info {
-                .flags = vk::DescriptorSetLayoutCreateFlags(),
-                .bindingCount = (u32)bindings.size(),
-                .pBindings = bindings.data(),
-            };
-            vk::DescriptorSetLayout set;
-            VK_CHECK(device.createDescriptorSetLayout(&info, nullptr, &set));
-            return set;
-        }
+        DescriptorLayoutBuilder& add_binding(u32 binding, vk::DescriptorType type);
+        DescriptorLayoutBuilder& clear();
+        vk::DescriptorSetLayout build(vk::ShaderStageFlags shader_stages);
     };
 
     //_____________________________________
@@ -325,66 +180,22 @@ namespace sigil::renderer {
         vk::Extent2D extent;
         DescriptorData descriptor;
     };
+
+    //_____________________________________
+    // Images
     inline AllocatedImage _draw;
     inline AllocatedImage _depth;
     inline AllocatedImage _error_img;
     inline AllocatedImage _white_img;
 
+    //_____________________________________
+    // Samplers
     inline vk::Sampler _sampler_linear;
     inline vk::Sampler _sampler_nearest;
 
-    //struct FFT {
-    //    struct {
-    //        struct {
-    //            vk::Image       handle;
-    //            vk::ImageView   view;
-    //            vma::Allocation alloc;
-    //            vk::Extent3D    extent;
-    //            vk::Format      format;
-    //        } pingpong_img;
-    //        vk::Extent2D extent;
-    //        DescriptorData butterfly_descriptor;
-    //        DescriptorData inversion_descriptor;
-    //    } _dy;
-    //    struct {
-    //        struct {
-    //            vk::Image       handle;
-    //            vk::ImageView   view;
-    //            vma::Allocation alloc;
-    //            vk::Extent3D    extent;
-    //            vk::Format      format;
-    //        } pingpong_img;
-    //        vk::Extent2D extent;
-    //        DescriptorData butterfly_descriptor;
-    //        DescriptorData inversion_descriptor;
-    //    } _dx;
-    //    struct {
-    //        struct {
-    //            vk::Image       handle;
-    //            vk::ImageView   view;
-    //            vma::Allocation alloc;
-    //            vk::Extent3D    extent;
-    //            vk::Format      format;
-    //        } pingpong_img;
-    //        vk::Extent2D extent;
-    //        DescriptorData butterfly_descriptor;
-    //        DescriptorData inversion_descriptor;
-    //    } _dz;
-    //    struct HorzPushConstants {
-
-    //    };
-    //    struct VertPushConstants {
-
-    //    };
-    //    struct InvrPushConstants {
-
-    //    };
-    //} inline fft;
-
-    inline vk::DescriptorSetLayout _single_img_layout;
-
     //_____________________________________
-    static vma::Allocator vma_allocator;
+    // Descriptor Set Layouts
+    inline vk::DescriptorSetLayout _single_img_layout;
 
     //_____________________________________
     constexpr u8 FRAME_OVERLAP = 2;
@@ -402,8 +213,6 @@ namespace sigil::renderer {
     inline std::vector<FrameData> frames { FRAME_OVERLAP };
     inline u32 current_frame = 0;
 
-    inline DeletionQueue _deletion_queue;
-
     //_____________________________________
     struct PipelineBuilder {
         std::vector<vk::PipelineShaderStageCreateInfo> shader_stages;
@@ -416,163 +225,20 @@ namespace sigil::renderer {
         vk::Format color_attachment_format;
         vk::PipelineLayout layout;
 
-        PipelineBuilder& set_shaders(vk::ShaderModule vertex, vk::ShaderModule fragment) {
-            shader_stages.clear();
-            shader_stages = {
-                vk::PipelineShaderStageCreateInfo {
-                    .stage  = vk::ShaderStageFlagBits::eVertex,
-                    .module = vertex,
-                    .pName  = "main",
-                },
-                vk::PipelineShaderStageCreateInfo {
-                    .stage  = vk::ShaderStageFlagBits::eFragment,
-                    .module = fragment,
-                    .pName  = "main",
-                }
-            };
-            return *this;
-        }
-
-        PipelineBuilder& set_input_topology(vk::PrimitiveTopology topoloty) {
-            input_assembly.topology               = topoloty;
-            input_assembly.primitiveRestartEnable = false;
-            return *this;
-        }
-
-        PipelineBuilder& set_polygon_mode(vk::PolygonMode mode) {
-            rasterizer.polygonMode = mode;
-            rasterizer.lineWidth   = 1;
-            return *this;
-        }
-
-        PipelineBuilder& set_cull_mode(vk::CullModeFlagBits cull_mode, vk::FrontFace front_face) {
-            rasterizer.cullMode  = cull_mode;
-            rasterizer.frontFace = front_face;
-            return *this;
-        }
-
-        PipelineBuilder& set_multisampling_none() {
-            multisampling.sampleShadingEnable   = false;
-            multisampling.rasterizationSamples  = vk::SampleCountFlagBits::e1;
-            multisampling.minSampleShading      = 1.0f;
-            multisampling.pSampleMask           = nullptr;
-            multisampling.alphaToCoverageEnable = false;
-            multisampling.alphaToOneEnable      = false;
-            return *this;
-        }
-
-        PipelineBuilder& disable_blending() {
-            color_blend_attachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
-                                                  | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-            color_blend_attachment.blendEnable    = false;
-            return *this;
-        }
-
-        PipelineBuilder& enable_blending_addative() {
-            color_blend_attachment.colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
-                                                       | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-            color_blend_attachment.blendEnable         = true;
-            color_blend_attachment.srcColorBlendFactor = vk::BlendFactor::eOne;
-            color_blend_attachment.dstColorBlendFactor = vk::BlendFactor::eDstAlpha;
-            color_blend_attachment.colorBlendOp        = vk::BlendOp::eAdd;
-            color_blend_attachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-            color_blend_attachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
-            color_blend_attachment.alphaBlendOp        = vk::BlendOp::eAdd;
-            return *this;
-        }
-
-        PipelineBuilder& enable_blending_alphablend() {
-            color_blend_attachment.colorWriteMask      = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
-                                                       | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
-            color_blend_attachment.blendEnable         = true;
-            color_blend_attachment.srcColorBlendFactor = vk::BlendFactor::eOneMinusDstAlpha;
-            color_blend_attachment.dstColorBlendFactor = vk::BlendFactor::eDstAlpha;
-            color_blend_attachment.colorBlendOp        = vk::BlendOp::eAdd;
-            color_blend_attachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
-            color_blend_attachment.dstAlphaBlendFactor = vk::BlendFactor::eZero;
-            color_blend_attachment.alphaBlendOp        = vk::BlendOp::eAdd;
-            return *this;
-        }
-
-        PipelineBuilder& set_color_attachment_format(vk::Format format) {
-            color_attachment_format             = format;
-            render_info.colorAttachmentCount    = 1;
-            render_info.pColorAttachmentFormats = &color_attachment_format;
-            return *this;
-        }
-
-        PipelineBuilder& set_depth_format(vk::Format format) {
-            render_info.depthAttachmentFormat = format;
-            return *this;
-        }
-
-        PipelineBuilder& disable_depthtest() {
-            depth_stencil.depthTestEnable       = false;
-            depth_stencil.depthWriteEnable      = false;
-            depth_stencil.depthCompareOp        = vk::CompareOp::eNever;
-            depth_stencil.depthBoundsTestEnable = false;
-            depth_stencil.stencilTestEnable     = false;
-            return *this;
-        }
-
-        PipelineBuilder& enable_depthtest(bool write_enable, vk::CompareOp op) {
-            depth_stencil.depthTestEnable       = true;
-            depth_stencil.depthWriteEnable      = write_enable;
-            depth_stencil.depthCompareOp        = op;
-            depth_stencil.depthBoundsTestEnable = false;
-            depth_stencil.stencilTestEnable     = false;
-            return *this;
-        }
-
-        PipelineBuilder& set_layout(vk::PipelineLayout in_layout) {
-            layout = in_layout;
-            return *this;
-        }
-
-        vk::Pipeline build() {
-            vk::PipelineViewportStateCreateInfo viewport_state {
-                .viewportCount = 1,
-                .scissorCount  = 1,
-            };
-
-            vk::PipelineColorBlendStateCreateInfo color_blending {
-                .logicOpEnable   = false,
-                .logicOp         = vk::LogicOp::eCopy,
-                .attachmentCount = 1,
-                .pAttachments    = &color_blend_attachment,
-            };
-
-            vk::PipelineVertexInputStateCreateInfo vertex_input {};
-
-            vk::DynamicState states[] {
-                vk::DynamicState::eViewport,
-                vk::DynamicState::eScissor,
-            };
-            vk::PipelineDynamicStateCreateInfo dynamic_state {
-                .dynamicStateCount = 2,
-                .pDynamicStates    = &states[0],
-            };
-
-            vk::GraphicsPipelineCreateInfo pipeline_info {
-                .pNext               = &render_info,
-                .stageCount          = (u32)shader_stages.size(),
-                .pStages             = shader_stages.data(),
-                .pVertexInputState   = &vertex_input,
-                .pInputAssemblyState = &input_assembly,
-                .pViewportState      = &viewport_state,
-                .pRasterizationState = &rasterizer,
-                .pMultisampleState   = &multisampling,
-                .pDepthStencilState  = &depth_stencil,
-                .pColorBlendState    = &color_blending,
-                .pDynamicState       = &dynamic_state,
-                .layout              = layout,
-            };
-
-            return device
-                .createGraphicsPipelines(nullptr, pipeline_info)
-                .value
-                .front();
-        }
+        PipelineBuilder& set_shaders(vk::ShaderModule vertex, vk::ShaderModule fragment);
+        PipelineBuilder& set_input_topology(vk::PrimitiveTopology topoloty);
+        PipelineBuilder& set_polygon_mode(vk::PolygonMode mode);
+        PipelineBuilder& set_cull_mode(vk::CullModeFlagBits cull_mode, vk::FrontFace front_face);
+        PipelineBuilder& set_multisampling_none();
+        PipelineBuilder& disable_blending();
+        PipelineBuilder& enable_blending_addative();
+        PipelineBuilder& enable_blending_alphablend();
+        PipelineBuilder& set_color_attachment_format(vk::Format format);
+        PipelineBuilder& set_depth_format(vk::Format format);
+        PipelineBuilder& disable_depthtest();
+        PipelineBuilder& enable_depthtest(bool write_enable, vk::CompareOp op);
+        PipelineBuilder& set_layout(vk::PipelineLayout in_layout);
+        vk::Pipeline build();
     };
 
     //_____________________________________
@@ -981,64 +647,9 @@ namespace sigil::renderer {
             GeoSurface surface;
 
             Plane() : Plane(10, 10) {};
-
-            Plane(u32 div, f32 width) {
-                f32 triangle_side = width / div;
-                for( u32 row = 0; row < div + 1; row++ ) {
-                    for( u32 col = 0; col < div + 1; col++ ) {
-                        auto pos = glm::vec3(col * triangle_side, row * -triangle_side, 0);
-                        vertices.push_back(
-                            Vertex {
-                                .position = pos,
-                                .uv_x = (f32)col / div,
-                                .uv_y = (f32)row / div,
-                                .color = {
-                                    1.f,
-                                    1.f,
-                                    1.f,
-                                    1.f,
-                                },
-                            }
-                        );
-                    }
-                }
-                surface.start_index = (u32)indices.size();
-                for( u32 row = 0; row < div; row++ ) {
-                    for( u32 col = 0; col < div; col++ ) {
-                        u32 index = row * (div + 1) + col;
-                        indices.push_back(index);
-                        indices.push_back(index + (div + 1) + 1);
-                        indices.push_back(index + (div + 1));
-                        indices.push_back(index);
-                        indices.push_back(index + 1);
-                        indices.push_back(index + (div + 1) + 1);
-                    }
-                }
-                surface.count = (u32)indices.size();
-            }
-            //rect_vertices = {
-            //    Vertex {
-            //        .position = { .5, -.5, 0 },
-            //        .color    = { .5, .5, .5, 1 },
-            //    },
-            //    Vertex {
-            //        .position = { .5, .5, 0 },
-            //        .color    = { .5, .5, .5, 1 },
-            //    },
-            //    Vertex {
-            //        .position = { -.5, -.5, 0 },
-            //        .color    = { .5, .5, .5, 1 },
-            //    },
-            //    Vertex {
-            //        .position = { -.5, .5, 0 },
-            //        .color    = { .5, .5, .5, 1 },
-            //    },
-            //};
-            //rect_indices = {
-            //    0, 1, 2,
-            //    2, 1, 3,
-            //};
+            Plane(u32 div, f32 width);
         };
+
     } // primitives
 
     //_____________________________________
@@ -1672,645 +1283,6 @@ namespace sigil::renderer {
     }
 
     //_____________________________________
-    struct FFT {
-        vk::Format format = vk::Format::eR32G32B32A32Sfloat;
-
-        struct TwiddleFactors {
-            struct PushConstants {
-                u32 N;
-            };
-            struct UniformBufferObject {
-                u32 N;
-            } _ubo;
-
-            AllocatedImage alloc_img;
-
-            vk::Pipeline pipeline;
-            vk::PipelineLayout pipeline_layout;
-            vk::DescriptorSet descriptor;
-            vk::DescriptorSetLayout descriptor_layout;
-            DescriptorAllocator descriptor_alloc;
-            vk::Buffer buffer;
-            vk::Semaphore signal_semaphore;
-            vk::SubmitInfo2 submit_info;
-            f32 t;
-
-            vk::Format format = vk::Format::eR32G32B32A32Sfloat;
-            
-            void init(u32 N) {
-                u32 log_2_n = std::log(N) / log(2);
-                alloc_img = create_img(vk::Extent3D { log_2_n, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-
-                AllocatedBuffer data_buffer = create_buffer(sizeof(TwiddleFactors::UniformBufferObject), vk::BufferUsageFlagBits::eStorageBuffer, vma::MemoryUsage::eCpuToGpu);
-
-                _deletion_queue.push_function([=] {
-                    destroy_buffer(data_buffer);
-                });
-
-                TwiddleFactors::UniformBufferObject* uniform_data = (TwiddleFactors::UniformBufferObject*)data_buffer.info.pMappedData;
-                *uniform_data = _ubo;
-
-                std::vector<std::pair<vk::DescriptorType, f32>> sizes {
-                    { vk::DescriptorType::eStorageImage,  1 },
-                    { vk::DescriptorType::eStorageBuffer, 1 },
-                };
-                descriptor_alloc.init(10, sizes);
-                descriptor_layout = DescriptorLayoutBuilder {}
-                    .add_binding(0, vk::DescriptorType::eStorageImage)
-                    .add_binding(1, vk::DescriptorType::eStorageBuffer)
-                    .build(vk::ShaderStageFlagBits::eCompute);
-                descriptor = descriptor_alloc.allocate(descriptor_layout);
-
-                DescriptorWriter {} 
-                    .write_img(0, alloc_img.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                    .write_buffer(1, data_buffer.handle, sizeof(TwiddleFactors::UniformBufferObject), 0, vk::DescriptorType::eStorageBuffer)
-                    .update_set(descriptor);
-
-                vk::PushConstantRange push_const {
-                    .stageFlags = vk::ShaderStageFlagBits::eCompute,
-                    .offset = 0,
-                    .size = sizeof(TwiddleFactors::PushConstants),
-                };
-
-                pipeline_layout = device.createPipelineLayout(
-                    vk::PipelineLayoutCreateInfo {
-                        .setLayoutCount = 1,
-                        .pSetLayouts = &descriptor_layout,
-                        .pushConstantRangeCount = 1,
-                        .pPushConstantRanges = &push_const,
-                    }
-                ).value;
-
-                vk::ShaderModule twiddle_factors = load_shader_module("res/shaders/fft/twiddle_factors.comp.spv").value;
-                vk::PipelineShaderStageCreateInfo stage_info {
-                    .stage  = vk::ShaderStageFlagBits::eCompute,
-                    .module = twiddle_factors,
-                    .pName  = "main",
-                };
-                vk::ComputePipelineCreateInfo pipe_info {
-                    .stage = stage_info,
-                    .layout = pipeline_layout,
-                };
-
-                pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
-
-                immediate_submit([=](vk::CommandBuffer cmd) {
-                    transition_img(cmd, alloc_img.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
-                    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline_layout, 0, descriptor, nullptr);
-                    PushConstants pc {
-                        .N = N,
-                    };
-                    cmd.pushConstants(pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(TwiddleFactors::PushConstants), &pc);
-                    cmd.dispatch(std::ceil(N / 16.f), std::ceil(N / 16.f), 1);
-                });
-            }
-        } twiddle_factors;
-
-        struct H0K {
-            struct PushConstants {
-                u32 N;
-                u32 L;
-                f32 amplitude;
-                f32 wind_speed;
-                glm::vec2 wind_dir;
-                f32 capillar_sf;
-            };
-            struct UniformBufferObject {
-                f32 t;
-            };
-
-            AllocatedImage h0k;
-            AllocatedImage h0_minus_k;
-
-            vk::Pipeline pipeline;
-            vk::PipelineLayout pipeline_layout;
-            vk::DescriptorSet descriptor;
-            vk::DescriptorSetLayout descriptor_layout;
-            DescriptorAllocator descriptor_alloc;
-            vk::Buffer buffer;
-            vk::CommandPool pool;
-            vk::CommandBuffer cmd;
-            vk::Semaphore signal_semaphore;
-            vk::SubmitInfo2 submit_info;
-            f32 t;
-
-            vk::Format format = vk::Format::eR32G32B32A32Sfloat;
-            
-            void init(u32 N, u32 L, f32 amplitude, glm::vec2 wind_dir, f32 wind_speed, f32 capillar_sf) {
-
-                h0k = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-                h0_minus_k = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-
-                std::vector<std::pair<vk::DescriptorType, f32>> sizes {
-                    { vk::DescriptorType::eStorageImage,  1 },
-                };
-                descriptor_alloc.init(10, sizes);
-                descriptor_layout = DescriptorLayoutBuilder {}
-                    .add_binding(0, vk::DescriptorType::eStorageImage)
-                    .add_binding(1, vk::DescriptorType::eStorageImage)
-                    .build(vk::ShaderStageFlagBits::eCompute);
-                descriptor = descriptor_alloc.allocate(descriptor_layout);
-
-                DescriptorWriter {} 
-                    .write_img(0, h0k.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                    .write_img(1, h0_minus_k.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                    .update_set(descriptor);
-
-                vk::PushConstantRange push_const {
-                    .stageFlags = vk::ShaderStageFlagBits::eCompute,
-                    .offset = 0,
-                    .size = sizeof(H0K::PushConstants),
-                };
-
-                pipeline_layout = device.createPipelineLayout(
-                        vk::PipelineLayoutCreateInfo {
-                            .setLayoutCount = 1,
-                            .pSetLayouts = &descriptor_layout,
-                            .pushConstantRangeCount = 1,
-                            .pPushConstantRanges = &push_const,
-                        }
-                ).value;
-
-                vk::ShaderModule h0k_module = load_shader_module("res/shaders/fft/h0k.comp.spv").value;
-                vk::PipelineShaderStageCreateInfo stage_info {
-                    .stage  = vk::ShaderStageFlagBits::eCompute,
-                    .module = h0k_module,
-                    .pName  = "main",
-                };
-                vk::ComputePipelineCreateInfo pipe_info {
-                    .stage = stage_info,
-                    .layout = pipeline_layout,
-                };
-
-                pipeline  = device.createComputePipelines(nullptr, pipe_info).value.front();
-
-                immediate_submit([=](vk::CommandBuffer cmd) {
-                    transition_img(cmd, h0k.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                    transition_img(cmd, h0_minus_k.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-
-                    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
-                    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline_layout, 0, descriptor, nullptr);
-                    PushConstants pc {
-                        .N = N,
-                        .L = L,
-                        .amplitude = amplitude,
-                        .wind_speed = wind_speed,
-                        .wind_dir = wind_dir,
-                        .capillar_sf = capillar_sf,
-                    };
-                    cmd.pushConstants(pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(H0K::PushConstants), &pc);
-                    cmd.dispatch(std::ceil(N / 16.f), std::ceil(N / 16.f), 1);
-                });
-            }
-        } h0k;
-
-        struct HKT {
-            struct PushConstants {
-                u32 N;
-                u32 L;
-            };
-            struct UniformBufferObject {
-                f32 t;
-            } _ubo_layout;
-            vk::Pipeline pipeline;
-            vk::PipelineLayout pipeline_layout;
-            vk::DescriptorSet descriptor;
-            vk::DescriptorSetLayout descriptor_layout;
-            DescriptorAllocator descriptor_alloc;
-            vk::Buffer buffer;
-            vk::CommandPool pool;
-            vk::CommandBuffer cmd;
-            vk::Semaphore signal_semaphore;
-            vk::SubmitInfo2 submit_info;
-            f32 t;
-            f32 t_delta;
-
-            vk::Format format = vk::Format::eR32G32B32A32Sfloat;
-
-            AllocatedImage dx_coeff;
-            AllocatedImage dy_coeff;
-            AllocatedImage dz_coeff;
-            
-            void init(u32 N, u32 L, f32 in_t_delta, vk::ImageView tilde_h0k_view, vk::ImageView tilde_h0_minus_k_view) {
-                t_delta = in_t_delta;
-
-                dx_coeff = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-                dy_coeff = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-                dz_coeff = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-                
-                AllocatedBuffer gpu_scene_data_buffer = create_buffer(sizeof(GPUSceneData), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
-
-                _deletion_queue.push_function([=] {
-                    destroy_buffer(gpu_scene_data_buffer);
-                });
-
-                GPUSceneData* scene_uniform_data = (GPUSceneData*)gpu_scene_data_buffer.info.pMappedData;
-                *scene_uniform_data = _scene_data;
-
-                std::vector<std::pair<vk::DescriptorType, f32>> sizes {
-                    { vk::DescriptorType::eStorageImage,  1 },
-                    { vk::DescriptorType::eUniformBuffer, 1 },
-                };
-                descriptor_alloc.init(10, sizes);
-                descriptor_layout = DescriptorLayoutBuilder {}
-                    .add_binding(0, vk::DescriptorType::eStorageImage)
-                    .add_binding(1, vk::DescriptorType::eStorageImage)
-                    .add_binding(2, vk::DescriptorType::eStorageImage)
-                    .add_binding(3, vk::DescriptorType::eStorageImage)
-                    .add_binding(4, vk::DescriptorType::eStorageImage)
-                    .add_binding(5, vk::DescriptorType::eUniformBuffer)
-                    .build(vk::ShaderStageFlagBits::eCompute);
-                descriptor = descriptor_alloc.allocate(descriptor_layout);
-
-                DescriptorWriter {} 
-                    .write_img(0, dy_coeff.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                    .write_img(1, dx_coeff.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                    .write_img(2, dz_coeff.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                    .write_img(3, tilde_h0k_view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                    .write_img(4, tilde_h0_minus_k_view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                    .write_buffer(5, gpu_scene_data_buffer.handle, sizeof(GPUSceneData), 0, vk::DescriptorType::eUniformBuffer)
-                    .update_set(descriptor);
-
-                vk::PushConstantRange push_const {
-                    .stageFlags = vk::ShaderStageFlagBits::eCompute,
-                    .offset = 0,
-                    .size = sizeof(HKT::PushConstants),
-                };
-
-                pipeline_layout = device.createPipelineLayout(
-                    vk::PipelineLayoutCreateInfo {
-                        .setLayoutCount = 1,
-                        .pSetLayouts = &descriptor_layout,
-                        .pushConstantRangeCount = 1,
-                        .pPushConstantRanges = &push_const,
-                    }
-                ).value;
-
-                vk::ShaderModule hkt = load_shader_module("res/shaders/fft/hkt.comp.spv").value;
-                vk::PipelineShaderStageCreateInfo stage_info {
-                    .stage  = vk::ShaderStageFlagBits::eCompute,
-                    .module = hkt,
-                    .pName  = "main",
-                };
-                vk::ComputePipelineCreateInfo pipe_info {
-                    .stage = stage_info,
-                    .layout = pipeline_layout,
-                };
-
-                pipeline  = device.createComputePipelines(nullptr, pipe_info).value.front();
-
-                immediate_submit([=](vk::CommandBuffer cmd) {
-                    transition_img(cmd, dx_coeff.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                    transition_img(cmd, dy_coeff.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                    transition_img(cmd, dz_coeff.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-
-                    cmd.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
-                    cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline_layout, 0, descriptor, nullptr);
-                    PushConstants pc {
-                        .N = N,
-                        .L = L,
-                    };
-                    cmd.pushConstants(pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(HKT::PushConstants), &pc);
-                    cmd.dispatch(std::ceil(N / 16.f), std::ceil(N / 16.f), 1);
-                });
-            }
-        } hkt;
-
-        struct PushConstants {
-            u32 stage;
-            u32 ping;
-            u32 direction;
-        };
-
-        vk::Pipeline pipeline;
-        vk::PipelineLayout pipeline_layout;
-        vk::DescriptorSet descriptor;
-        vk::DescriptorSetLayout descriptor_layout;
-        DescriptorAllocator descriptor_alloc;
-        vk::Buffer buffer;
-        vk::CommandPool pool;
-        vk::CommandBuffer cmd;
-        vk::Semaphore signal_semaphore;
-        vk::SubmitInfo2 submit_info;
-
-        vk::Pipeline bufferfly_pipeline;
-        vk::DescriptorSet butterfly_descriptor;
-
-        vk::Pipeline inversion_pipeline;
-        vk::DescriptorSet inversion_descriptor;
-
-        AllocatedImage _dy_ping;
-        AllocatedImage _dx_ping;
-        AllocatedImage _dz_ping;
-
-        AllocatedImage _dy;
-        AllocatedImage _dx;
-        AllocatedImage _dz;
-
-        void init(u32 N, u32 L, f32 t_delta, f32 amplitude, glm::vec2 direction, f32 intensity, float capillar_sf) {
-            
-            _dy_ping = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-            _dx_ping = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-            _dz_ping = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-            _dy = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-            _dx = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-            _dz = create_img(vk::Extent3D { N, N, 1 }, format, vk::ImageUsageFlagBits::eStorage | vk::ImageUsageFlagBits::eSampled);
-
-            twiddle_factors.init(N);
-            h0k.init(N, L, amplitude, direction, intensity, capillar_sf);
-            hkt.init(N, L, t_delta, h0k.h0k.img.view, h0k.h0_minus_k.img.view);
-
-            u32 stages = std::log(N) / std::log(2);
-            
-            std::vector<std::pair<vk::DescriptorType, f32>> sizes {
-                { vk::DescriptorType::eStorageImage,  1 },
-                { vk::DescriptorType::eUniformBuffer, 1 },
-            };
-            descriptor_alloc.init(10, sizes);
-            descriptor_layout = DescriptorLayoutBuilder {}
-                .add_binding(0, vk::DescriptorType::eStorageImage)
-                .add_binding(1, vk::DescriptorType::eStorageImage)
-                .add_binding(2, vk::DescriptorType::eStorageImage)
-                .add_binding(3, vk::DescriptorType::eStorageImage)
-                .add_binding(4, vk::DescriptorType::eStorageImage)
-                .add_binding(5, vk::DescriptorType::eUniformBuffer)
-                .build(vk::ShaderStageFlagBits::eCompute);
-            descriptor = descriptor_alloc.allocate(descriptor_layout);
-
-            DescriptorWriter {} 
-                .write_img(0, _dy.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .write_img(1, _dx.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .write_img(2, _dz.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .update_set(descriptor);
-
-            vk::PushConstantRange push_const {
-                .stageFlags = vk::ShaderStageFlagBits::eCompute,
-                .offset = 0,
-                .size = sizeof(FFT::PushConstants),
-            };
-
-            pipeline_layout = device.createPipelineLayout(
-                vk::PipelineLayoutCreateInfo {
-                    .setLayoutCount = 1,
-                    .pSetLayouts = &descriptor_layout,
-                    .pushConstantRangeCount = 1,
-                    .pPushConstantRanges = &push_const,
-                }
-            ).value;
-
-            vk::ShaderModule fft = load_shader_module("res/shaders/fft/butterfly.comp.spv").value;
-            vk::PipelineShaderStageCreateInfo stage_info {
-                .stage  = vk::ShaderStageFlagBits::eCompute,
-                .module = fft,
-                .pName  = "main",
-            };
-            vk::ComputePipelineCreateInfo pipe_info {
-                .stage = stage_info,
-                .layout = pipeline_layout,
-            };
-
-            pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
-
-            immediate_submit([=](vk::CommandBuffer cmd) {
-                transition_img(cmd, _dy_ping.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                transition_img(cmd, _dx_ping.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                transition_img(cmd, _dz_ping.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-
-                transition_img(cmd, _dy.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                transition_img(cmd, _dx.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                transition_img(cmd, _dz.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-
-                cmd.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
-                cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline_layout, 0, descriptor, nullptr);
-                PushConstants pc {
-                    .stage = 0,
-                    .ping = 0,
-                    .direction = 0,
-                };
-                cmd.pushConstants(pipeline_layout, vk::ShaderStageFlagBits::eCompute, 0, sizeof(FFT::PushConstants), &pc);
-                cmd.dispatch(std::ceil(N / 16.f), std::ceil(N / 16.f), 1);
-            });
-        }
-
-    } inline fft;
-
-    struct Spectrum {
-        struct UniformBufferObject {
-            u32 N;
-            u32 size;
-            glm::vec2 wind;
-        };
-        struct UniformBufferObject2 {
-            u32 size;
-            f32 choppiness;
-        };
-
-        AllocatedImage initial_spectrum;
-
-        vk::Pipeline pipeline;
-        vk::PipelineLayout pipeline_layout;
-        vk::DescriptorSet descriptor;
-        vk::DescriptorSetLayout descriptor_layout;
-        DescriptorAllocator descriptor_alloc;
-
-        struct {
-            AllocatedImage phases;
-
-            vk::Pipeline pipeline;
-            vk::PipelineLayout pipeline_layout;
-            vk::DescriptorSet descriptor;
-            vk::DescriptorSetLayout descriptor_layout;
-            DescriptorAllocator descriptor_alloc;
-        } phase;
-        struct {
-            AllocatedImage spectrum;
-
-            vk::Pipeline pipeline;
-            vk::PipelineLayout pipeline_layout;
-            vk::DescriptorSet descriptor;
-            vk::DescriptorSetLayout descriptor_layout;
-            DescriptorAllocator descriptor_alloc;
-        } spec;
-        void init(u32 N) {
-            initial_spectrum = create_img(vk::Extent3D { N, N, 1 }, vk::Format::eR32Sfloat, vk::ImageUsageFlagBits::eStorage);
-
-            AllocatedBuffer data_buffer = create_buffer(sizeof(Spectrum::UniformBufferObject), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
-
-            _deletion_queue.push_function([=] {
-                destroy_buffer(data_buffer);
-            });
-
-            Spectrum::UniformBufferObject* ubo = (Spectrum::UniformBufferObject*)data_buffer.info.pMappedData;
-            ubo->N = N;
-            ubo->size = N * 2;
-            float wind_angle = glm::radians(180.f);
-            ubo->wind = glm::vec2(10 * glm::cos(wind_angle), 10 * glm::sin(wind_angle));
-
-            std::vector<std::pair<vk::DescriptorType, f32>> sizes {
-                { vk::DescriptorType::eStorageImage,  1 },
-                { vk::DescriptorType::eUniformBuffer, 1 },
-            };
-            descriptor_alloc.init(10, sizes);
-            descriptor_layout = DescriptorLayoutBuilder {}
-                .add_binding(0, vk::DescriptorType::eStorageImage)
-                .add_binding(1, vk::DescriptorType::eUniformBuffer)
-                .build(vk::ShaderStageFlagBits::eCompute);
-            descriptor = descriptor_alloc.allocate(descriptor_layout);
-
-            DescriptorWriter {} 
-                .write_img(0, initial_spectrum.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .write_buffer(1, data_buffer.handle, sizeof(Spectrum::UniformBufferObject), 0, vk::DescriptorType::eUniformBuffer)
-                .update_set(descriptor);
-
-            pipeline_layout = device.createPipelineLayout(
-                vk::PipelineLayoutCreateInfo {
-                    .setLayoutCount = 1,
-                    .pSetLayouts = &descriptor_layout,
-                }
-            ).value;
-
-            vk::ShaderModule module = load_shader_module("res/shaders/init_spectrum.comp.spv").value;
-            vk::PipelineShaderStageCreateInfo stage_info {
-                .stage  = vk::ShaderStageFlagBits::eCompute,
-                .module = module,
-                .pName  = "main",
-            };
-            vk::ComputePipelineCreateInfo pipe_info {
-                .stage = stage_info,
-                .layout = pipeline_layout,
-            };
-
-            pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
-
-            immediate_submit([=](vk::CommandBuffer cmd) {
-                transition_img(cmd, initial_spectrum.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                cmd.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline);
-                cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, pipeline_layout, 0, descriptor, nullptr);
-                cmd.dispatch(N / 32, N / 32, 1);
-            });
-
-            spec.phases = create_img(vk::Extent3D { N, N, 1 }, vk::Format::eR32Sfloat, vk::ImageUsageFlagBits::eStorage);
-
-            AllocatedBuffer data_buffer2 = create_buffer(sizeof(Spectrum::UniformBufferObject2), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
-
-            _deletion_queue.push_function([=] {
-                destroy_buffer(data_buffer2);
-            });
-
-            Spectrum::UniformBufferObject2* ubo2 = (Spectrum::UniformBufferObject2*)data_buffer2.info.pMappedData;
-            ubo2->size = N * 2;
-            ubo2->choppiness = 1.f;
-
-            std::vector<std::pair<vk::DescriptorType, f32>> sizes2 {
-                { vk::DescriptorType::eStorageImage,  1 },
-                { vk::DescriptorType::eUniformBuffer, 1 },
-            };
-            spec.descriptor_alloc.init(10, sizes2);
-            spec.descriptor_layout = DescriptorLayoutBuilder {}
-                .add_binding(0, vk::DescriptorType::eStorageImage)
-                .add_binding(1, vk::DescriptorType::eStorageImage)
-                .add_binding(2, vk::DescriptorType::eStorageImage)
-                .add_binding(3, vk::DescriptorType::eUniformBuffer)
-                .build(vk::ShaderStageFlagBits::eCompute);
-            spec.descriptor = spec.descriptor_alloc.allocate(spec.descriptor_layout);
-
-            DescriptorWriter {} 
-                .write_img(0, spec.phases.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .write_img(1, initial_spectrum.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .write_img(2, spec.spectrum.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .write_buffer(3, data_buffer2.handle, sizeof(Spectrum::UniformBufferObject2), 0, vk::DescriptorType::eUniformBuffer)
-                .update_set(spec.descriptor);
-
-            spec.pipeline_layout = device.createPipelineLayout(
-                vk::PipelineLayoutCreateInfo {
-                    .setLayoutCount = 1,
-                    .pSetLayouts = &spec.descriptor_layout,
-                }
-            ).value;
-
-            vk::ShaderModule module2 = load_shader_module("res/shaders/spectrum.comp.spv").value;
-            vk::PipelineShaderStageCreateInfo stage_info2 {
-                .stage  = vk::ShaderStageFlagBits::eCompute,
-                .module = module2,
-                .pName  = "main",
-            };
-            vk::ComputePipelineCreateInfo pipe_info2 {
-                .stage = stage_info2,
-                .layout = spec.pipeline_layout,
-            };
-
-            spec.pipeline = device.createComputePipelines(nullptr, pipe_info2).value.front();
-
-            immediate_submit([=](vk::CommandBuffer cmd) {
-                transition_img(cmd, spec.phases.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                cmd.bindPipeline(vk::PipelineBindPoint::eCompute, spec.pipeline);
-                cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, spec.pipeline_layout, 0, spec.descriptor, nullptr);
-                cmd.dispatch(N / 32, N / 32, 1);
-            });
-            spec.spectrum = create_img(vk::Extent3D { N, N, 1 }, vk::Format::eR32G32B32A32Sfloat, vk::ImageUsageFlagBits::eStorage);
-
-            AllocatedBuffer data_buffer2 = create_buffer(sizeof(Spectrum::UniformBufferObject2), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
-
-            _deletion_queue.push_function([=] {
-                destroy_buffer(data_buffer2);
-            });
-
-            Spectrum::UniformBufferObject2* ubo2 = (Spectrum::UniformBufferObject2*)data_buffer2.info.pMappedData;
-            ubo2->size = N * 2;
-            ubo2->choppiness = 1.f;
-
-            std::vector<std::pair<vk::DescriptorType, f32>> sizes2 {
-                { vk::DescriptorType::eStorageImage,  1 },
-                { vk::DescriptorType::eUniformBuffer, 1 },
-            };
-            spec.descriptor_alloc.init(10, sizes2);
-            spec.descriptor_layout = DescriptorLayoutBuilder {}
-                .add_binding(0, vk::DescriptorType::eStorageImage)
-                .add_binding(1, vk::DescriptorType::eStorageImage)
-                .add_binding(2, vk::DescriptorType::eStorageImage)
-                .add_binding(3, vk::DescriptorType::eUniformBuffer)
-                .build(vk::ShaderStageFlagBits::eCompute);
-            spec.descriptor = spec.descriptor_alloc.allocate(spec.descriptor_layout);
-
-            DescriptorWriter {} 
-                .write_img(0, spec.phases.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .write_img(1, initial_spectrum.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .write_img(2, spec.spectrum.img.view, VK_NULL_HANDLE, vk::ImageLayout::eGeneral, vk::DescriptorType::eStorageImage)
-                .write_buffer(3, data_buffer2.handle, sizeof(Spectrum::UniformBufferObject2), 0, vk::DescriptorType::eUniformBuffer)
-                .update_set(spec.descriptor);
-
-            spec.pipeline_layout = device.createPipelineLayout(
-                vk::PipelineLayoutCreateInfo {
-                    .setLayoutCount = 1,
-                    .pSetLayouts = &spec.descriptor_layout,
-                }
-            ).value;
-
-            vk::ShaderModule module2 = load_shader_module("res/shaders/spectrum.comp.spv").value;
-            vk::PipelineShaderStageCreateInfo stage_info2 {
-                .stage  = vk::ShaderStageFlagBits::eCompute,
-                .module = module2,
-                .pName  = "main",
-            };
-            vk::ComputePipelineCreateInfo pipe_info2 {
-                .stage = stage_info2,
-                .layout = spec.pipeline_layout,
-            };
-
-            spec.pipeline = device.createComputePipelines(nullptr, pipe_info2).value.front();
-
-            immediate_submit([=](vk::CommandBuffer cmd) {
-                transition_img(cmd, spec.phases.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                transition_img(cmd, spec.spectrum.img.handle, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-                cmd.bindPipeline(vk::PipelineBindPoint::eCompute, spec.pipeline);
-                cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, spec.pipeline_layout, 0, spec.descriptor, nullptr);
-                cmd.dispatch(N / 32, N / 32, 1);
-            });
-        }
-    } inline _spectrum;
-
-    //_____________________________________
     inline void build_compute_pipeline() {
 
         vk::PushConstantRange push_const {
@@ -2424,60 +1396,7 @@ namespace sigil::renderer {
     }
 
     //_____________________________________
-    inline void setup_keybinds() {
-
-        input::bind(GLFW_KEY_W,
-            key_callback {
-                .press   = [&]{ camera.request_movement.forward = 1; },
-                .release = [&]{ camera.request_movement.forward = 0; }
-        }   );
-        input::bind(GLFW_KEY_S,
-            key_callback {
-                .press   = [&]{ camera.request_movement.back = 1; },
-                .release = [&]{ camera.request_movement.back = 0; }
-        }   );
-        input::bind(GLFW_KEY_A,
-            key_callback {
-                .press   = [&]{ camera.request_movement.left = 1; },
-                .release = [&]{ camera.request_movement.left = 0; }
-        }   );
-        input::bind(GLFW_KEY_D,
-            key_callback {
-                .press   = [&]{ camera.request_movement.right = 1; },
-                .release = [&]{ camera.request_movement.right = 0; }
-        }   );
-        input::bind(GLFW_KEY_Q,
-            key_callback {
-                .press   = [&]{ camera.request_movement.down = 1; },
-                .release = [&]{ camera.request_movement.down = 0; }
-        }   );
-        input::bind(GLFW_KEY_E,
-            key_callback {
-                .press   = [&]{ camera.request_movement.up = 1; },
-                .release = [&]{ camera.request_movement.up = 0; }
-        }   );
-        input::bind(GLFW_KEY_LEFT_SHIFT,
-            key_callback {
-                .press   = [&]{ camera.movement_speed = 2.f; },
-                .release = [&]{ camera.movement_speed = 1.f; }
-        }   );
-        input::bind(GLFW_MOUSE_BUTTON_2,
-            key_callback {
-                .press   = [&]{
-                    glfwSetInputMode(window::handle, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                    camera.follow_mouse = true;
-                },
-                .release = [&]{
-                    glfwSetInputMode(window::handle, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-                    camera.follow_mouse = false;
-                }
-        }   );
-    };
-
-    //_____________________________________
     inline void init() {
-
-        setup_keybinds();
 
         u32 glfw_extension_count = 0;
         const char** glfw_extensions = glfwGetRequiredInstanceExtensions(&glfw_extension_count);
@@ -2573,29 +1492,6 @@ namespace sigil::renderer {
         _wave_material.build_pipelines();
         setup_imgui();
 
-        //Vertex rect_vertices[4] {
-        //    Vertex {
-        //        .position = { .5, -.5, 0 },
-        //        .color    = { 0, 1, 1, 1},
-        //    },
-        //    Vertex {
-        //        .position = { .5, .5, 0 },
-        //        .color    = { 0, 1, 1, 1 },
-        //    },
-        //    Vertex {
-        //        .position = { -.5, -.5, 0 },
-        //        .color    = { 0, 1, 1, 1 },
-        //    },
-        //    Vertex {
-        //        .position = { -.5, .5, 0 },
-        //        .color    = { 0, 1, 1, 1 },
-        //    },
-        //};
-        //u32 rect_indices[6] {
-        //    0, 1, 2,
-        //    2, 1, 3,
-        //};
-        //auto rect = upload_mesh(rect_indices, rect_vertices);
         u32 white = 0xFFFFFFFF;
         _white_img = create_img((void*)&white, vk::Extent3D { 16, 16, 1 }, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled);
 
@@ -2619,16 +1515,6 @@ namespace sigil::renderer {
             .minFilter = vk::Filter::eLinear,
         };
         VK_CHECK(device.createSampler(&sampler, nullptr, &_sampler_linear));
-
-        //auto loaded_meshes = load_model("res/models/SciFiHelmet.gltf");
-        //auto loaded_meshes = load_model("res/models/model.obj");
-        //auto loaded_meshes = load_model("res/models/DamagedHelmet.gltf");
-        //if( !loaded_meshes.has_value() ) {
-        //    std::cout << "\nError:\n>>\tFailed to load meshes.\n";
-        //}
-        //for( auto& mesh : loaded_meshes.value()) {
-        //    _meshes.push_back(*mesh);
-        //}
         
         ////
         AllocatedBuffer pbr_material_constants = create_buffer(sizeof(PbrMetallicRoughness::Constants), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
@@ -2703,7 +1589,7 @@ namespace sigil::renderer {
         );
 
         //fft.init(256, 1000, 0.004, 2, glm::vec2(1, 1), 80, 0.1);
-        _spectrum.init(256);
+        //_spectrum.init(256);
     }
 
     //_____________________________________
