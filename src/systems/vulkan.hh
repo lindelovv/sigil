@@ -37,8 +37,9 @@ namespace sigil::renderer {
 // TODO: VkResult checker that can return value and result or just value
 #define VK_CHECK(x) { vk::Result e = (vk::Result)x; if((VkResult)e) {       \
     std::cout << "__VK_CHECK failed__ "                                      \
-    << vk::to_string(e) << " @ " << __FILE_NAME__ << "_" << __LINE__ << "\n"; \
+    << vk::to_string(e) << "\n"; \
 } }
+// @ " << __FILE_NAME__ << "_" << __LINE__ << "\n";
 #define SIGIL_V VK_MAKE_VERSION(version::major, version::minor, version::patch)
 
     const vk::ApplicationInfo engine_info = {
@@ -1250,8 +1251,8 @@ namespace sigil::renderer {
     //_____________________________________
     inline void build_descriptors() {
         std::vector<std::pair<vk::DescriptorType, f32>> sizes {
-            { vk::DescriptorType::eStorageImage,  1 },
-            { vk::DescriptorType::eUniformBuffer, 1 },
+            { vk::DescriptorType::eStorageImage,  (f32)1 },
+            { vk::DescriptorType::eUniformBuffer, (f32)1 },
         };
         _descriptor_allocator.init(10, sizes);
 
@@ -1279,10 +1280,10 @@ namespace sigil::renderer {
 
         for( u32 i = 0; i < FRAME_OVERLAP; i++ ) {
             std::vector<std::pair<vk::DescriptorType, f32>> frame_sizes = {
-                std::pair( vk::DescriptorType::eStorageImage,         3 ),
-                std::pair( vk::DescriptorType::eStorageBuffer,        3 ),
-                std::pair( vk::DescriptorType::eUniformBuffer,        3 ),
-                std::pair( vk::DescriptorType::eCombinedImageSampler, 4 ),
+                std::pair( vk::DescriptorType::eStorageImage,         (f32)3 ),
+                std::pair( vk::DescriptorType::eStorageBuffer,        (f32)3 ),
+                std::pair( vk::DescriptorType::eUniformBuffer,        (f32)3 ),
+                std::pair( vk::DescriptorType::eCombinedImageSampler, (f32)4 ),
             };
             frames[i].descriptors.init(1000, frame_sizes);
         }
@@ -1776,7 +1777,7 @@ namespace sigil::renderer {
         std::vector<const char*> extensions(glfw_extensions, glfw_extensions + glfw_extension_count);
 
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-        VULKAN_HPP_DEFAULT_DISPATCHER.init();
+        //VULKAN_HPP_DEFAULT_DISPATCHER.init();
 
         instance = vk::createInstance(
             vk::InstanceCreateInfo {
@@ -1786,7 +1787,7 @@ namespace sigil::renderer {
                 .enabledExtensionCount   = (u32)extensions.size(),
                 .ppEnabledExtensionNames = extensions.data(),
         }   ).value;
-        VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
+        //VULKAN_HPP_DEFAULT_DISPATCHER.init(instance);
 
         debug.messenger = instance.createDebugUtilsMessengerEXT(
             vk::DebugUtilsMessengerCreateInfoEXT {
@@ -1842,7 +1843,7 @@ namespace sigil::renderer {
             },
             nullptr
         ).value;
-        //VULKAN_HPP_DEFAULT_DISPATCHER.init(device);
+        VULKAN_HPP_DEFAULT_DISPATCHER.init(instance, device);
 
         graphics_queue.family = get_queue_family(vk::QueueFlagBits::eGraphics);
         graphics_queue.handle = device.getQueue(graphics_queue.family, 0);

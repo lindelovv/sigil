@@ -24,33 +24,35 @@ cpp = meson.get_compiler('cpp')
 dependencies = []
 
 # renderer backends
-dependencies += cpp.find_library('d3dcompiler', required: host_machine.system() == 'windows')
-dx9_dep = cpp.find_library('d3d9', required: get_option('dx9'))
-if dx9_dep.found()
-  sources += 'backends/imgui_impl_dx9.cpp'
-  dependencies += dx9_dep
-endif
-dx10_dep = cpp.find_library('d3d10', required: get_option('dx10'))
-if dx10_dep.found()
-  sources += 'backends/imgui_impl_dx10.cpp'
-  dependencies += dx10_dep
-endif
-dx11_dep = cpp.find_library('d3d11', required: get_option('dx11'))
-if dx11_dep.found()
-  sources += 'backends/imgui_impl_dx11.cpp'
-  dependencies += dx11_dep
-endif
-dx12_dep = cpp.find_library('d3d12', required: get_option('dx12'))
-# MinGW does not work. See https://github.com/ocornut/imgui/pull/4604
-if dx12_dep.found() and cpp.get_argument_syntax() == 'msvc'
-  sources += 'backends/imgui_impl_dx12.cpp'
-  dependencies += dx12_dep
-endif
+# dependencies += cpp.find_library('d3dcompiler', required: host_machine.system() == 'windows')
+# dx9_dep = cpp.find_library('d3d9', required: get_option('dx9'))
+# if dx9_dep.found()
+#   sources += 'backends/imgui_impl_dx9.cpp'
+#   dependencies += dx9_dep
+# endif
+# dx10_dep = cpp.find_library('d3d10', required: get_option('dx10'))
+# if dx10_dep.found()
+#   sources += 'backends/imgui_impl_dx10.cpp'
+#   dependencies += dx10_dep
+# endif
+# dx11_dep = cpp.find_library('d3d11', required: get_option('dx11'))
+# if dx11_dep.found()
+#   sources += 'backends/imgui_impl_dx11.cpp'
+#   dependencies += dx11_dep
+# endif
+# dx12_dep = cpp.find_library('d3d12', required: get_option('dx12'))
+# # MinGW does not work. See https://github.com/ocornut/imgui/pull/4604
+# if dx12_dep.found() and cpp.get_argument_syntax() == 'msvc'
+#   sources += 'backends/imgui_impl_dx12.cpp'
+#   dependencies += dx12_dep
+# endif
+
 metal_dep = dependency('appleframeworks', modules: ['Foundation', 'AppKit', 'GameController', 'Metal'], required: get_option('metal'))
 if metal_dep.found()
   sources += 'backends/imgui_impl_metal.mm'
   dependencies += metal_dep
 endif
+
 libgl_dep = dependency('gl', required: get_option('opengl'))
 if libgl_dep.found()
   sources += 'backends/imgui_impl_opengl3.cpp'

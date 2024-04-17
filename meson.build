@@ -17,9 +17,9 @@ assimp_opt.add_cmake_defines({
     'CMAKE_BUILD_TYPE': get_option('buildtype') == 'debug' ? 'Debug' : 'Release',
     'ASSIMP_BUILD_ASSIMP_TOOLS': false,
     'ASSIMP_BUILD_TESTS': false,
-    'ASSIMP_BUILD_ZLIB': true,
+    'ASSIMP_BUILD_ZLIB': false,
 
-    'ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT': false,
+    'ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT': true,
     'ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT': false,
 
     'ASSIMP_BUILD_GLB_IMPORTER': true,
@@ -41,7 +41,8 @@ executable('sigil', sources,
     dependency('glm'),
     dependency('imgui', version: ['>=1.90.4'], default_options: ['default_library=static']),
     dependency('fmt', default_options: ['default_library=static']),
-    dependency('assimp'),
+    dependency('zlib'),
+    dependency('assimp', default_options: ['default_library=static']),
   ]
 )
 
