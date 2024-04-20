@@ -1,77 +1,169 @@
-#version 460 core
+#version 460
+#extension GL_EXT_buffer_reference2 : require
 
-#define COMPUTE_WORK_GROUP_DIM 32
+layout( local_size_x = 8, local_size_y = 8 ) in;
+layout( rgba16f, set = 0, binding = 0 ) uniform image2D _InitialSpectrumTextures;
 
-const float PI = 3.14159265359;
-const float g = 9.81;
-const float KM = 370.0;
-const float CM = 0.23;
+struct Spectrum {
+	float scale;
+	float angle;
+	float spreadBlend;
+	float swell;
+	float alpha;
+	float peakOmega;
+	float gamma;
+	float shortWavesFade;
+};
 
-layout (local_size_x = COMPUTE_WORK_GROUP_DIM, local_size_y = COMPUTE_WORK_GROUP_DIM) in;
+layout( buffer_reference, std430 ) readonly buffer Spectrums {
+    Spectrum data[];
+};
 
-layout( r32f, binding = 0 ) writeonly uniform image2D _initial_spectrum;
+layout( push_constant ) uniform Constants {
+    Spectrums spectrums;
+} push;
 
-layout( set = 0, binding = 1 ) uniform Parameters {
-    int N;
-    int size;
-    vec2 wind;
-} _params;
+#define PI 3.14159265358979323846
 
-float omega(float k)
-{
-	return sqrt(g * k * (1.f + ((k * k) / (KM * KM))));
+const float _gravity = 9.81;
+const float _depth = 20;
+const float _low_cutoff = 0.0001;
+const float _high_cutoff = 9000;
+
+const int _Seed = 1;
+
+const uint _N = 256;
+const uint _length_scale_0 = 94;
+const uint _length_scale_1 = 128; 
+const uint _length_scale_2 = 64; 
+const uint _length_scale_3 = 32;
+
+float hash(uint n) {
+    // integer hash copied from Hugo Elias
+    n = (n << 13U) ^ n;
+    n = n * (n * n * 15731U + 0x789221U) + 0x137631U;
+    return float(n & uint(0x7fffffffU)) / float(0x7fffffff);
 }
 
-float square(float x)
-{
-	return x * x;
+vec2 UniformToGaussian(float u1, float u2) {
+    float R = sqrt(-2.0f * log(u1));
+    float theta = 2.0f * PI * u2;
+
+    return vec2(R * cos(theta), R * sin(theta));
 }
 
-void main()
-{
-	ivec2 id = ivec2(gl_GlobalInvocationID.xy);
-	float n = (id.x < 0.5f * _params.N) ? id.x : id.x - _params.N;
-	float m = (id.y < 0.5f * _params.N) ? id.y : id.y - _params.N;
+float Dispersion(float kMag) {
+    return sqrt(_gravity * kMag * tanh(min(kMag * _depth, 20)));
+}
 
-	vec2 wave_vector = (2.f * PI * vec2(n, m)) / _params.size;
-	float k = length(wave_vector);
+float DispersionDerivative(float kMag) {
+    float th = tanh(min(kMag * _depth, 20));
+    float ch = cosh(kMag * _depth);
+    return _gravity * (_depth * kMag / ch / ch + th) / Dispersion(kMag) / 2.0f;
+}
 
-	float U10 = length(_params.wind);
+float NormalizationFactor(float s) {
+    float s2 = s * s;
+    float s3 = s2 * s;
+    float s4 = s3 * s;
+    if (s < 5) return -0.000564f * s4 + 0.00776f * s3 - 0.044f * s2 + 0.192f * s + 0.163f;
+    else return -4.80e-08f * s4 + 1.07e-05f * s3 - 9.53e-04f * s2 + 5.90e-02f * s + 3.93e-01f;
+}
 
-	float Omega = 0.84f;
-	float kp = g * square(Omega / U10);
+float DonelanBannerBeta(float x) {
+	if (x < 0.95f) return 2.61f * pow(abs(x), 1.3f);
+	if (x < 1.6f) return 2.28f * pow(abs(x), -1.3f);
 
-	float c = omega(k) / k;
-	float cp = omega(kp) / kp;
-	
-	float Lpm = exp(-1.25 * square(kp / k));
-	float gamma = 1.7;
-	float sigma = 0.08 * (1.0 + 4.0 * pow(Omega, -3.0));
-	float Gamma = exp(-square(sqrt(k / kp) - 1.0) / 2.0 * square(sigma));
-	float Jp = pow(gamma, Gamma);
-	float Fp = Lpm * Jp * exp(-Omega / sqrt(10.0) * (sqrt(k / kp) - 1.0));
-	float alphap = 0.006 * sqrt(Omega);
-	float Bl = 0.5 * alphap * cp / c * Fp;
-	
-	float z0 = 0.000037 * square(U10) / g * pow(U10 / cp, 0.9);
-	float uStar = 0.41 * U10 / log(10.0 / z0);
-	float alpham = 0.01 * ((uStar < CM) ? (1.0 + log(uStar / CM)) : (1.0 + 3.0 * log(uStar / CM)));
-	float Fm = exp(-0.25 * square(k / KM - 1.0));
-	float Bh = 0.5 * alpham * CM / c * Fm * Lpm;
-	
-	float a0 = log(2.0) / 4.0;
-	float am = 0.13 * uStar / CM;
-	float Delta = tanh(a0 + 4.0 * pow(c / cp, 2.5) + am * pow(CM / c, 2.5));
-	
-	float cosPhi = dot(normalize(_params.wind), normalize(wave_vector));
-	
-	float S = (1.0 / (2.0 * PI)) * pow(k, -4.0) * (Bl + Bh) * (1.0 + Delta * (2.0 * cosPhi * cosPhi - 1.0));
-	
-	float dk = 2.0 * PI / _params.size;
-	float h = sqrt(S / 2.0) * dk;
-	
-	if (wave_vector.x == 0.0 && wave_vector.y == 0.0) { h = 0.f; }
+	float p = -0.4f + 0.8393f * exp(-0.567f * log(x * x));
+	return pow(10.0f, p);
+}
 
-	imageStore(_initial_spectrum, id, vec4(h, 0.f, 0.f, 0.f));
+float DonelanBanner(float theta, float omega, float peakOmega) {
+	float beta = DonelanBannerBeta(omega / peakOmega);
+	float sech = 1.0f / cosh(beta * theta);
+	return beta / 2.0f / tanh(beta * 3.1416f) * sech * sech;
+}
+
+float Cosine2s(float theta, float s) {
+	return NormalizationFactor(s) * pow(abs(cos(0.5f * theta)), 2.0f * s);
+}
+
+float SpreadPower(float omega, float peakOmega) {
+	if (omega > peakOmega)
+		return 9.77f * pow(abs(omega / peakOmega), -2.5f);
+	else
+		return 6.97f * pow(abs(omega / peakOmega), 5.0f);
+}
+
+float DirectionSpectrum(float theta, float omega, float spectrum_peak_omega, float spectrum_swell, float spectrum_angle, float spectrum_spread_blend) {
+	float s = SpreadPower(omega, spectrum_peak_omega) + 16 * tanh(min(omega / spectrum_peak_omega, 20)) * spectrum_swell * spectrum_swell;
+	return mix(2.0f / 3.1415f * cos(theta) * cos(theta), Cosine2s(theta - spectrum_angle, s), spectrum_spread_blend);
+}
+
+float TMACorrection(float omega) {
+	float omegaH = omega * sqrt(_depth / _gravity);
+	if (omegaH <= 1.0f)
+		return 0.5f * omegaH * omegaH;
+	if (omegaH < 2.0f)
+		return 1.0f - 0.5f * (2.0f - omegaH) * (2.0f - omegaH);
+
+	return 1.0f;
+}
+
+float JONSWAP(float omega, float spectrum_peak_omega, float spectrum_scale, float spectrum_alpha, float spectrum_gamma) {
+	float sigma = (omega <= spectrum_peak_omega) ? 0.07f : 0.09f;
+
+	float r = exp(-(omega - spectrum_peak_omega) * (omega - spectrum_peak_omega) / 2.0f / sigma / sigma / spectrum_peak_omega / spectrum_peak_omega);
+	
+	float oneOverOmega = 1.0f / omega;
+	float peakOmegaOverOmega = spectrum_peak_omega / omega;
+	return spectrum_scale * TMACorrection(omega) * spectrum_alpha * _gravity * _gravity
+		* oneOverOmega * oneOverOmega * oneOverOmega * oneOverOmega * oneOverOmega
+		* exp(-1.25f * peakOmegaOverOmega * peakOmegaOverOmega * peakOmegaOverOmega * peakOmegaOverOmega)
+		* pow(abs(spectrum_gamma), r);
+}
+
+float ShortWavesFade(float kLength, float spectrum_shortWavesFade) {
+	return exp(-spectrum_shortWavesFade * spectrum_shortWavesFade * kLength * kLength);
+}
+
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    uint seed = id.x + _N * id.y + _N;
+    seed += _Seed;
+
+    float lengthScales[4] = { _length_scale_0, _length_scale_1, _length_scale_2, _length_scale_3 };
+
+    for (uint i = 0; i < 4; ++i) {
+        float halfN = _N / 2.0f;
+        float deltaK = 2.0f * PI / lengthScales[i];
+        vec2 K = (id.xy - halfN) * deltaK;
+        float kLength = length(K);
+
+        seed += i + uint(hash(seed)) * 10;
+        vec4 uniformRandSamples = vec4(hash(seed), hash(seed * 2), hash(seed * 3), hash(seed * 4));
+        vec2 gauss1 = UniformToGaussian(uniformRandSamples.x, uniformRandSamples.y);
+        vec2 gauss2 = UniformToGaussian(uniformRandSamples.z, uniformRandSamples.w);
+
+        if (_low_cutoff <= kLength && kLength <= _high_cutoff) {
+            float kAngle = atan(K.y, K.x);
+            float omega = Dispersion(kLength);
+
+            float dOmegadk = DispersionDerivative(kLength);
+
+            float spectrum = JONSWAP(omega, push.spectrums.data[i * 2].peakOmega, push.spectrums.data[i * 2].scale, push.spectrums.data[i * 2].alpha, push.spectrums.data[i * 2].gamma)
+                * DirectionSpectrum(kAngle, omega, push.spectrums.data[i * 2].peakOmega, push.spectrums.data[i * 2].swell, push.spectrums.data[i * 2].angle, push.spectrums.data[i * 2].spreadBlend)
+                * ShortWavesFade(kLength, push.spectrums.data[i * 2].shortWavesFade);
+            
+            if (push.spectrums.data[i * 2 + 1].scale > 0)
+                spectrum += JONSWAP(omega, push.spectrums.data[i * 2 + 1].peakOmega, push.spectrums.data[i * 2 + 1].scale, push.spectrums.data[i * 2 + 1].alpha, push.spectrums.data[i * 2 + 1].gamma)
+                    * DirectionSpectrum(kAngle, omega, push.spectrums.data[i * 2 + 1].peakOmega, push.spectrums.data[i * 2 + 1].swell, push.spectrums.data[i * 2 + 1].angle, push.spectrums.data[i * 2 + 1].spreadBlend) 
+                    * ShortWavesFade(kLength, push.spectrums.data[i * 2 + 1].shortWavesFade);
+            
+            imageStore(_InitialSpectrumTextures, id.xy, vec4(vec2(gauss2.x, gauss1.y) * sqrt(2 * spectrum * abs(dOmegadk) / kLength * deltaK * deltaK), 0.0f, 0.0f));
+        } else {
+            imageStore(_InitialSpectrumTextures, id.xy, vec4(0));
+        }
+    }
 }
 

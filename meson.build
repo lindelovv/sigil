@@ -22,6 +22,7 @@ executable('sigil', sources,
     include_directories('src/core'),
     include_directories('src/systems'),
     include_directories('src/systems/vulkan'),
+    include_directories('src/systems/vulkan/utils'),
   ],
   dependencies: [
     dependency('vulkan', version: ['>=1.3.0']),

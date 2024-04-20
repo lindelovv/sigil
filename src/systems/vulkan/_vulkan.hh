@@ -260,6 +260,14 @@ namespace sigil::renderer {
         glm::vec4 data2;
         glm::vec4 data3;
         glm::vec4 data4;
+	    //f32 scale;
+	    //f32 angle;
+	    //f32 spreadBlend;
+	    //f32 swell;
+	    //f32 alpha;
+	    //f32 peakOmega;
+	    //f32 gamma;
+	    //f32 shortWavesFade;
     };
 
     //_____________________________________
@@ -267,7 +275,7 @@ namespace sigil::renderer {
         const char* name;
         vk::Pipeline pipeline;
         vk::PipelineLayout pipeline_layout;
-        ComputePushConstants data;
+        ComputePushConstants data/*[8]*/;
     };
     inline std::vector<ComputeEffect> bg_effects;
     inline int current_bg_effect { 0 };
@@ -1300,32 +1308,113 @@ namespace sigil::renderer {
                 }
         ).value;
 
-        vk::ShaderModule sky = load_shader_module("res/shaders/gradient.comp.spv").value;
+        vk::ShaderModule module = load_shader_module("res/shaders/gradient.comp.spv").value;
 
         vk::PipelineShaderStageCreateInfo stage_info {
             .stage  = vk::ShaderStageFlagBits::eCompute,
-            .module = sky,
+            .module = module,
             .pName  = "main",
         };
         vk::ComputePipelineCreateInfo pipe_info {
             .stage = stage_info,
             .layout = compute_pipeline.layout,
         };
-        ComputeEffect sky_effect {
-            .name = "sky",
+        float gravity = 9.81f;
+        ComputeEffect effect {
+            .name = "bg",
             .pipeline_layout = compute_pipeline.layout,
             .data = {
-                { glm::vec4(.2, .4, .8, 1) },
-                { glm::vec4(.4, .4, .4, 1) },
+                { 0.1, 0.1, 0.1, 1 },
+                { 0.4, 0.6, 0.6, 1 },
+                //{ // 1
+	            //    .scale = 0.1,
+	            //    .angle = 22,
+	            //    .spreadBlend = 0.642,
+	            //    .swell = 1,
+	            //    .alpha = 0.076f * glm::pow(gravity * 100000 / 2 / 2, -0.22f),
+	            //    .peakOmega = 22 * glm::pow(2 * 100000 / gravity / gravity, -0.33f),
+	            //    .gamma = 1,
+	            //    .shortWavesFade = 0.025,
+                //},
+                //{ // 2
+	            //    .scale = 0.07,
+	            //    .angle = 59,
+	            //    .spreadBlend = 0,
+	            //    .swell = 1,
+	            //    .alpha = 0.076f * glm::pow(gravity * 100000 / 2 / 2, -0.22f),
+	            //    .peakOmega = 22 * glm::pow(2 * 100000 / gravity / gravity, -0.33f),
+	            //    .gamma = 1,
+	            //    .shortWavesFade = 0.01,
+                //},
+                //{ // 3
+	            //    .scale = 0.25,
+	            //    .angle = 97,
+	            //    .spreadBlend = 0.14,
+	            //    .swell = 1,
+	            //    .alpha = 0.076f * glm::pow(gravity * 1e+08f / 20 / 20, -0.22f),
+	            //    .peakOmega = 22 * glm::pow(2 * 1e+08f / gravity / gravity, -0.33f),
+	            //    .gamma = 1,
+	            //    .shortWavesFade = 0.5,
+                //},
+                //{ // 4
+	            //    .scale = 0.25,
+	            //    .angle = 67,
+	            //    .spreadBlend = 0.47,
+	            //    .swell = 1,
+	            //    .alpha = 0.076f * glm::pow(gravity * 1000000 / 20 / 20, -0.22f),
+	            //    .peakOmega = 22 * glm::pow(2 * 1000000 / gravity / gravity, -0.33f),
+	            //    .gamma = 1,
+	            //    .shortWavesFade = 0.5,
+                //},
+                //{ // 5
+	            //    .scale = 0.15,
+	            //    .angle = 105,
+	            //    .spreadBlend = 0.2,
+	            //    .swell = 1,
+	            //    .alpha = 0.076f * glm::pow(gravity * 1000000 / 5 / 5, -0.22f),
+	            //    .peakOmega = 22 * glm::pow(2 * 1000000 / gravity / gravity, -0.33f),
+	            //    .gamma = 1,
+	            //    .shortWavesFade = 0.025,
+                //},
+                //{ // 6
+	            //    .scale = 0.1,
+	            //    .angle = 19,
+	            //    .spreadBlend = 0.298,
+	            //    .swell = 0.695,
+	            //    .alpha = 0.076f * glm::pow(gravity * 10000 / 1 / 1, -0.22f),
+	            //    .peakOmega = 22 * glm::pow(2 * 10000 / gravity / gravity, -0.33f),
+	            //    .gamma = 1,
+	            //    .shortWavesFade = 0.5,
+                //},
+                //{ // 7
+	            //    .scale = 1,
+	            //    .angle = 209,
+	            //    .spreadBlend = 0.56,
+	            //    .swell = 1,
+	            //    .alpha = 0.076f * glm::pow(gravity * 200000 / 1 / 1, -0.22f),
+	            //    .peakOmega = 22 * glm::pow(2 * 200000 / gravity / gravity, -0.33f),
+	            //    .gamma = 1,
+	            //    .shortWavesFade = 0.0001,
+                //},
+                //{ // 8
+	            //    .scale = 0.1, 
+	            //    .angle = 0,
+	            //    .spreadBlend = 0,
+	            //    .swell = 0,
+	            //    .alpha = 0.076f * glm::pow(gravity * 1000 / 1 / 1, -0.22f),
+	            //    .peakOmega = 22 * glm::pow(2 * 1000 / gravity / gravity, -0.33f),
+	            //    .gamma = 1,
+	            //    .shortWavesFade = 0.0001,
+                //},
             },
         };
 
         //vk::PipelineCache cache = device.createPipelineCache(vk::PipelineCacheCreateInfo{}).value;
         compute_pipeline.handle  = device.createComputePipelines(nullptr, pipe_info).value.front();
 
-        sky_effect.pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
-        bg_effects.push_back(sky_effect);
-        device.destroyShaderModule(sky);
+        effect.pipeline = device.createComputePipelines(nullptr, pipe_info).value.front();
+        bg_effects.push_back(effect);
+        device.destroyShaderModule(module);
     }
 
     //_____________________________________
