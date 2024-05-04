@@ -2,6 +2,7 @@
 /models/model.obj
 /textures/model_texture.png
 /.cache
+compile_commands.json
 core
 !/src/core
 /subprojects/*

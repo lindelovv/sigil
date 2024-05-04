@@ -1,6 +1,7 @@
 #pragma once
 
 #include "types.hh"
+#include "deletion_queue.hh"
 
 #include <initializer_list>
 #include <string>
@@ -21,7 +22,7 @@ namespace sigil {
     namespace version {
         static u8 major = 0;
         static u8 minor = 0;
-        static u8 patch = 1;
+        static u8 patch = 2;
         static const std::string as_string = fmt::format("v. {}.{}.{} ", major, minor, patch);
     };
 
@@ -55,6 +56,9 @@ namespace sigil {
         inline std::vector<void*> _modules;
         inline bool should_close = false;
 
+        //_____________________________________
+        inline DeletionQueue _deletion_queue;
+
         //____________________________________
         // Core & builder
         struct _sigil {
@@ -77,7 +81,7 @@ namespace sigil {
         struct Module {
             void setup();
         };
-    }
+    } // * private *
 
     inline _sigil& init() {
         return _core;

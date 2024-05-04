@@ -89,7 +89,7 @@ namespace sigil {
     namespace input {
         inline glm::dvec2 mouse_position;
         inline glm::dvec2 last_mouse_position;
-        inline static std::unordered_map<key_info, key_callback> callbacks;
+        inline std::unordered_map<key_info, key_callback> callbacks;
 
         inline void poll() {
             last_mouse_position = mouse_position;
@@ -146,11 +146,11 @@ namespace sigil {
         inline void poll() {
             float current_time = glfwGetTime();
             delta_time = current_time - last_frame;
-            if( current_time >= prev_second + 1 ) {
+            //if( current_time >= prev_second +  ) {
                 fps = (1000 / delta_time) / 1000;
                 ms  = delta_time * 1000;
                 prev_second = current_time;
-            }
+            //}
             last_frame = current_time;
         }
     } // time
