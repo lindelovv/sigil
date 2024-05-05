@@ -188,22 +188,12 @@ namespace sigil::renderer {
     } inline _scene_data;
     inline vk::DescriptorSetLayout _scene_data_layout;
 
-    namespace primitives {
-        struct Plane {
-            std::vector<Vertex> vertices;
-            std::vector<u32> indices;
-            std::vector<u32> uvs;
-            GeoSurface surface;
-
-            Plane() : Plane(10, 10) {};
-            Plane(u32 div, f32 width);
-        };
-    }
-
+    //_____________________________________
     inline std::vector<Mesh> _meshes;
     inline std::vector<RenderObject> _opaque_objects;
     inline std::vector<RenderObject> _transparent_objects;
 
+    //_____________________________________
     void init();
     void setup_keybinds();
     void setup_imgui();

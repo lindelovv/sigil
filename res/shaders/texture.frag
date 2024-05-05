@@ -11,7 +11,7 @@ layout( location = 0 ) out vec4 _out_frag_color;
 
 void main() {
     float light_value = max(dot(_in_normal, _scene_data.sunlight_direction.xyz), 0.1f);
-    vec3 color = _in_color * texture(_color_texture, _in_uv).xyz;
+    vec3 color = _in_color * texture(_albedo_texture, _in_uv).xyz;
     vec3 ambient = color * _scene_data.ambient_color.xyz;
 
     _out_frag_color = vec4(color * light_value * _scene_data.sunlight_color.w + ambient, 1.0f);

@@ -9,13 +9,13 @@ namespace sigil::renderer {
     //_____________________________________
     struct Camera {
         struct {
-            glm::vec3 position = glm::vec3( 1, 0, 0 );
-            glm::vec3 rotation = glm::vec3( 0, 0, 0 );
+            glm::vec3 position = glm::vec3( -1.8f, 1.8f, -0.6f );
+            glm::vec3 rotation = glm::vec3( -45.f, 13.f, 0.f );
             glm::vec3 scale    = glm::vec3( 0 );
         } transform;
-        float fov =  70.f;
-        float yaw = 180.f;
-        float pitch = -13.f;
+        float yaw   = transform.rotation.x;
+        float pitch = transform.rotation.y;
+        float fov   { 70.f  };
         glm::vec3 velocity;
         glm::vec3 forward_vector = glm::normalize(glm::vec3(
             /* x */ cos(glm::radians(yaw)) * cos(glm::radians(pitch)),
@@ -50,6 +50,7 @@ namespace sigil::renderer {
 
             transform.position += velocity * movement_speed * delta_time;
             velocity = glm::vec3(0);
+
             if( follow_mouse ) {
                 glm::dvec2 offset = -input::get_mouse_movement() * glm::dvec2(mouse_sens) * glm::dvec2(delta_time);
                 yaw += offset.x;
@@ -68,12 +69,10 @@ namespace sigil::renderer {
         }
 
         inline glm::mat4 get_view() {
-            return glm::lookAt(
-                transform.position,
-                transform.position + forward_vector,
-                up_vector
-            );
+            return glm::lookAt(transform.position, (transform.position + forward_vector), up_vector);
         }
+
     } inline camera;
 
 } // sigil::renderer
+
