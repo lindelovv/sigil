@@ -23,6 +23,9 @@ namespace sigil::renderer {
     inline AllocatedImage _white_img;
     inline AllocatedImage _albedo_img;
     inline AllocatedImage _metal_roughness_img;
+    inline AllocatedImage _normal_img;
+    inline AllocatedImage _emissive_img;
+    inline AllocatedImage _AO_img;
 
     void transition_img(
         vk::CommandBuffer cmd_buffer,

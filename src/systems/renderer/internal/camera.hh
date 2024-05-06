@@ -15,6 +15,7 @@ namespace sigil::renderer {
         } transform;
         float yaw   = transform.rotation.x;
         float pitch = transform.rotation.y;
+        glm::dvec2 _offset;
         float fov   { 70.f  };
         glm::vec3 velocity;
         glm::vec3 forward_vector = glm::normalize(glm::vec3(
@@ -34,8 +35,14 @@ namespace sigil::renderer {
             bool back; 
             bool left; 
             bool up; 
-            bool down; 
+            bool down;
         } request_movement;
+        struct {
+            bool up;
+            bool right;
+            bool down;
+            bool left;
+        } request_rotation;
         float movement_speed = 1.f;
         bool follow_mouse = false;
         float mouse_sens = 24.f;
@@ -48,8 +55,16 @@ namespace sigil::renderer {
             if( request_movement.up      ) velocity -= up_vector;
             if( request_movement.down    ) velocity += up_vector;
 
+            if( request_rotation.right   ) _offset.x -= 20 * movement_speed * delta_time;
+            if( request_rotation.left    ) _offset.x += 20 * movement_speed * delta_time;
+            if( request_rotation.up      ) _offset.y -= 20 * movement_speed * delta_time;
+            if( request_rotation.down    ) _offset.y += 20 * movement_speed * delta_time;
+
             transform.position += velocity * movement_speed * delta_time;
             velocity = glm::vec3(0);
+            yaw += _offset.x;
+            pitch += _offset.y;
+            _offset  = glm::vec2(0);
 
             if( follow_mouse ) {
                 glm::dvec2 offset = -input::get_mouse_movement() * glm::dvec2(mouse_sens) * glm::dvec2(delta_time);
@@ -57,19 +72,36 @@ namespace sigil::renderer {
                 pitch = ( pitch - offset.y >  89.f ?  89.f
                         : pitch - offset.y < -89.f ? -89.f
                         : pitch - offset.y);
-                forward_vector = glm::normalize(glm::vec3(
-                    cos(glm::radians(yaw)) * cos(glm::radians(pitch)),
-                    sin(glm::radians(yaw)) * cos(glm::radians(pitch)),
-                    sin(glm::radians(pitch))
-                ));
-                right_vector = glm::cross(forward_vector, world_up);
-                up_vector = glm::cross(forward_vector, right_vector);
+                //forward_vector = glm::normalize(glm::vec3(
+                //    cos(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                //    sin(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                //    sin(glm::radians(pitch))
+                //));
+                //right_vector = glm::cross(forward_vector, world_up);
+                //up_vector = glm::cross(forward_vector, right_vector);
                 //transform.rotation = glm::qrot(transform.rotation, forward_vector);
             }
+            forward_vector = glm::normalize(glm::vec3(
+                cos(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                sin(glm::radians(yaw)) * cos(glm::radians(pitch)),
+                sin(glm::radians(pitch))
+            ));
+            right_vector = glm::cross(forward_vector, world_up);
+            up_vector = glm::cross(forward_vector, right_vector);
+        }
+
+        inline glm::mat4 get_rotation() {
+            return glm::mat4(glm::angleAxis(pitch, glm::vec3 { 0.f, 0.f, 1.f }))
+                 * glm::mat4(glm::angleAxis(yaw,   glm::vec3 { 0.f, 1.f, 0.f }))
+                 * glm::mat4(glm::angleAxis(glm::radians(45.f),   glm::vec3 { 1.f, 0.f, 0.f }));
         }
 
         inline glm::mat4 get_view() {
             return glm::lookAt(transform.position, (transform.position + forward_vector), up_vector);
+        }
+
+        inline glm::mat4 get_worldspace() {
+            return glm::inverse(glm::translate(glm::mat4{1}, transform.position) * get_rotation());
         }
 
     } inline camera;

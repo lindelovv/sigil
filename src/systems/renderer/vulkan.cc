@@ -141,6 +141,9 @@ namespace sigil::renderer {
         _error_img = create_img(vma_allocator, pixels.data(), vk::Extent3D { 16, 16, 1 }, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled);
         _albedo_img = load_img(vma_allocator, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled, "res/textures/Default_albedo.jpg");
         _metal_roughness_img = load_img(vma_allocator, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled, "res/textures/Default_metalRoughness.jpg");
+        _normal_img = load_img(vma_allocator, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled, "res/textures/Default_normal.jpg");
+        _emissive_img = load_img(vma_allocator, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled, "res/textures/Default_emissive.jpg");
+        _AO_img = load_img(vma_allocator, vk::Format::eR8G8B8A8Unorm, vk::ImageUsageFlagBits::eSampled, "res/textures/Default_AO.jpg");
 
         vk::SamplerCreateInfo sampler {
             .magFilter = vk::Filter::eNearest,
@@ -156,13 +159,15 @@ namespace sigil::renderer {
         AllocatedBuffer pbr_material_constants = create_buffer(sizeof(PbrMetallicRoughness::MaterialConstants), vk::BufferUsageFlagBits::eUniformBuffer, vma::MemoryUsage::eCpuToGpu);
         PbrMetallicRoughness::MaterialConstants* pbr_scene_uniform_data = (PbrMetallicRoughness::MaterialConstants*)pbr_material_constants.info.pMappedData;
         pbr_scene_uniform_data->color_factors = glm::vec4{ 1, 1, 1, 1 };
-        pbr_scene_uniform_data->metal_roughness_factors = glm::vec4 { 1, .5, 0, 0 };
+        pbr_scene_uniform_data->metal_roughness_factors = glm::vec4 { 1, 1, 1, 1 };
 
         PbrMetallicRoughness::MaterialResources pbr_material_resources {
             .color_img               = _albedo_img,
-            .color_sampler           = _sampler_linear,
             .metal_roughness_img     = _metal_roughness_img,
-            .metal_roughness_sampler = _sampler_linear,
+            .normal_texture          = _normal_img,
+            .emissive_texture        = _emissive_img,
+            .AO_texture              = _AO_img,
+            .sampler                 = _sampler_linear,
             .data                    = pbr_material_constants.handle,
             .offset                  = 0,
         };
@@ -729,6 +734,26 @@ namespace sigil::renderer {
                     camera.follow_mouse = false;
                 }
         }   );
+        input::bind(GLFW_KEY_J,
+            key_callback {
+                .press   = [&]{ camera.request_rotation.down = 1; },
+                .release = [&]{ camera.request_rotation.down = 0; }
+        }   );
+        input::bind(GLFW_KEY_K,
+            key_callback {
+                .press   = [&]{ camera.request_rotation.up = 1; },
+                .release = [&]{ camera.request_rotation.up = 0; }
+        }   );
+        input::bind(GLFW_KEY_H,
+            key_callback {
+                .press   = [&]{ camera.request_rotation.left = 1; },
+                .release = [&]{ camera.request_rotation.left = 0; }
+        }   );
+        input::bind(GLFW_KEY_L,
+            key_callback {
+                .press   = [&]{ camera.request_rotation.right = 1; },
+                .release = [&]{ camera.request_rotation.right = 0; }
+        }   );
 
         input::bind(GLFW_KEY_F,
             key_callback {
@@ -861,7 +886,7 @@ namespace sigil::renderer {
                 camera.clip_plane.far
             ),
             .ambient_color = glm::vec4 { .1f },
-            .sun_dir = glm::vec4 { 0, -1, 1, 1 },
+            .sun_dir = glm::vec4 { 0, 1, -1, 1 },
             .sun_color = glm::vec4 { 1.f },
         };
         _scene_data.proj[1][1] *= -1;
@@ -970,7 +995,7 @@ namespace sigil::renderer {
                 cmd.bindIndexBuffer(render.index_buffer, 0, vk::IndexType::eUint32);
             }
             GPUDrawPushConstants push_constants {
-                .world_matrix = render.transform * projection * view,
+                .world_matrix = projection * view,
                 .vertex_buffer = render.address,
                 .time = (f32)glfwGetTime(),
             };
@@ -993,6 +1018,12 @@ namespace sigil::renderer {
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplGlfw_NewFrame();
             ImGui::NewFrame();
+
+            // Need to use ImGui_ImplVulkan_AddTexture(...) to create descriptor set,
+            // or possibly replicate settings from function.
+            //ImGui::Begin("Texture");
+            //ImGui::Image((ImTextureID)_albedo_img.descriptor.set.handle, ImVec2(_albedo_img.extent.width, _albedo_img.extent.height));
+            //ImGui::End();
 
             ImGui::Begin("Sigil", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground
                                           | ImGuiWindowFlags_NoResize   | ImGuiWindowFlags_NoMove

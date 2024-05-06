@@ -31,7 +31,7 @@ void main() {
 
     gl_Position = _push_constants.render_matrix * vec4(v.position, 1.f);
 
-    _out_normal = (_push_constants.render_matrix * vec4(v.normal, 0.f)).xyz;
+    _out_normal = (gl_Position * vec4(v.normal, 0.f)).xyz;
     _out_color = v.color.xyz * _material_data.albedo_factors.xyz;
     _out_uv.x = v.uv_x;
     _out_uv.y = v.uv_y;

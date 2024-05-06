@@ -14,4 +14,7 @@ layout( set = 1, binding = 0 ) uniform GLTFMaterialData {
 
 layout( set = 1, binding = 1 ) uniform sampler2D _albedo_texture;
 layout( set = 1, binding = 2 ) uniform sampler2D _metal_roughness_texture;
+layout( set = 1, binding = 3 ) uniform sampler2D _normal_texture;
+layout( set = 1, binding = 4 ) uniform sampler2D _emissive_texture;
+layout( set = 1, binding = 5 ) uniform sampler2D _AO_texture;
 

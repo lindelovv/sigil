@@ -13,9 +13,11 @@ namespace sigil::renderer {
         };
         struct MaterialResources {
             AllocatedImage color_img;
-            vk::Sampler color_sampler;
             AllocatedImage metal_roughness_img;
-            vk::Sampler metal_roughness_sampler;
+            AllocatedImage normal_texture;
+            AllocatedImage emissive_texture;
+            AllocatedImage AO_texture;
+            vk::Sampler sampler;
             vk::Buffer data;
             u32 offset;
         };
@@ -37,6 +39,9 @@ namespace sigil::renderer {
                 .add_binding(0, vk::DescriptorType::eUniformBuffer)
                 .add_binding(1, vk::DescriptorType::eCombinedImageSampler)
                 .add_binding(2, vk::DescriptorType::eCombinedImageSampler)
+                .add_binding(3, vk::DescriptorType::eCombinedImageSampler)
+                .add_binding(4, vk::DescriptorType::eCombinedImageSampler)
+                .add_binding(5, vk::DescriptorType::eCombinedImageSampler)
                 .build(vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment);
 
             vk::DescriptorSetLayout layouts[] {
@@ -83,8 +88,11 @@ namespace sigil::renderer {
             };
             writer.clear()
                 .write_buffer(0, resources.data, sizeof(MaterialConstants), resources.offset, vk::DescriptorType::eUniformBuffer)
-                .write_img(1, resources.color_img.img.view, resources.color_sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
-                .write_img(2, resources.metal_roughness_img.img.view, resources.metal_roughness_sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+                .write_img(1, resources.color_img.img.view, resources.sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+                .write_img(2, resources.metal_roughness_img.img.view, resources.sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+                .write_img(3, resources.normal_texture.img.view, resources.sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+                .write_img(4, resources.emissive_texture.img.view, resources.sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
+                .write_img(5, resources.AO_texture.img.view, resources.sampler, vk::ImageLayout::eShaderReadOnlyOptimal, vk::DescriptorType::eCombinedImageSampler)
                 .update_set(instance.material_set);
             return instance;
         }

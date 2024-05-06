@@ -20,7 +20,7 @@ namespace sigil::renderer {
 
         void build_pipelines() {
             vk::ShaderModule vert = load_shader_module("res/shaders/wave.vert.spv").value;
-            vk::ShaderModule frag = load_shader_module("res/shaders/texture.frag.spv").value;
+            vk::ShaderModule frag = load_shader_module("res/shaders/wave.frag.spv").value;
 
             vk::PushConstantRange matrix_range {
                 .stageFlags = vk::ShaderStageFlagBits::eVertex,

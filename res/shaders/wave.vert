@@ -2,7 +2,22 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_buffer_reference     : require
 
-#include "input_structures.glsl"
+layout( set = 0, binding = 0 ) uniform SceneData {
+    mat4 view;
+    mat4 proj;
+    mat4 viewproj;
+    vec4 ambient_color;
+    vec4 sunlight_direction;
+    vec4 sunlight_color;
+} _scene_data;
+
+layout( set = 1, binding = 0 ) uniform GLTFMaterialData {
+    vec4 albedo_factors;
+    vec4 metal_roughness_factors;
+} _material_data;
+
+layout( set = 1, binding = 1 ) uniform sampler2D _albedo_texture;
+layout( set = 1, binding = 2 ) uniform sampler2D _metal_roughness_texture;
 
 layout( location = 0 ) out vec3 _out_normal;
 layout( location = 1 ) out vec3 _out_color;
