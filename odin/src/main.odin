@@ -1,6 +1,6 @@
-package sigil
+package main
+import sigil "core"
 
 main :: proc() {
-    glfw_run()
-    vulkan_test()
+    sigil.init()
 }
