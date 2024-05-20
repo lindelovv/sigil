@@ -1,6 +1,6 @@
 
 project( 'sigil', 'cpp',
-  version: '0.0.1',
+  version: '0.0.2',
   default_options: [
     'cpp_std=c++20'
   ]
@@ -17,9 +17,9 @@ assimp_opt.add_cmake_defines({
     'CMAKE_BUILD_TYPE': get_option('buildtype') == 'debug' ? 'Debug' : 'Release',
     'ASSIMP_BUILD_ASSIMP_TOOLS': false,
     'ASSIMP_BUILD_TESTS': false,
-    'ASSIMP_BUILD_ZLIB': false,
+    'ASSIMP_BUILD_ZLIB': true,
 
-    'ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT': true,
+    'ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT': false,
     'ASSIMP_BUILD_ALL_EXPORTERS_BY_DEFAULT': false,
 
     'ASSIMP_BUILD_GLB_IMPORTER': true,
