@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="9cc32c10-f23a-4329-9cfa-17dda4ac4910" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.bkup/old_renderer/old_renderer.cc" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.bkup/old_renderer/old_renderer.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/indexLayout.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/compile_commands.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/makefile" beforeDir="false" afterPath="$PROJECT_DIR$/makefile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/meson.build" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/OdinSdkConfig.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/indexLayout.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/projectSettingsUpdater.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/workspace.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/odin/src/bin/src.exe" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/odin/src/main.odin" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/odin/src/systems/glfw.odin" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/odin/src/systems/vk.odin" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/.idea/.idea.src.dir/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/.idea/.idea.src.dir/.idea/encodings.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/.idea/.idea.src.dir/.idea/indexLayout.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/.idea/.idea.src.dir/.idea/vcs.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/core/deletion_queue.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/core/math.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/core/sigil.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/core/types.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.cc" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/glfw.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/camera.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/descriptors.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/frame.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/image.cc" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/image.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/pipelines.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/primitives.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/swapchain.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/materials/pbr.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/materials/wave.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/vulkan.cc" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/systems/renderer/vulkan.hh" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/VulkanMemoryAllocator-Hpp.wrap" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/imgui.wrap" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/VulkanMemoryAllocator_patch/LICENSE.build" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/VulkanMemoryAllocator_patch/meson.build" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/VulkanMemoryAllocator_patch/meson_options.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/VulkanMemoryAllocator_patch/src/meson.build" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/imgui_patch/LICENSE.build" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/imgui_patch/meson.build" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/imgui_patch/meson_options.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/vk_mem_alloc_hpp_patch/meson.build" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/subprojects/vulkan-memory-allocator.wrap" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Odin.main.odin.executor": "Run",
+    "git-widget-placeholder": "odin",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "settings.editor.selected.configurable": "com.lasagnerd.odin.sdkConfig.OdinSdkConfigurable"
+  }
+}]]></component>
+  <component name="RunManager">
+    <configuration name="main.odin" type="OdinRunConfiguration" factoryName="OdinRunConfiguration" temporary="true">
+      <option name="compilerOptions" />
+      <option name="outputPath" value="$PROJECT_DIR$/build/src.exe" />
+      <option name="programArguments" />
+      <option name="projectDirectoryPath" value="$PROJECT_DIR$/src" />
+      <option name="workingDirectory" value="$PROJECT_DIR$" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Odin.main.odin" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="TaskManager">
+    <servers />
+  </component>
+  <component name="UnityProjectConfiguration" hasMinimizedUI="false" />
+  <component name="XSLT-Support.FileAssociations.UIState">
+    <expand />
+    <select />
+  </component>
+</project>
