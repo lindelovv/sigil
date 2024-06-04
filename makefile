@@ -1,14 +1,18 @@
 
-compile c:
-	odin build ./src/ -out:./build/sigil
-run r:
-	odin run ./src/ -out:./build/sigil
+all:
+	$(MAKE) c r
+release:
+	odin build ./ -out:./build/sigil
+build b:
+	odin build ./ -out:./build/sigil -debug
 debug d:
 	gdb ./build/sigil
+run r:
+	./build/sigil
 clean cln:
 	rm -f ./build/sigil
-	
-	
+
+
 NAME=default
 
 vertexc scv:
@@ -19,3 +23,4 @@ computec scc:
 	glslc -c ./res/shaders/$(NAME).comp -o ./res/shaders/$(NAME).comp.spv
 shaderc sc:
 	$(MAKE) vertexc && $(MAKE) fragmentc && $(MAKE) fragmentc
+
