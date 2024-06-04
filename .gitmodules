@@ -1,0 +1,3 @@
+[submodule "lib/odin"]
+	path = lib/odin
+	url = https://github.com/odin-lang/Odin

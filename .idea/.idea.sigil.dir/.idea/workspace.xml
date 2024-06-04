@@ -5,56 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="9cc32c10-f23a-4329-9cfa-17dda4ac4910" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.bkup/old_renderer/old_renderer.cc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.bkup/old_renderer/old_renderer.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/indexLayout.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/vcs.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/compile_commands.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/makefile" beforeDir="false" afterPath="$PROJECT_DIR$/makefile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/meson.build" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/OdinSdkConfig.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/indexLayout.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/projectSettingsUpdater.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/vcs.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/odin/src/.idea/.idea.src.dir/.idea/workspace.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/odin/src/bin/src.exe" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/odin/src/main.odin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/odin/src/systems/glfw.odin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/odin/src/systems/vk.odin" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/.idea/.idea.src.dir/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/.idea/.idea.src.dir/.idea/encodings.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/.idea/.idea.src.dir/.idea/indexLayout.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/.idea/.idea.src.dir/.idea/vcs.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/core/deletion_queue.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/core/math.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/core/sigil.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/core/types.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.cc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/glfw.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/camera.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/descriptors.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/frame.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/image.cc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/image.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/pipelines.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/primitives.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/internal/swapchain.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/materials/pbr.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/materials/wave.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/vulkan.cc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/systems/renderer/vulkan.hh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/VulkanMemoryAllocator-Hpp.wrap" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/imgui.wrap" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/VulkanMemoryAllocator_patch/LICENSE.build" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/VulkanMemoryAllocator_patch/meson.build" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/VulkanMemoryAllocator_patch/meson_options.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/VulkanMemoryAllocator_patch/src/meson.build" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/imgui_patch/LICENSE.build" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/imgui_patch/meson.build" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/imgui_patch/meson_options.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/packagefiles/vk_mem_alloc_hpp_patch/meson.build" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/subprojects/vulkan-memory-allocator.wrap" beforeDir="false" />
+      <change afterPath="$PROJECT_DIR$/.gitmodules" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/lib/odin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/OdinSdkConfig.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/OdinSdkConfig.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.sigil.dir/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -64,15 +18,33 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 2
+}]]></component>
+  <component name="ProjectId" id="2hQIy0SNN3RjthUwg2LtqKO47Mb" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "Odin.main.odin.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
     "git-widget-placeholder": "odin",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
-    "settings.editor.selected.configurable": "com.lasagnerd.odin.sdkConfig.OdinSdkConfigurable"
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "com.lasagnerd.odin.sdkConfig.OdinSdkConfigurable",
+    "vue.rearranger.settings.migration": "true"
+  },
+  "keyToStringList": {
+    "rider.external.source.directories": [
+      "C:\\Users\\gili5060\\AppData\\Roaming\\JetBrains\\Rider2024.1\\resharper-host\\DecompilerCache",
+      "C:\\Users\\gili5060\\AppData\\Roaming\\JetBrains\\Rider2024.1\\resharper-host\\SourcesCache",
+      "C:\\Users\\gili5060\\AppData\\Local\\Symbols\\src"
+    ]
   }
 }]]></component>
   <component name="RunManager">
@@ -90,10 +62,25 @@
       </list>
     </recent_temporary>
   </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="9cc32c10-f23a-4329-9cfa-17dda4ac4910" name="Changes" comment="" />
+      <created>1717520126047</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1717520126047</updated>
+      <workItem from="1717520127715" duration="484000" />
+    </task>
     <servers />
   </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
   <component name="UnityProjectConfiguration" hasMinimizedUI="false" />
+  <component name="VcsManagerConfiguration">
+    <option name="CLEAR_INITIAL_COMMIT_MESSAGE" value="true" />
+  </component>
   <component name="XSLT-Support.FileAssociations.UIState">
     <expand />
     <select />
