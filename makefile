@@ -23,4 +23,3 @@ computec scc:
 	glslc -c ./res/shaders/$(NAME).comp -o ./res/shaders/$(NAME).comp.spv
 shaderc sc:
 	$(MAKE) vertexc && $(MAKE) fragmentc && $(MAKE) fragmentc
-

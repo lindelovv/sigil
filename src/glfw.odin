@@ -23,21 +23,23 @@ init_glfw :: proc() {
     check_err(glfw.Init(), "GLFW Init Failed")
 
     //glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
-    glfw.WindowHint(glfw.DECORATED, glfw.FALSE)
+    //glfw.WindowHint(glfw.DECORATED, glfw.FALSE)
     window = glfw.CreateWindow(i32(window_extent.width), i32(window_extent.height), TITLE, nil, nil)
     check_err(window, "GLFW CreateWindow Failed")
+    
     glfw.SetFramebufferSizeCallback(window, glfw.FramebufferSizeProc(on_resize))
     glfw.SetInputMode(window, glfw.CURSOR, glfw.CURSOR_NORMAL)
     glfw.SetKeyCallback(window, glfw.KeyProc(keyboard_callback))
     glfw.SetMouseButtonCallback(window, glfw.MouseButtonProc(mouse_callback))
+    glfw.MakeContextCurrent(window)
 
     setup_standard_bindings()
-
-    glfw.MakeContextCurrent(window)
 }
 
+//_____________________________
 on_resize :: proc() {
     dbg_msg("resize")
+    resize_window = true
 }
 
 //_____________________________
@@ -92,4 +94,3 @@ setup_standard_bindings :: proc() {
     bind_input(glfw.KEY_T,      KeyCallback { press = proc() { dbg_msg("test") } })
     bind_input(glfw.KEY_ESCAPE, KeyCallback { press = proc() { glfw.SetWindowShouldClose(window, true) } })
 }
-
