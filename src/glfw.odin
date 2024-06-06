@@ -22,8 +22,8 @@ should_close :: proc() -> b32 {
 init_glfw :: proc() {
     check_err(glfw.Init(), "GLFW Init Failed")
 
-    //glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
-    //glfw.WindowHint(glfw.DECORATED, glfw.FALSE)
+    glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
+    glfw.WindowHint(glfw.DECORATED, glfw.FALSE)
     window = glfw.CreateWindow(i32(window_extent.width), i32(window_extent.height), TITLE, nil, nil)
     check_err(window, "GLFW CreateWindow Failed")
     

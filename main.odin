@@ -7,3 +7,4 @@ main :: proc() {
         use(__vulkan)
         run()
 }
+

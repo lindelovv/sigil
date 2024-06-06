@@ -1,6 +1,7 @@
 package sigil
 import "core:fmt"
 import vk "vendor:vulkan"
+import "vendor:glfw"
 
 Error :: union {
     vk.Result,
