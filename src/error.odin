@@ -52,7 +52,7 @@ check_err :: proc {
 
 @(disabled=!ODIN_DEBUG)
 dbg_msg_plain :: proc(msg: string) {
-    fmt.eprintln("[DEBUG]]:", msg)
+    fmt.eprintln("[_DEBUG_]:", msg)
 }
 
 @(disabled=!ODIN_DEBUG)
@@ -67,7 +67,7 @@ dbg_cmsg_severity :: proc(severity: vk.DebugUtilsMessageSeverityFlagsEXT, msg: c
 
 @(disabled=!ODIN_DEBUG)
 dbg_msg_1arg :: proc(msg: string, arg: $a) {
-    fmt.eprintln("[DEBUG]:", msg, arg)
+    fmt.eprintln("[_DEBUG_]:", msg, arg)
 }
 
 dbg_msg :: proc {
