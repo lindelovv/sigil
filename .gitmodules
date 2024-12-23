@@ -1,3 +1,18 @@
 [submodule "lib/odin"]
 	path = lib/odin
 	url = https://github.com/odin-lang/Odin
+[submodule "lib/odin-vma"]
+	path = lib/odin-vma
+	url = https://github.com/nice-sprite/odin-vma
+[submodule "lib/glTF2"]
+	path = lib/glTF2
+	url = https://github.com/Pawel82S/glTF2
+[submodule "lib/assimp"]
+	path = lib/assimp
+	url = https://github.com/PhoenixPhantom/odin_assimp
+[submodule "lib/odin-vma-3.1"]
+	path = lib/odin-vma-3.1
+	url = https://github.com/lindelovv/odin-vma
+[submodule "lib/imgui"]
+	path = lib/imgui
+	url = https://gitlab.com/L-4/odin-imgui

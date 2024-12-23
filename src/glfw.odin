@@ -1,17 +1,25 @@
+//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 package sigil
 import "vendor:glfw"
+import vk "vendor:vulkan"
+import "core:math/linalg/glsl"
 
-__glfw :: Module {
+glfw :: Module {
     setup = proc() {
-        using eRUNLVL
-        schedule(init, init_glfw)
-        schedule(tick, tick_glfw)
-        schedule(exit, exit_glfw)
+        schedule(.INIT, init_glfw)
+        schedule(.TICK, tick_glfw)
+        schedule(.EXIT, exit_glfw)
     }
 }
 
 //_____________________________
-window  : glfw.WindowHandle
+window        : glfw.WindowHandle
+window_extent := [2]i32 { 1920, 1080 }
+fps           : f32
+ms            : f32
+time          : f32
+delta_time    : f32
+@(private="file") prev_delta : f32
 
 //_____________________________
 should_close :: proc() -> b32 {
@@ -20,12 +28,13 @@ should_close :: proc() -> b32 {
 
 //_____________________________
 init_glfw :: proc() {
-    check_err(glfw.Init(), "GLFW Init Failed")
+    glfw.InitHint(glfw.PLATFORM, glfw.PLATFORM_X11) // needed for renderdoc on wayland lol
+    __ensure(glfw.Init(), "GLFW Init Failed")
 
     glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
     glfw.WindowHint(glfw.DECORATED, glfw.FALSE)
-    window = glfw.CreateWindow(i32(window_extent.width), i32(window_extent.height), TITLE, nil, nil)
-    check_err(window, "GLFW CreateWindow Failed")
+    window = glfw.CreateWindow(window_extent.x, window_extent.y, TITLE, nil, nil)
+    __ensure(window, "GLFW CreateWindow Failed")
     
     glfw.SetFramebufferSizeCallback(window, glfw.FramebufferSizeProc(on_resize))
     glfw.SetInputMode(window, glfw.CURSOR, glfw.CURSOR_NORMAL)
@@ -38,14 +47,24 @@ init_glfw :: proc() {
 
 //_____________________________
 on_resize :: proc() {
-    dbg_msg("resize")
+    w, h := glfw.GetWindowSize(window)
     resize_window = true
 }
 
 //_____________________________
 tick_glfw :: proc() {
+    last_mouse_position = mouse_position
+    x, y := glfw.GetCursorPos(window)
+    mouse_position = glsl.vec2 { f32(x), f32(y) }
     glfw.PollEvents()
     glfw.SwapBuffers(window)
+
+    time = f32(glfw.GetTime())
+    delta_time = time - prev_delta
+    prev_delta = time
+
+    fps = (1000 / delta_time) / 1000
+    ms = delta_time * 1000
 }
 
 //_____________________________
@@ -55,9 +74,14 @@ exit_glfw :: proc() {
 }
 
 //_____________________________
+// Input
 input_callbacks     := make(map[Key]KeyCallback)
-mouse_position      :  vec2
-last_mouse_position :  vec2
+mouse_position      :  glsl.vec2
+last_mouse_position :  glsl.vec2
+
+get_mouse_movement :: proc() -> glsl.vec2 {
+    return mouse_position - last_mouse_position
+}
 
 Key :: i32
 KeyCallback :: struct {
@@ -66,11 +90,31 @@ KeyCallback :: struct {
 }
 
 //_____________________________
-bind_input :: proc(key: Key, callbacks: KeyCallback) {
+bind_input :: proc {
+    bind_input_keycallback,
+    bind_input_press,
+    bind_input_press_release,
+}
+
+bind_input_keycallback :: proc(key: Key, callbacks: KeyCallback) {
     if _, exists := input_callbacks[key]; !exists {
         input_callbacks[key] = {}
     }
     input_callbacks[key] = callbacks
+}
+
+bind_input_press :: proc(key: Key, press: proc()) {
+    if _, exists := input_callbacks[key]; !exists {
+        input_callbacks[key] = {}
+    }
+    input_callbacks[key] = KeyCallback { press = press }
+}
+
+bind_input_press_release :: proc(key: Key, press: proc(), release: proc()) {
+    if _, exists := input_callbacks[key]; !exists {
+        input_callbacks[key] = {}
+    }
+    input_callbacks[key] = KeyCallback { press = press, release = release }
 }
 
 //_____________________________
@@ -82,8 +126,8 @@ keyboard_callback :: proc(window: glfw.WindowHandle, key: i32, scancode: i32, ac
 }
 
 //_____________________________
-mouse_callback :: proc(window: glfw.WindowHandle, key: i32, scancode: i32, action: i32, mods: i32) {
-    if callback, exists := input_callbacks[key]; exists {
+mouse_callback :: proc(window: glfw.WindowHandle, button: i32, action: i32, mods: i32) {
+    if callback, exists := input_callbacks[button]; exists {
         if action == glfw.PRESS   { if callback.press != nil   { callback.press()   } }
         if action == glfw.RELEASE { if callback.release != nil { callback.release() } }
     }
@@ -91,6 +135,8 @@ mouse_callback :: proc(window: glfw.WindowHandle, key: i32, scancode: i32, actio
 
 //_____________________________
 setup_standard_bindings :: proc() {
-    bind_input(glfw.KEY_T,      KeyCallback { press = proc() { dbg_msg("test") } })
-    bind_input(glfw.KEY_ESCAPE, KeyCallback { press = proc() { glfw.SetWindowShouldClose(window, true) } })
+    bind_input(glfw.KEY_T,      press = proc() { __log("test") })
+    bind_input(glfw.KEY_ESCAPE, press = proc() { glfw.SetWindowShouldClose(window, true) })
 }
+
+//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

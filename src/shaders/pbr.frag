@@ -1,5 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_buffer_reference     : require
 
 #include "pbr.glsl"
 
@@ -9,6 +10,24 @@ layout( location = 2 ) in vec3 _in_color;
 layout( location = 3 ) in vec2 _in_uv;
 
 layout( location = 0 ) out vec4 _out_frag_color;
+
+struct Vertex {
+    vec3 position;
+    float uv_x;
+    vec3 normal;
+    float uv_y;
+    vec4 color;
+};
+
+layout( buffer_reference, std430 ) readonly buffer VertexBuffer {
+    Vertex vertices[]; 
+};
+
+layout( push_constant ) uniform constants {
+    VertexBuffer vertex_buffer;
+    mat4 transform;
+    float time;
+} _push_constants;
 
 const float PI          = 3.141592;
 const float Epsilon     = 0.00001;
@@ -43,7 +62,7 @@ void main() {
     float emissive  = texture(_emissive_texture, _in_uv).r;
     vec3 AO         = texture(_AO_texture, _in_uv).xyz;
 
-    vec3 Lo = normalize(vec3(_scene_data.viewproj) * _in_pos);
+    vec3 Lo = normalize(vec3(_scene_data.proj * _scene_data.view) * _in_pos);
 
     float cosLo = max(0.0, dot(normal, Lo));
     vec3 Lr = 2.0 * cosLo * normal - Lo;
