@@ -23,14 +23,14 @@ layout( push_constant ) uniform constants {
     VertexBuffer vertex_buffer;
     mat4         transform;
     float        time;
-} _push_constants;
+    vec3         pos;
+} _pc;
 
 void main() {
-    Vertex v = _push_constants.vertex_buffer.vertices[gl_VertexIndex];
+    Vertex v = _pc.vertex_buffer.vertices[gl_VertexIndex];
 
-    vec4 world_pos = vec4(v.position, 1.f);
-    mat4 viewproj =  _scene_data.proj * _scene_data.view;
-    gl_Position = viewproj * world_pos;
+    vec4 world_pos = vec4(v.position + _pc.pos, 1.f);
+    gl_Position = _scene_data.proj * _scene_data.view * world_pos;
 
     _out_pos = world_pos.xyz;
     _out_normal = (gl_Position * vec4(v.normal, 0.f)).xyz;

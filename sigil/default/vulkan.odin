@@ -1,5 +1,6 @@
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-
-package sigil
+//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+package __sigil_default
+import sigil "../core"
 import "core:dynlib"
 import "core:slice"
 import "base:runtime"
@@ -18,27 +19,26 @@ import imgui_vk "lib:imgui/imgui_impl_vulkan"
 import imgui_glfw "lib:imgui/imgui_impl_glfw"
 import "vendor:stb/image"
 
-vulkan :: Module {
-    setup = proc() {
-        schedule(.INIT, init_vulkan)
-        schedule(.TICK, tick_vulkan)
-        schedule(.EXIT, terminate_vulkan)
-    }
+vulkan :: proc() {
+    using sigil
+    schedule(init(init_vulkan))
+    schedule(tick(tick_vulkan))
+    schedule(exit(terminate_vulkan))
 }
 
+VK_VERSION := vk.MAKE_VERSION(sigil.MAJOR_V, sigil.MINOR_V, sigil.PATCH_V)
 //_____________________________
 engine_info := vk.ApplicationInfo {
     sType               = .APPLICATION_INFO,
     pApplicationName    = "sigil",
-    applicationVersion  = SIGIL_V_U32,
+    applicationVersion  = VK_VERSION,
     pEngineName         = "sigil",
-    engineVersion       = SIGIL_V_U32,
+    engineVersion       = VK_VERSION,
     apiVersion          = vk.API_VERSION_1_3,
 }
 
 validation_layers := []cstring {
     "VK_LAYER_KHRONOS_validation",
-    //"VK_LAYER_LUNARG_standard_validation"
 }
 device_extensions := []cstring {
     vk.KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -143,6 +143,7 @@ RenderData :: struct {
     idx_buffer  : vk.Buffer,
     material    : ^PBR_Material,
     transform   : glm.mat4,
+    pos         : glm.vec3,
     address     : vk.DeviceAddress,
 }
 
@@ -150,14 +151,15 @@ RenderData :: struct {
 GPUMeshBuffer :: struct {
     index   : AllocatedBuffer,
     vertex  : AllocatedBuffer,
-    address : vk.DeviceAddress
+    address : vk.DeviceAddress,
 }
 
 //_____________________________
 GPU_PushConstants :: struct {
     vertex_buffer : vk.DeviceAddress,
     transform     : glm.mat4,
-    time          : f32
+    pos           : glm.vec3,
+    time          : f32,
 }
 
 //_____________________________
@@ -190,7 +192,7 @@ ComputePushConstant :: struct {
     d3: glm.vec4,
     d4: glm.vec4
 }
-sky := ComputePushConstant { { .4, .4, .8, 1 }, { .6, .4, .4, 1 }, {}, {} }
+sky := ComputePushConstant { { .4, .4, .8, 1 }, { .1, .1, .1, 1 }, {}, {} }
 
 //_____________________________
 SceneData :: struct {
@@ -206,6 +208,7 @@ GPU_SceneData :: struct {
     ambient_color : glm.vec4,
     sun_direction : glm.vec4,
     sun_color     : glm.vec4,
+    view_pos      : glm.vec3
 }
 
 //_____________________________
@@ -289,8 +292,10 @@ init_vulkan :: proc() {
             ppEnabledLayerNames     = nil,
         }
     }
-    __ensure(vk.CreateInstance(&create_info, nil, &instance), 
-        "VK: Instance Creation failed")
+    __ensure(
+        vk.CreateInstance(&create_info, nil, &instance), 
+        msg = "VK: Instance Creation failed"
+    )
     vk.load_proc_addresses(instance)
 
     //_____________________________
@@ -302,23 +307,31 @@ init_vulkan :: proc() {
             messageType     = { .GENERAL, .VALIDATION, .PERFORMANCE },
             pfnUserCallback = dbg_callback
         }
-        __ensure(vk.CreateDebugUtilsMessengerEXT(instance, &dbg_create_info, nil, &dbg_messenger), 
-            "VK: Debug Utils Messenger Creation Failed")
+        __ensure(
+            vk.CreateDebugUtilsMessengerEXT(instance, &dbg_create_info, nil, &dbg_messenger), 
+            msg = "VK: Debug Utils Messenger Creation Failed"
+        )
     }
 
     //_____________________________
     // Surface
-    __ensure(glfw.CreateWindowSurface(instance, window, nil, &surface), 
-        "Failed to create window surface")
+    __ensure(
+        glfw.CreateWindowSurface(instance, window, nil, &surface), 
+        msg = "Failed to create window surface"
+    )
 
     //_____________________________
     // Physical Device
     phys_count: u32
-    __ensure(vk.EnumeratePhysicalDevices(instance, &phys_count, nil), 
-        "VK: EnumeratePhysicalDevices Error")
+    __ensure(
+        vk.EnumeratePhysicalDevices(instance, &phys_count, nil), 
+        msg = "VK: EnumeratePhysicalDevices Error"
+    )
     phys_device_list := make([dynamic]vk.PhysicalDevice, phys_count)
-    __ensure(vk.EnumeratePhysicalDevices(instance, &phys_count, raw_data(phys_device_list)), 
-        "VK: EnumeratePhysicalDevices Error")
+    __ensure(
+        vk.EnumeratePhysicalDevices(instance, &phys_count, raw_data(phys_device_list)), 
+        msg = "VK: EnumeratePhysicalDevices Error"
+    )
     phys_device = phys_device_list[0]
 
     //_____________________________
@@ -367,8 +380,10 @@ init_vulkan :: proc() {
         pVulkanFunctions = &vk_fns,
         flags            = { .BUFFER_DEVICE_ADDRESS }
     }
-    __ensure(vma.CreateAllocator(&vma_info, &vma_allocator),
-        "Failed to create memory allocator")
+    __ensure(
+        vma.CreateAllocator(&vma_info, &vma_allocator),
+        msg = "Failed to create memory allocator"
+    )
 
     //_____________________________
     // Swapchain
@@ -389,8 +404,10 @@ init_vulkan :: proc() {
         imageExtent      = swap_extent,
         minImageCount    = capabilities.minImageCount + 1,
     }
-    __ensure(vk.CreateSwapchainKHR(device, &swapchain_create_info, nil, &swapchain),
-        "Failed to create swapchain")
+    __ensure(
+        vk.CreateSwapchainKHR(device, &swapchain_create_info, nil, &swapchain),
+        msg = "Failed to create swapchain"
+    )
 
     //_____________________________
     // Images
@@ -434,8 +451,10 @@ init_vulkan :: proc() {
             queueFamilyIndex = queue_family,
             flags            = { .RESET_COMMAND_BUFFER },
         }
-        __ensure(vk.CreateCommandPool(device, &pool_create_info, nil, &frame.pool),
-            "Failed to create command pool")
+        __ensure(
+            vk.CreateCommandPool(device, &pool_create_info, nil, &frame.pool),
+            msg = "Failed to create command pool"
+        )
 
         cmd_create_info := vk.CommandBufferAllocateInfo {
             sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
@@ -443,23 +462,31 @@ init_vulkan :: proc() {
             level              = .PRIMARY,
             commandBufferCount = 1
         }
-        __ensure(vk.AllocateCommandBuffers(device, &cmd_create_info, &frame.cmd),
-            "Failed to create command buffer")
+        __ensure(
+            vk.AllocateCommandBuffers(device, &cmd_create_info, &frame.cmd),
+            msg = "Failed to create command buffer"
+        )
 
         fence_create_info := vk.FenceCreateInfo {
             sType = .FENCE_CREATE_INFO,
             flags = { .SIGNALED }
         }
-        __ensure(vk.CreateFence(device, &fence_create_info, nil, &frame.fence),
-            "Failed to create fence")
+        __ensure(
+            vk.CreateFence(device, &fence_create_info, nil, &frame.fence),
+            msg = "Failed to create fence"
+        )
 
         semaphore_create_info := vk.SemaphoreCreateInfo {
             sType = .SEMAPHORE_CREATE_INFO
         }
-        __ensure(vk.CreateSemaphore(device, &semaphore_create_info, nil, &frame.swap_sem),
-            "Failed to create swap semaphore")
-        __ensure(vk.CreateSemaphore(device, &semaphore_create_info, nil, &frame.render_sem),
-            "Failed to create render semaphore")
+        __ensure(
+            vk.CreateSemaphore(device, &semaphore_create_info, nil, &frame.swap_sem),
+            msg = "Failed to create swap semaphore"
+        )
+        __ensure(
+            vk.CreateSemaphore(device, &semaphore_create_info, nil, &frame.render_sem),
+            msg = "Failed to create render semaphore"
+        )
 
         //_____________________________
         // Descriptor Pool
@@ -474,8 +501,10 @@ init_vulkan :: proc() {
             poolSizeCount = 1,
             pPoolSizes    = &size,
         }
-        __ensure(vk.CreateDescriptorPool(device, &desc_pool_info, nil, &desc_pool),
-            "Failed to create frame descriptor pool")
+        __ensure(
+            vk.CreateDescriptorPool(device, &desc_pool_info, nil, &desc_pool),
+            msg = "Failed to create frame descriptor pool"
+        )
 
         //_____________________________
         // Descriptor Layout
@@ -513,9 +542,10 @@ init_vulkan :: proc() {
                                 f32(swap_extent.width)/f32(swap_extent.height), 
                                 main_camera.near, main_camera.far, 
                             ),
-            sun_color     = { 0, 1, 1,  1 },
-            sun_direction = { 0, 0, 0, 0 },
+            sun_color     = { .5, .5, 1,  1 },
+            sun_direction = { 0, 0, 2, 1 },
             ambient_color = { 1, 1, 1,  1 },
+            view_pos      = main_camera.position,
         }
         scene_allocation = create_buffer(size_of(GPU_SceneData), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
         scene_unifrom_data := cast(^GPU_SceneData)scene_allocation.info.pMappedData
@@ -536,8 +566,10 @@ init_vulkan :: proc() {
         queueFamilyIndex = queue_family,
         flags            = { .RESET_COMMAND_BUFFER },
     }
-    __ensure(vk.CreateCommandPool(device, &pool_create_info, nil, &immediate.pool),
-        "Failed to create command pool")
+    __ensure(
+        vk.CreateCommandPool(device, &pool_create_info, nil, &immediate.pool),
+        msg = "Failed to create command pool"
+    )
 
     cmd_create_info := vk.CommandBufferAllocateInfo {
         sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
@@ -545,15 +577,19 @@ init_vulkan :: proc() {
         level              = .PRIMARY,
         commandBufferCount = 1
     }
-    __ensure(vk.AllocateCommandBuffers(device, &cmd_create_info, &immediate.cmd), 
-        "Failed to create command buffer")
+    __ensure(
+        vk.AllocateCommandBuffers(device, &cmd_create_info, &immediate.cmd), 
+        msg = "Failed to create command buffer"
+    )
 
     fence_create_info := vk.FenceCreateInfo {
         sType = .FENCE_CREATE_INFO,
         flags = { .SIGNALED }
     }
-    __ensure(vk.CreateFence(device, &fence_create_info, nil, &immediate.fence), 
-        "Failed to create fence")
+    __ensure(
+        vk.CreateFence(device, &fence_create_info, nil, &immediate.fence), 
+        msg = "Failed to create fence"
+    )
 
     debug_label := vk.DebugUtilsLabelEXT {
         sType      = .DEBUG_UTILS_LABEL_EXT,
@@ -576,8 +612,10 @@ init_vulkan :: proc() {
         poolSizeCount = u32(len(sizes)),
         pPoolSizes    = raw_data(sizes),
     }
-    __ensure(vk.CreateDescriptorPool(device, &desc_pool_info, nil, &desc_pool), 
-        "Failed to create descriptor pool")
+    __ensure(
+        vk.CreateDescriptorPool(device, &desc_pool_info, nil, &desc_pool), 
+        msg = "Failed to create descriptor pool"
+    )
 
     //_____________________________
     // Descriptor Layout
@@ -626,8 +664,10 @@ init_vulkan :: proc() {
         magFilter = .LINEAR,
         minFilter = .LINEAR,
     }
-    __ensure(vk.CreateSampler(device, &sampler_info, nil, &sampler), 
-        "Failed to create sampler")
+    __ensure(
+        vk.CreateSampler(device, &sampler_info, nil, &sampler), 
+        msg = "Failed to create sampler"
+    )
 
     //_____________________________
     // Compute Pipeline Layout
@@ -643,8 +683,10 @@ init_vulkan :: proc() {
         pushConstantRangeCount = 1,
         pPushConstantRanges    = &compute_range,
     }
-    __ensure(vk.CreatePipelineLayout(device, &layout_info, nil, &comp_layout), 
-        "Failed to create pipeline layout")
+    __ensure(
+        vk.CreatePipelineLayout(device, &layout_info, nil, &comp_layout), 
+        msg = "Failed to create pipeline layout"
+    )
 
     //_____________________________
     // Compute Pipeline
@@ -662,8 +704,10 @@ init_vulkan :: proc() {
         stage  = comp_stage_info,
         layout = comp_layout
     }
-    __ensure(vk.CreateComputePipelines(device, 0, 1, &comp_pipe_info, nil, &comp_pipeline), 
-        "Failed to create Compute Pipeline")
+    __ensure(
+        vk.CreateComputePipelines(device, 0, 1, &comp_pipe_info, nil, &comp_pipeline), 
+        msg = "Failed to create Compute Pipeline"
+    )
 
     //_____________________________
     // Error image
@@ -693,16 +737,20 @@ init_vulkan :: proc() {
         bindingCount = u32(len(scene_data_layout_bindings)),
         pBindings    = raw_data(scene_data_layout_bindings),
     }
-    __ensure(vk.CreateDescriptorSetLayout(device, &scene_data_layout_info, nil, &scene_data.set_layout), 
-        "Failed to create descriptor set")
+    __ensure(
+        vk.CreateDescriptorSetLayout(device, &scene_data_layout_info, nil, &scene_data.set_layout), 
+        msg = "Failed to create descriptor set"
+    )
     scene_data_allocate_info := vk.DescriptorSetAllocateInfo {
         sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
         descriptorPool     = desc_pool,
         descriptorSetCount = 1,
         pSetLayouts        = &scene_data.set_layout,
     }
-    __ensure(vk.AllocateDescriptorSets(device, &scene_data_allocate_info, &scene_data.set), 
-        "Failed to allocate descriptor set")
+    __ensure(
+        vk.AllocateDescriptorSets(device, &scene_data_allocate_info, &scene_data.set), 
+        msg = "Failed to allocate descriptor set"
+    )
 
     //_____________________________
     // PBR Material
@@ -729,8 +777,10 @@ init_vulkan :: proc() {
         poolSizeCount = u32(len(imgui_pool_sizes)),
         pPoolSizes    = raw_data(imgui_pool_sizes),
     }
-    __ensure(vk.CreateDescriptorPool(device, &imgui_pool_info, nil, &imgui_pool), 
-        "Failed to create descriptor pool for imgui")
+    __ensure(
+        vk.CreateDescriptorPool(device, &imgui_pool_info, nil, &imgui_pool), 
+        msg = "Failed to create descriptor pool for imgui"
+    )
 
     imgui.CHECKVERSION()
     imgui.CreateContext()
@@ -792,8 +842,10 @@ init_vulkan :: proc() {
 
 rebuild_swapchain :: proc() {
     defer resize_window = false
-    __ensure(vk.QueueWaitIdle(queue), 
-        "Waiting for queue failed")
+    __ensure(
+        vk.QueueWaitIdle(queue), 
+        msg = "Waiting for queue failed"
+    )
 
     vk.DestroySwapchainKHR(device, swapchain, nil)
 
@@ -816,8 +868,10 @@ rebuild_swapchain :: proc() {
         imageExtent      = swap_extent,
         minImageCount    = capabilities.minImageCount + 1,
     }
-    __ensure(vk.CreateSwapchainKHR(device, &swapchain_create_info, nil, &swapchain), 
-        "Failed to create swapchain")
+    __ensure(
+        vk.CreateSwapchainKHR(device, &swapchain_create_info, nil, &swapchain), 
+        msg = "Failed to create swapchain"
+    )
 
     //_____________________________
     // Images
@@ -853,8 +907,10 @@ create_shader_module :: proc(path: string) -> (shader: vk.ShaderModule) {
         codeSize = len(data),
         pCode    = cast(^u32) raw_data(data)
     }
-    __ensure(vk.CreateShaderModule(device, &shader_module_info, nil, &shader), 
-        "Failed to create shader module")
+    __ensure(
+        vk.CreateShaderModule(device, &shader_module_info, nil, &shader), 
+        msg = "Failed to create shader module"
+    )
     return shader
 }
 
@@ -917,6 +973,7 @@ upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, 
         data.address    = mesh.buffers.address
         data.idx_buffer = mesh.buffers.index.handle
         data.transform  = glm.mat4(1)
+        data.pos        = glm.vec3(1)
     }
 
     staging_buffer := create_buffer(vtx_buffer_size + idx_buffer_size, { .TRANSFER_SRC }, .CPU_ONLY)
@@ -925,17 +982,20 @@ upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, 
     mem.copy(buffer_data, raw_data(vertex_buffer), int(vtx_buffer_size))
 	mem.copy(mem.ptr_offset((^u8)(buffer_data), vtx_buffer_size), raw_data(index_buffer), int(idx_buffer_size))
 
-    __ensure(vk.ResetFences(device, 1, &immediate.fence), 
-        "Failed resetting immediate fence")
-    __ensure(vk.ResetCommandBuffer(immediate.cmd, {}), 
-        "Failed to reset command buffer")
+    __ensure(
+        vk.ResetFences(device, 1, &immediate.fence), 
+        msg = "Failed resetting immediate fence"
+    )
+    __ensure(
+        vk.ResetCommandBuffer(immediate.cmd, {}), 
+        msg = "Failed to reset command buffer"
+    )
 
     cmd_begin_info := vk.CommandBufferBeginInfo {
         sType = .COMMAND_BUFFER_BEGIN_INFO,
         flags = { .ONE_TIME_SUBMIT }
     }
-    __ensure(vk.BeginCommandBuffer(immediate.cmd, &cmd_begin_info), 
-        "Failed to being immediate command buffer")
+    __ensure(vk.BeginCommandBuffer(immediate.cmd, &cmd_begin_info), msg = "Failed to being immediate command buffer")
     {
         vtx_copy := vk.BufferCopy {
             srcOffset = 0,
@@ -950,8 +1010,7 @@ upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, 
         }
         vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.buffers.index.handle, 1, &idx_copy)
     }
-    __ensure(vk.EndCommandBuffer(immediate.cmd), 
-        "Failed to end immediate command buffer")
+    __ensure(vk.EndCommandBuffer(immediate.cmd), msg = "Failed to end immediate command buffer")
 
     cmd_info := vk.CommandBufferSubmitInfo {
         sType         = .COMMAND_BUFFER_SUBMIT_INFO,
@@ -963,10 +1022,14 @@ upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, 
         commandBufferInfoCount = 1,
         pCommandBufferInfos    = &cmd_info,
     }
-    __ensure(vk.QueueSubmit2(queue, 1, &submit_info, immediate.fence), 
-        "Failed to sumbit queue")
-    __ensure(vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), 
-        "Failed waiting for fences")
+    __ensure(
+        vk.QueueSubmit2(queue, 1, &submit_info, immediate.fence), 
+        msg = "Failed to sumbit queue"
+    )
+    __ensure(
+        vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), 
+        msg = "Failed waiting for fences"
+    )
 
     append(&meshes, mesh^)
 }
@@ -1045,16 +1108,20 @@ load_mesh :: proc(path: cstring) {
     mem.copy(buffer_data, raw_data(vertex_buffer), int(vtx_buffer_size))
 	mem.copy(mem.ptr_offset((^u8)(buffer_data), vtx_buffer_size), raw_data(index_buffer), int(idx_buffer_size))
 
-    __ensure(vk.ResetFences(device, 1, &immediate.fence), 
-        "Failed resetting immediate fence")
-    __ensure(vk.ResetCommandBuffer(immediate.cmd, {}), 
-        "Failed to reset command buffer")
+    __ensure(
+        vk.ResetFences(device, 1, &immediate.fence), 
+        msg = "Failed resetting immediate fence"
+    )
+    __ensure(
+        vk.ResetCommandBuffer(immediate.cmd, {}), 
+        msg = "Failed to reset command buffer"
+    )
 
     cmd_begin_info := vk.CommandBufferBeginInfo {
         sType = .COMMAND_BUFFER_BEGIN_INFO,
         flags = { .ONE_TIME_SUBMIT }
     }
-    __ensure(vk.BeginCommandBuffer(immediate.cmd, &cmd_begin_info), "Failed to being immediate command buffer")
+    __ensure(vk.BeginCommandBuffer(immediate.cmd, &cmd_begin_info), msg = "Failed to being immediate command buffer")
     {
         vtx_copy := vk.BufferCopy {
             srcOffset = 0,
@@ -1080,8 +1147,8 @@ load_mesh :: proc(path: cstring) {
         commandBufferInfoCount = 1,
         pCommandBufferInfos    = &cmd_info,
     }
-    __ensure(vk.QueueSubmit2(queue, 1, &submit_info, immediate.fence), "Failed to sumbit queue")
-    __ensure(vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), "Failed waiting for fences")
+    __ensure(vk.QueueSubmit2(queue, 1, &submit_info, immediate.fence),      msg = "Failed to sumbit queue")
+    __ensure(vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), msg = "Failed waiting for fences")
 
     append(&meshes, mesh)
 }
@@ -1101,8 +1168,10 @@ create_buffer :: proc(
         flags = { .MAPPED },
         usage = mem_usage,
     }
-    __ensure(vma.CreateBuffer(vma_allocator, &buffer_info, &alloc_info, &buffer.handle, &buffer.allocation, &buffer.info), 
-        "Failed to create buffer")
+    __ensure(
+        vma.CreateBuffer(vma_allocator, &buffer_info, &alloc_info, &buffer.handle, &buffer.allocation, &buffer.info), 
+        msg = "Failed to create buffer"
+    )
     return buffer
 }
 
@@ -1141,8 +1210,10 @@ create_image :: proc(format: vk.Format, flags: vk.ImageUsageFlags, extent: vk.Ex
         usage         = .GPU_ONLY,
         requiredFlags = { .DEVICE_LOCAL },
     }
-    __ensure(vma.CreateImage(vma_allocator, &img_info, &alloc_info, &alloc_img.handle, &alloc_img.allocation, nil), 
-        "Failed to create image")
+    __ensure(
+        vma.CreateImage(vma_allocator, &img_info, &alloc_info, &alloc_img.handle, &alloc_img.allocation, nil), 
+        msg = "Failed to create image"
+    )
 
     view_info := vk.ImageViewCreateInfo {
         sType            = .IMAGE_VIEW_CREATE_INFO,
@@ -1157,7 +1228,10 @@ create_image :: proc(format: vk.Format, flags: vk.ImageUsageFlags, extent: vk.Ex
             layerCount      = 1,
         }
     }
-    __ensure(vk.CreateImageView(device, &view_info, nil, &alloc_img.view), "Failed to create image view")
+    __ensure(
+        vk.CreateImageView(device, &view_info, nil, &alloc_img.view), 
+        msg = "Failed to create image view"
+    )
 
     return alloc_img
 }
@@ -1171,17 +1245,20 @@ create_image_from_buffer :: proc(data: rawptr, extent: vk.Extent3D, format: vk.F
 
     img := create_image(format, usage + { .TRANSFER_DST, .TRANSFER_SRC }, extent)
 
-    __ensure(vk.ResetFences(device, 1, &immediate.fence), 
-        "Failed resetting immediate fence")
-    __ensure(vk.ResetCommandBuffer(immediate.cmd, {}), 
-        "Failed to reset command buffer")
+    __ensure(
+        vk.ResetFences(device, 1, &immediate.fence), 
+        msg = "Failed resetting immediate fence"
+    )
+    __ensure(
+        vk.ResetCommandBuffer(immediate.cmd, {}), 
+        msg = "Failed to reset command buffer"
+    )
 
     cmd_begin_info := vk.CommandBufferBeginInfo {
         sType = .COMMAND_BUFFER_BEGIN_INFO,
         flags = { .ONE_TIME_SUBMIT }
     }
-    __ensure(vk.BeginCommandBuffer(immediate.cmd, &cmd_begin_info), 
-        "Failed to being immediate command buffer")
+    __ensure(vk.BeginCommandBuffer(immediate.cmd, &cmd_begin_info), "Failed to being immediate command buffer")
     {
         transition_img(immediate.cmd, img.handle, .UNDEFINED, .TRANSFER_DST_OPTIMAL)
         copy := vk.BufferImageCopy {
@@ -1199,8 +1276,7 @@ create_image_from_buffer :: proc(data: rawptr, extent: vk.Extent3D, format: vk.F
         vk.CmdCopyBufferToImage(immediate.cmd, upload_buffer.handle, img.handle, .TRANSFER_DST_OPTIMAL, 1, &copy)
         transition_img(immediate.cmd, img.handle, .TRANSFER_DST_OPTIMAL, .SHADER_READ_ONLY_OPTIMAL)
     }
-    __ensure(vk.EndCommandBuffer(immediate.cmd), 
-        "Failed to end immediate command buffer")
+    __ensure(vk.EndCommandBuffer(immediate.cmd), "Failed to end immediate command buffer")
     cmd_info := vk.CommandBufferSubmitInfo {
         sType         = .COMMAND_BUFFER_SUBMIT_INFO,
         commandBuffer = immediate.cmd,
@@ -1211,10 +1287,14 @@ create_image_from_buffer :: proc(data: rawptr, extent: vk.Extent3D, format: vk.F
         commandBufferInfoCount = 1,
         pCommandBufferInfos    = &cmd_info,
     }
-    __ensure(vk.QueueSubmit2(queue, 1, &submit_info, immediate.fence), 
-        "Failed to sumbit queue")
-    __ensure(vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), 
-        "Failed waiting for fences")
+    __ensure(
+        vk.QueueSubmit2(queue, 1, &submit_info, immediate.fence), 
+        msg = "Failed to sumbit queue"
+    )
+    __ensure(
+        vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), 
+        msg = "Failed waiting for fences"
+    )
 
     return img
 }
@@ -1293,16 +1373,20 @@ tick_vulkan :: proc() {
         __log("Wait for fences failed. Device Lost!")
         glfw.SetWindowShouldClose(window, true)
     }
-    __ensure(vk.WaitForFences(device, 1, &frame.fence, true, max(u64)), 
-        "WaitForFences failed")
+    __ensure(
+        vk.WaitForFences(device, 1, &frame.fence, true, max(u64)), 
+        msg = "WaitForFences failed"
+    )
 
     img_index: u32
     result := vk.AcquireNextImageKHR(device, swapchain, max(u64), frame.swap_sem, {}, &img_index)
     ; if result == .ERROR_OUT_OF_DATE_KHR || result == .SUBOPTIMAL_KHR { resize_window = true }
     swap_img := swapchain_images[img_index]
 
-    __ensure(vk.ResetFences(device, 1, &frame.fence), 
-        "Reset fence failed")
+    __ensure(
+        vk.ResetFences(device, 1, &frame.fence), 
+        msg = "Reset fence failed"
+    )
     vk.ResetCommandBuffer(frame.cmd, {})
 
     cmd_begin_info := vk.CommandBufferBeginInfo {
@@ -1319,6 +1403,7 @@ tick_vulkan :: proc() {
         // draw backgrund
         vk.CmdBindPipeline(frame.cmd, .COMPUTE, comp_pipeline)
         vk.CmdBindDescriptorSets(frame.cmd, .COMPUTE, comp_layout, 0, 1, &draw_descriptor, 0, nil)
+        sky.d1 = gpu_scene_data.sun_color
         vk.CmdPushConstants(frame.cmd, comp_layout, { .COMPUTE }, 0, size_of(ComputePushConstant), &sky)
         vk.CmdDispatch(frame.cmd, u32(math.ceil(f32(draw_extent.width) / 16.0)), u32(math.ceil(f32(draw_extent.height) / 16.0)), 1)
 
@@ -1406,6 +1491,7 @@ tick_vulkan :: proc() {
 
             gpu_scene_data.view = view
             gpu_scene_data.proj = projection
+            gpu_scene_data.view_pos = main_camera.position
             mem.copy(scene_allocation.info.pMappedData, &gpu_scene_data, size_of(GPU_SceneData))
 
             scene_data_desc := DescriptorData { set = frame.descriptor.set }
@@ -1424,7 +1510,7 @@ tick_vulkan :: proc() {
             for mesh in meshes {
                 for data in mesh.surfaces {
                     push_const.vertex_buffer = data.address
-                    push_const.transform = data.transform
+                    push_const.pos = data.pos
                     //push_const.transform[3][3] = 1
                     vk.CmdBindIndexBuffer(frame.cmd, data.idx_buffer, 0, .UINT32)
                     vk.CmdPushConstants(frame.cmd, pbr.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(GPU_PushConstants), &push_const)
@@ -1444,8 +1530,10 @@ tick_vulkan :: proc() {
 
         transition_img(frame.cmd, swap_img, .TRANSFER_DST_OPTIMAL, .PRESENT_SRC_KHR)
     }
-    __ensure(vk.EndCommandBuffer(frame.cmd), 
-        "End cmd failed")
+    __ensure(
+        vk.EndCommandBuffer(frame.cmd), 
+        msg = "End cmd failed"
+    )
 
     cmd_info := vk.CommandBufferSubmitInfo {
         sType         = .COMMAND_BUFFER_SUBMIT_INFO,
@@ -1476,8 +1564,10 @@ tick_vulkan :: proc() {
         signalSemaphoreInfoCount = 1,
         pSignalSemaphoreInfos    = &signal_info,
     }
-    __ensure(vk.QueueSubmit2(queue, 1, &submit_info, frame.fence), 
-        "Queue submit failed")
+    __ensure(
+        vk.QueueSubmit2(queue, 1, &submit_info, frame.fence), 
+        msg = "Queue submit failed"
+    )
 
     present_info := vk.PresentInfoKHR {
         sType              = .PRESENT_INFO_KHR,
@@ -1510,7 +1600,7 @@ draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
     {
         imgui.SetWindowPos(imgui.Vec2 { 0, f32(draw_extent.height - 50) })
         imgui.TextUnformatted(fmt.caprintf("GPU: %s", cstring(&physdevice_props.deviceName[0])))
-        imgui.TextUnformatted(fmt.caprintf("sigil %s", SIGIL_V_STR))
+        imgui.TextUnformatted(fmt.caprintf("sigil %v.%v.%v", sigil.MAJOR_V, sigil.MINOR_V, sigil.PATCH_V))
     }
     imgui.End()
     imgui.Render()

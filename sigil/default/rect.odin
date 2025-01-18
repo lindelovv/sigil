@@ -1,5 +1,5 @@
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-package sigil
+package __sigil_default
 import vk "vendor:vulkan"
 
 rect_pipelne     : vk.Pipeline

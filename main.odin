@@ -1,12 +1,14 @@
+//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 package main
-import sigil "src"
+import sigil "sigil:core"
+import impl "sigil:default"
 
 main :: proc() {
     /* سيجيل */
     using sigil
-        use(glfw)
-        use(scene)
-        use(vulkan)
+        use(impl.glfw)
+        use(impl.scene)
+        use(impl.vulkan)
         run()
 }
 

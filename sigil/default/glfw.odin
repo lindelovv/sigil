@@ -1,15 +1,17 @@
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-package sigil
+package __sigil_default
+import sigil "../core"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 import "core:math/linalg/glsl"
 
-glfw :: Module {
-    setup = proc() {
-        schedule(.INIT, init_glfw)
-        schedule(.TICK, tick_glfw)
-        schedule(.EXIT, exit_glfw)
-    }
+import "core:fmt"
+
+glfw :: proc() {
+    using sigil
+    schedule(init(init_glfw))
+    schedule(tick(tick_glfw))
+    schedule(exit(exit_glfw))
 }
 
 //_____________________________
@@ -22,18 +24,13 @@ delta_time    : f32
 @(private="file") prev_delta : f32
 
 //_____________________________
-should_close :: proc() -> b32 {
-    return glfw.WindowShouldClose(window)
-}
-
-//_____________________________
 init_glfw :: proc() {
     glfw.InitHint(glfw.PLATFORM, glfw.PLATFORM_X11) // needed for renderdoc on wayland lol
     __ensure(glfw.Init(), "GLFW Init Failed")
 
     glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
     glfw.WindowHint(glfw.DECORATED, glfw.FALSE)
-    window = glfw.CreateWindow(window_extent.x, window_extent.y, TITLE, nil, nil)
+    window = glfw.CreateWindow(window_extent.x, window_extent.y, sigil.TITLE, nil, nil)
     __ensure(window, "GLFW CreateWindow Failed")
     
     glfw.SetFramebufferSizeCallback(window, glfw.FramebufferSizeProc(on_resize))
@@ -65,10 +62,15 @@ tick_glfw :: proc() {
 
     fps = (1000 / delta_time) / 1000
     ms = delta_time * 1000
+
+    sigil.request_exit = cast(bool)glfw.WindowShouldClose(window)
 }
 
 //_____________________________
 exit_glfw :: proc() {
+    for i in sigil.query(type_of(vulkan)) {
+        fmt.printf("%v", i)
+    }
     glfw.DestroyWindow(window)
     glfw.Terminate()
 }

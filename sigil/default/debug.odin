@@ -1,0 +1,15 @@
+
+//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+package __sigil_default
+import "core:fmt"
+import vk "vendor:vulkan"
+
+@(disabled=!ODIN_DEBUG) __log :: proc(msg: string, args: ..any) { fmt.printf("__log: %s %w", msg, args); fmt.printf("\n") }
+
+@(disabled=!ODIN_DEBUG) __ensure_result :: proc(res: vk.Result, msg: string = "") { if res != .SUCCESS do fmt.printf("__error: %#s\n", res, msg) }
+@(disabled=!ODIN_DEBUG) __ensure_b32    :: proc(res: b32, msg: string = "")       { if !res            do fmt.printf("__error: %s\n", msg)       }
+@(disabled=!ODIN_DEBUG) __ensure_bool   :: proc(res: bool, msg: string = "")      { if !res            do fmt.printf("__error: %s\n", msg)       }
+@(disabled=!ODIN_DEBUG) __ensure_ptr    :: proc(res: rawptr, msg: string = "")    { if res == nil      do fmt.printf("__error: %s\n", msg)       }
+__ensure :: proc { __ensure_result, __ensure_bool, __ensure_b32, __ensure_ptr, }
+
+//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

@@ -1,5 +1,5 @@
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-package sigil
+package __sigil_default
 import glm "core:math/linalg/glsl"
 import "core:math/linalg"
 import "core:math"
@@ -20,9 +20,16 @@ RequestMovement :: struct {
     up      : bool,
     down    : bool,
 }
+RequestRotation :: struct {
+    up      : bool,
+    right   : bool,
+    down    : bool,
+    left    : bool,
+}          
 
 CameraController :: struct {
     requested_movement : RequestMovement,
+    requested_rotation : RequestRotation,
     movement_speed     : f32,
     mouse_sensitivity  : f32,
     follow_mouse       : bool,
@@ -53,6 +60,11 @@ update_camera :: proc(delta_time: f32, controller: ^CameraController, cam: ^Came
     if controller.requested_movement.left    do cam.velocity -= cam.right
     if controller.requested_movement.up      do cam.velocity -= WORLD_UP
     if controller.requested_movement.down    do cam.velocity += WORLD_UP
+
+    if controller.requested_rotation.right do cam.rotation.yaw   -= 20 * controller.movement_speed * 1.6 * delta_time;
+    if controller.requested_rotation.left  do cam.rotation.yaw   += 20 * controller.movement_speed * 1.6 * delta_time;
+    if controller.requested_rotation.up    do cam.rotation.pitch -= 20 * controller.movement_speed * 1.6 * delta_time;
+    if controller.requested_rotation.down  do cam.rotation.pitch += 20 * controller.movement_speed * 1.6 * delta_time;
 
     cam.position += cam.velocity * controller.movement_speed * delta_time
     cam.velocity = glm.vec3 { 0, 0, 0 }
