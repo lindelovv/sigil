@@ -1,7 +1,8 @@
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 package main
+
 import sigil "sigil:core"
-import impl "sigil:default"
+import impl  "sigil:ism"
 
 main :: proc() {
     /* سيجيل */

@@ -1,23 +1,17 @@
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-package __sigil_default
+
+package ism
+
 import vk "vendor:vulkan"
 import "core:math/linalg/glsl"
 
 //_____________________________
 PBR_Material :: struct {
+    using _ : material,
     color             : AllocatedImage,
     metal_roughness   : AllocatedImage,
     normal            : AllocatedImage,
     emissive          : AllocatedImage,
     ambient_occlusion : AllocatedImage,
-    sampler           : vk.Sampler,
-    data              : vk.Buffer,
-    offset            : u32,
-    set_layout        : vk.DescriptorSetLayout,
-    set               : vk.DescriptorSet,
-    pool              : vk.DescriptorPool,
-    pipeline          : vk.Pipeline,
-    pipeline_layout   : vk.PipelineLayout,
 }
 PBR_Uniform :: struct {
     color_factors           : glsl.vec4,
@@ -227,4 +221,3 @@ pbr_declare :: proc() {
     __ensure(vk.CreateGraphicsPipelines(device, 0, 1, &graphics_pipe_info, nil, &pbr.pipeline), "Failed to create PBR Pipeline")
 }
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

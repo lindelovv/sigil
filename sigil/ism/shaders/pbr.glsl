@@ -12,6 +12,25 @@ layout( set = 1, binding = 0 ) uniform GLTFMaterialData {
     vec4 metal_roughness_factors;
 } _material_data;
 
+struct Vertex {
+    vec3 position;
+    float uv_x;
+    vec3 normal;
+    float uv_y;
+    vec4 color;
+};
+
+layout( buffer_reference, std430 ) readonly buffer VertexBuffer {
+    Vertex vertices[]; 
+};
+
+layout( push_constant ) uniform constants {
+    VertexBuffer vertex_buffer;
+    mat4 transform;
+    float time;
+    vec3 pos;
+} _pc;
+
 layout( set = 1, binding = 1 ) uniform sampler2D _albedo_texture;
 layout( set = 1, binding = 2 ) uniform sampler2D _metal_roughness_texture;
 layout( set = 1, binding = 3 ) uniform sampler2D _normal_texture;

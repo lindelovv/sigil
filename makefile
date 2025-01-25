@@ -4,11 +4,11 @@ all:
 release:
 	odin build ./ -out:./build/sigil
 build c:
-	odin build ./ -out:./build/sigil -collection:lib=./lib/ -collection:sigil=./sigil/ -debug -extra-linker-flags:-lstdc++
+	LD_LIBRARY_PATH=./build/ odin build ./ -out:./build/sigil -collection:lib=./lib/ -collection:sigil=./sigil/ -debug -extra-linker-flags:-lstdc++ -show-system-calls
 debug d:
-	gdb ./build/sigil
+	LD_LIBRARY_PATH=./build/ gdb ./build/sigil
 run r:
-	./build/sigil
+	LD_LIBRARY_PATH=./build/ ./build/sigil
 clean cln:
 	rm -f ./build/sigil
 
@@ -16,10 +16,10 @@ clean cln:
 NAME=default
 
 vertexc scv:
-	glslc -c ./sigil/default/shaders/$(NAME).vert -o ./res/shaders/$(NAME).vert.spv
+	glslc -c ./sigil/ism/shaders/$(NAME).vert -o ./res/shaders/$(NAME).vert.spv
 fragmentc scf:
-	glslc -c ./sigil/default/shaders/$(NAME).frag -o ./res/shaders/$(NAME).frag.spv
+	glslc -c ./sigil/ism/shaders/$(NAME).frag -o ./res/shaders/$(NAME).frag.spv
 computec scc:
-	glslc -c ./sigil/default/shaders/$(NAME).comp -o ./res/shaders/$(NAME).comp.spv
+	glslc -c ./sigil/ism/shaders/$(NAME).comp -o ./res/shaders/$(NAME).comp.spv
 shaderc sc:
 	$(MAKE) vertexc && $(MAKE) fragmentc && $(MAKE) fragmentc

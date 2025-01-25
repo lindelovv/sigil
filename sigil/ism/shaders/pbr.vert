@@ -9,23 +9,6 @@ layout( location = 1 ) out vec3 _out_normal;
 layout( location = 2 ) out vec3 _out_color;
 layout( location = 3 ) out vec2 _out_uv;
 
-struct Vertex {
-    vec3  position;
-    float uv_x;
-    vec3  normal;
-    float uv_y;
-    vec4  color;
-};
-
-layout( buffer_reference, std430 ) readonly buffer VertexBuffer { Vertex vertices[]; };
-
-layout( push_constant ) uniform constants {
-    VertexBuffer vertex_buffer;
-    mat4         transform;
-    float        time;
-    vec3         pos;
-} _pc;
-
 void main() {
     Vertex v = _pc.vertex_buffer.vertices[gl_VertexIndex];
 

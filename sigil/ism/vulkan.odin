@@ -1,5 +1,6 @@
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-package __sigil_default
+
+package ism
+
 import sigil "../core"
 import "core:dynlib"
 import "core:slice"
@@ -14,10 +15,8 @@ import "core:math/linalg"
 import glm "core:math/linalg/glsl"
 import "core:mem"
 import "lib:assimp"
-import "lib:imgui"
-import imgui_vk "lib:imgui/imgui_impl_vulkan"
-import imgui_glfw "lib:imgui/imgui_impl_glfw"
 import "vendor:stb/image"
+import "lib:odin-slang/slang"
 
 vulkan :: proc() {
     using sigil
@@ -59,23 +58,25 @@ swapchain_images : [dynamic]vk.Image
 swap_views       : [dynamic]vk.ImageView
 swap_extent      : vk.Extent2D
 resize_window    : bool = true
+
 frames           : [2]Frame
 current_frame    : u32
+
 desc_pool        : vk.DescriptorPool
-imgui_pool       : vk.DescriptorPool
-comp_pipeline    : vk.Pipeline
-comp_layout      : vk.PipelineLayout
 draw_img         : AllocatedImage
 draw_descriptor  : vk.DescriptorSet
 draw_extent      : vk.Extent2D
 depth_img        : AllocatedImage
 immediate        : ImmediateSubmit
 sampler          : vk.Sampler
-meshes           : [dynamic]Mesh
+
+//meshes           : [dynamic]Mesh
+
 error_image      : AllocatedImage
 scene_data       : SceneData
 gpu_scene_data   : GPU_SceneData
 scene_allocation : AllocatedBuffer
+
 pbr              : PBR_Material
 
 //_____________________________
@@ -101,7 +102,6 @@ AllocatedBuffer :: struct {
     allocation : vma.Allocation,
     info       : vma.AllocationInfo,
 }
-
 AllocatedImage :: struct {
     handle     : vk.Image,
     view       : vk.ImageView,
@@ -109,7 +109,6 @@ AllocatedImage :: struct {
     extent     : vk.Extent3D,
     format     : vk.Format,
 }
-
 AllocatedHandle :: union {
     AllocatedBuffer, 
     AllocatedImage,
@@ -137,11 +136,21 @@ Mesh :: struct {
     surfaces    : [dynamic]RenderData,
     buffers     : GPUMeshBuffer,
 }
+material :: struct {
+    sampler         : vk.Sampler,
+    data            : vk.Buffer,
+    offset          : u32,
+    set_layout      : vk.DescriptorSetLayout,
+    set             : vk.DescriptorSet,
+    pool            : vk.DescriptorPool,
+    pipeline        : vk.Pipeline,
+    pipeline_layout : vk.PipelineLayout,
+}
 RenderData :: struct {
     count       : u32,
     first       : u32,
     idx_buffer  : vk.Buffer,
-    material    : ^PBR_Material,
+    material    : ^material,
     transform   : glm.mat4,
     pos         : glm.vec3,
     address     : vk.DeviceAddress,
@@ -184,15 +193,6 @@ DescriptorInfo :: union {
     DescriptorImageInfo,
     DescriptorBufferInfo
 }
-
-//_____________________________
-ComputePushConstant :: struct {
-    d1: glm.vec4,
-    d2: glm.vec4,
-    d3: glm.vec4,
-    d4: glm.vec4
-}
-sky := ComputePushConstant { { .4, .4, .8, 1 }, { .1, .1, .1, 1 }, {}, {} }
 
 //_____________________________
 SceneData :: struct {
@@ -542,8 +542,8 @@ init_vulkan :: proc() {
                                 f32(swap_extent.width)/f32(swap_extent.height), 
                                 main_camera.near, main_camera.far, 
                             ),
-            sun_color     = { .5, .5, 1,  1 },
-            sun_direction = { 0, 0, 2, 1 },
+            sun_color     = { .4, .4, .6,  1 },
+            sun_direction = { 0, .1, 0, 1 },
             ambient_color = { 1, 1, 1,  1 },
             view_pos      = main_camera.position,
         }
@@ -670,46 +670,6 @@ init_vulkan :: proc() {
     )
 
     //_____________________________
-    // Compute Pipeline Layout
-    compute_range := vk.PushConstantRange {
-        stageFlags = { .COMPUTE },
-        offset     = 0,
-        size       = size_of(ComputePushConstant)
-    }
-    layout_info := vk.PipelineLayoutCreateInfo {
-        sType                  = .PIPELINE_LAYOUT_CREATE_INFO,
-        setLayoutCount         = 1,
-        pSetLayouts            = &layout,
-        pushConstantRangeCount = 1,
-        pPushConstantRanges    = &compute_range,
-    }
-    __ensure(
-        vk.CreatePipelineLayout(device, &layout_info, nil, &comp_layout), 
-        msg = "Failed to create pipeline layout"
-    )
-
-    //_____________________________
-    // Compute Pipeline
-    comp_shader := create_shader_module("res/shaders/gradient.comp.spv")
-    defer vk.DestroyShaderModule(device, comp_shader, nil)
-
-    comp_stage_info := vk.PipelineShaderStageCreateInfo {
-        sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
-        stage  = { .COMPUTE },
-        module = comp_shader,
-        pName  = "main"
-    }
-    comp_pipe_info := vk.ComputePipelineCreateInfo {
-        sType  = .COMPUTE_PIPELINE_CREATE_INFO,
-        stage  = comp_stage_info,
-        layout = comp_layout
-    }
-    __ensure(
-        vk.CreateComputePipelines(device, 0, 1, &comp_pipe_info, nil, &comp_pipeline), 
-        msg = "Failed to create Compute Pipeline"
-    )
-
-    //_____________________________
     // Error image
     black   : u32 = 0x00000000
     magenta : u32 = 0x00FF00FF
@@ -753,76 +713,15 @@ init_vulkan :: proc() {
     )
 
     //_____________________________
-    // PBR Material
+    // Shaders [soon to be slang :-)]
+	//global_session: ^slang.IGlobalSession
+	//assert(slang.createGlobalSession(slang.API_VERSION, &global_session) == slang.OK)
     pbr_declare() // TODO: make switching easier
+    //rect_declare(global_session)
 
     //_____________________________
-    // Imgui
-    imgui_pool_sizes := []vk.DescriptorPoolSize {
-        { .SAMPLER,                1000 },
-        { .SAMPLED_IMAGE,          1000 },
-        { .STORAGE_IMAGE,          1000 },
-        { .UNIFORM_TEXEL_BUFFER,   1000 },
-        { .STORAGE_TEXEL_BUFFER,   1000 },
-        { .UNIFORM_BUFFER,         1000 },
-        { .STORAGE_BUFFER,         1000 },
-        { .UNIFORM_BUFFER_DYNAMIC, 1000 },
-        { .STORAGE_BUFFER_DYNAMIC, 1000 },
-        { .INPUT_ATTACHMENT,       1000 },
-    }
-    imgui_pool_info := vk.DescriptorPoolCreateInfo {
-        sType         = .DESCRIPTOR_POOL_CREATE_INFO,
-        flags         = { .FREE_DESCRIPTOR_SET },
-        maxSets       = 1000,
-        poolSizeCount = u32(len(imgui_pool_sizes)),
-        pPoolSizes    = raw_data(imgui_pool_sizes),
-    }
-    __ensure(
-        vk.CreateDescriptorPool(device, &imgui_pool_info, nil, &imgui_pool), 
-        msg = "Failed to create descriptor pool for imgui"
-    )
-
-    imgui.CHECKVERSION()
-    imgui.CreateContext()
-
-    imgui_vk.LoadFunctions(proc "c" (function_name: cstring, user_data: rawptr) -> vk.ProcVoidFunction {
-		return vk.GetInstanceProcAddr(auto_cast user_data, function_name)
-	}, auto_cast instance)
-
-    imgui_glfw.InitForVulkan(window, true)
-    imgui_init_info := imgui_vk.InitInfo {
-        Instance            = instance,
-        PhysicalDevice      = phys_device,
-        Device              = device,
-        Queue               = queue,
-        DescriptorPool      = imgui_pool,
-        MinImageCount       = 4,
-        ImageCount          = 4,
-        MSAASamples         = ._1,
-        UseDynamicRendering = true,
-        PipelineRenderingCreateInfo = vk.PipelineRenderingCreateInfo {
-            sType                   = .PIPELINE_RENDERING_CREATE_INFO,
-            colorAttachmentCount    = 1,
-            pColorAttachmentFormats = &swapchain_create_info.imageFormat,
-            depthAttachmentFormat   = depth_img.format,
-        }
-    }
-    imgui_vk.Init(&imgui_init_info)
-
-    io := imgui.GetIO()
-    io.IniFilename = nil
-    io.LogFilename = nil
-    io.FontDefault = imgui.FontAtlas_AddFontFromFileTTF(io.Fonts, "res/fonts/NotoSansMono-Regular.ttf", 12)
-    imgui.FontAtlas_Build(io.Fonts)
-    imgui_vk.CreateFontsTexture()
-
-    style := imgui.GetStyle()
-    style.WindowRounding    = 8
-    style.FrameRounding     = 8
-    style.ScrollbarRounding = 4
-    style.Colors[imgui.Col.Text]     = imgui.Vec4 { 0.6, 0.6, 0.6, 1 }
-    style.Colors[imgui.Col.WindowBg] = imgui.Vec4 { 0, 0, 0, 0.2 }
-    style.Colors[imgui.Col.Border]   = imgui.Vec4 { 0, 0, 0, 0 }
+    // imgui
+    init_imgui(&swapchain_create_info)
 
     //_____________________________
     // Upload Mesh
@@ -831,9 +730,10 @@ init_vulkan :: proc() {
     rect_data := RenderData {
         first     = 0,
         count     = u32(len(rect_indices)),
+        material  = &pbr
     }
     append(&rect_mesh.surfaces, rect_data)
-    upload_mesh(rect, rect_indices, &rect_mesh)
+    upload_mesh(rect_vertices, rect_indices, &rect_mesh)
 
     vk.GetPhysicalDeviceProperties(phys_device, &physdevice_props)
 
@@ -954,7 +854,7 @@ write_descriptor :: proc(
 
 //_____________________________
 upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, mesh: ^Mesh) {
-    mesh.id = u32(len(meshes))
+    //mesh.id = u32(len(meshes))
 
     vtx_buffer_size := vk.DeviceSize(len(vertex_buffer) * size_of(Vertex))
     idx_buffer_size := vk.DeviceSize(len(index_buffer)  * size_of(u32))
@@ -1031,7 +931,7 @@ upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, 
         msg = "Failed waiting for fences"
     )
 
-    append(&meshes, mesh^)
+    sigil.add_component(mesh^)
 }
 
 //_____________________________
@@ -1039,7 +939,7 @@ load_mesh :: proc(path: cstring) {
     file := assimp.ImportFile(path, { .Triangulate, .FlipUVs })
     if file.mNumMeshes == 0 do return
 
-    mesh := Mesh { id = u32(len(meshes)) }
+    mesh := Mesh {/* id = u32(len(meshes)) */}
 
     vertex_buffer: [dynamic]Vertex
     index_buffer:  [dynamic]u32
@@ -1150,7 +1050,7 @@ load_mesh :: proc(path: cstring) {
     __ensure(vk.QueueSubmit2(queue, 1, &submit_info, immediate.fence),      msg = "Failed to sumbit queue")
     __ensure(vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), msg = "Failed waiting for fences")
 
-    append(&meshes, mesh)
+    sigil.add_component(mesh)
 }
 
 //_____________________________
@@ -1159,6 +1059,7 @@ create_buffer :: proc(
     buffer_usage: vk.BufferUsageFlags, 
     mem_usage: vma.MemoryUsage
 ) -> (buffer: AllocatedBuffer) {
+
     buffer_info := vk.BufferCreateInfo {
         sType = .BUFFER_CREATE_INFO,
         size  = buffer_size,
@@ -1258,6 +1159,7 @@ create_image_from_buffer :: proc(data: rawptr, extent: vk.Extent3D, format: vk.F
         sType = .COMMAND_BUFFER_BEGIN_INFO,
         flags = { .ONE_TIME_SUBMIT }
     }
+
     __ensure(vk.BeginCommandBuffer(immediate.cmd, &cmd_begin_info), "Failed to being immediate command buffer")
     {
         transition_img(immediate.cmd, img.handle, .UNDEFINED, .TRANSFER_DST_OPTIMAL)
@@ -1277,6 +1179,7 @@ create_image_from_buffer :: proc(data: rawptr, extent: vk.Extent3D, format: vk.F
         transition_img(immediate.cmd, img.handle, .TRANSFER_DST_OPTIMAL, .SHADER_READ_ONLY_OPTIMAL)
     }
     __ensure(vk.EndCommandBuffer(immediate.cmd), "Failed to end immediate command buffer")
+
     cmd_info := vk.CommandBufferSubmitInfo {
         sType         = .COMMAND_BUFFER_SUBMIT_INFO,
         commandBuffer = immediate.cmd,
@@ -1295,7 +1198,6 @@ create_image_from_buffer :: proc(data: rawptr, extent: vk.Extent3D, format: vk.F
         vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), 
         msg = "Failed waiting for fences"
     )
-
     return img
 }
 
@@ -1401,11 +1303,18 @@ tick_vulkan :: proc() {
 
         //________________
         // draw backgrund
-        vk.CmdBindPipeline(frame.cmd, .COMPUTE, comp_pipeline)
-        vk.CmdBindDescriptorSets(frame.cmd, .COMPUTE, comp_layout, 0, 1, &draw_descriptor, 0, nil)
-        sky.d1 = gpu_scene_data.sun_color
-        vk.CmdPushConstants(frame.cmd, comp_layout, { .COMPUTE }, 0, size_of(ComputePushConstant), &sky)
-        vk.CmdDispatch(frame.cmd, u32(math.ceil(f32(draw_extent.width) / 16.0)), u32(math.ceil(f32(draw_extent.height) / 16.0)), 1)
+        vk.CmdClearColorImage(
+            frame.cmd,
+            draw_img.handle,
+            .GENERAL,
+            &vk.ClearColorValue { float32 = { .066, .066, .066, 1 } },
+            1,
+            &vk.ImageSubresourceRange {
+                aspectMask      = { .COLOR },
+                layerCount      = 1,
+                levelCount      = 1
+            },
+        )
 
         transition_img(frame.cmd, draw_img.handle, .GENERAL, .COLOR_ATTACHMENT_OPTIMAL)
         transition_img(frame.cmd, depth_img.handle, .UNDEFINED, .DEPTH_ATTACHMENT_OPTIMAL)
@@ -1457,37 +1366,12 @@ tick_vulkan :: proc() {
             }
             vk.CmdSetScissor(frame.cmd, 0, 1, &scissor)
 
-            @(require_results)
-            matrix4_perspective_zero_to_one_f32 :: proc "contextless" (
-                fovy, aspect, near, far: f32, 
-                flip_z_axis := true
-            ) -> (m: linalg.Matrix4f32) #no_bounds_check {
-                tan_half_fovy := math.tan(0.5 * fovy)
-                m[0, 0] = 1 / (aspect*tan_half_fovy)
-                m[1, 1] = 1 / (tan_half_fovy)
-                m[2, 2] = far / (far - near)
-                m[3, 2] = +1
-                m[2, 3] = (far*near) / (far - near)
-                m[3, 3] = 1
-            
-                if flip_z_axis {
-                    m[2] = -m[2]
-                }
-            
-                return
-            }
             view := get_view(main_camera)
             projection := glm.mat4PerspectiveInfinite(
                 glm.radians(main_camera.fov),
                 f32(swap_extent.width) / f32(swap_extent.height),
                 main_camera.far,
             )
-            //projection := matrix4_perspective_zero_to_one_f32(
-            //    glm.radians(main_camera.fov),
-            //    f32(swap_extent.width) / f32(swap_extent.height),
-            //    main_camera.far,
-            //    main_camera.near,
-            //)
 
             gpu_scene_data.view = view
             gpu_scene_data.proj = projection
@@ -1507,13 +1391,13 @@ tick_vulkan :: proc() {
             push_const := GPU_PushConstants { time = time  }
             camera_matrix := projection * view
 
-            for mesh in meshes {
+            for mesh in sigil.query(Mesh) {
                 for data in mesh.surfaces {
                     push_const.vertex_buffer = data.address
                     push_const.pos = data.pos
                     //push_const.transform[3][3] = 1
                     vk.CmdBindIndexBuffer(frame.cmd, data.idx_buffer, 0, .UINT32)
-                    vk.CmdPushConstants(frame.cmd, pbr.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(GPU_PushConstants), &push_const)
+                    vk.CmdPushConstants(frame.cmd, data.material.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(GPU_PushConstants), &push_const)
                     vk.CmdDrawIndexed(frame.cmd, data.count, 1, data.first, 0, 0)
                 }
             }
@@ -1583,37 +1467,8 @@ tick_vulkan :: proc() {
     current_frame = (current_frame >= (len(frames) - 1)) ? 0 : current_frame + 1
 }
 
-draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
-    imgui_vk.NewFrame()
-    imgui_glfw.NewFrame()
-    imgui.NewFrame()
-
-    imgui.Begin("performance", nil, { .NoTitleBar, .NoBackground, .NoResize, .NoMove, .NoCollapse, .NoMouseInputs })
-    {
-        imgui.SetWindowPos(imgui.Vec2 { 0, 0 })
-        imgui.TextUnformatted(fmt.caprintf("fps: %.0f", fps))
-        imgui.TextUnformatted(fmt.caprintf("ms:  %.3f", ms))
-    }
-    imgui.End()
-
-    imgui.Begin("sigil", nil, { .NoTitleBar, .NoBackground, .NoResize, .NoMove, .NoCollapse, .NoMouseInputs })
-    {
-        imgui.SetWindowPos(imgui.Vec2 { 0, f32(draw_extent.height - 50) })
-        imgui.TextUnformatted(fmt.caprintf("GPU: %s", cstring(&physdevice_props.deviceName[0])))
-        imgui.TextUnformatted(fmt.caprintf("sigil %v.%v.%v", sigil.MAJOR_V, sigil.MINOR_V, sigil.PATCH_V))
-    }
-    imgui.End()
-    imgui.Render()
-
-    draw_data := imgui.GetDrawData()
-    imgui_vk.RenderDrawData(draw_data, cmd)
-}
-
 terminate_vulkan :: proc() {
     __ensure(vk.DeviceWaitIdle(device))
-
-    vk.DestroyPipelineLayout(device, comp_layout, nil)
-    vk.DestroyPipeline(device, comp_pipeline, nil)
 
     vk.DestroySwapchainKHR(device, swapchain, nil)
     for view in swap_views do vk.DestroyImageView(device, view, nil)
@@ -1621,11 +1476,7 @@ terminate_vulkan :: proc() {
 
     // destroy the rest
 
-    vk.DestroyDescriptorPool(device, imgui_pool, nil)
-    imgui_vk.DestroyFontsTexture()
-    imgui_vk.Shutdown()
-    imgui_glfw.Shutdown()
-    imgui.DestroyContext()
+    free_imgui()
 
     for frame in frames {
         vk.DestroyCommandPool(device, frame.pool, nil)
@@ -1641,4 +1492,3 @@ terminate_vulkan :: proc() {
     vk.DestroyInstance(instance, nil)
 }
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-

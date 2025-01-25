@@ -1,10 +1,11 @@
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
 package __sigil
+
 import "core:fmt"
 import "core:mem"
 import "base:intrinsics"
 
-//_____________________________
+//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 TITLE   :: "__sigil_"
 MAJOR_V :: 0
 MINOR_V :: 0
@@ -21,6 +22,10 @@ entity :: distinct int
     sets: map[typeid]_sparse_set,
 }
 
+scheduler :: struct {
+    test: proc()
+}
+
 module :: proc()
 init :: distinct proc()
 tick :: distinct proc()
@@ -31,7 +36,17 @@ request_exit : bool
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 use :: #force_inline proc(setup: module) { setup() }
 
+before :: proc(fn: $type) where intrinsics.type_is_proc(type) -> int {
+    return 0
+}
+after :: proc(fn: $type) where intrinsics.type_is_proc(type) -> int {
+    return 0
+}
+require :: proc(fn: $type) where intrinsics.type_is_proc(type) -> int { return after(fn) }
+
 schedule :: #force_inline proc(fn: $type) where intrinsics.type_is_proc(type) {
+    // add require param to schedule proc depending on dependant modules
+    // as in: before(module), after(other_module)
     add_component(type(fn))
 }
 
@@ -54,5 +69,5 @@ run :: #force_inline proc() {
     main_loop: for !request_exit { for fn in query(tick) { fn() } }
     for fn in query(exit) { fn() }
 }
+//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

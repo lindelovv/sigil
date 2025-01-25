@@ -11,25 +11,6 @@ layout( location = 3 ) in vec2 _in_uv;
 
 layout( location = 0 ) out vec4 _out_frag_color;
 
-struct Vertex {
-    vec3 position;
-    float uv_x;
-    vec3 normal;
-    float uv_y;
-    vec4 color;
-};
-
-layout( buffer_reference, std430 ) readonly buffer VertexBuffer {
-    Vertex vertices[]; 
-};
-
-layout( push_constant ) uniform constants {
-    VertexBuffer vertex_buffer;
-    mat4 transform;
-    float time;
-    vec3 pos;
-} _pc;
-
 const float PI          = 3.141592;
 const float Epsilon     = 0.00001;
 const vec3  Fdielectric = vec3(0.04);
@@ -59,12 +40,12 @@ void main() {
     vec3 albedo     = texture(_albedo_texture, _in_uv).xyz;
     float metalness = texture(_metal_roughness_texture, _in_uv).r;
     float roughness = texture(_metal_roughness_texture, _in_uv).g;
-    vec3 normal     = normalize(_in_normal * normalize(2.0 * texture(_normal_texture, _in_uv).rgb - 1.0));
-    //vec3 normal     = texture(_normal_texture, _in_uv).rgb; // TODO: normal matrix on cpu
+    //vec3 normal     = normalize(_in_normal * normalize(2.0 * texture(_normal_texture, _in_uv).rgb - 1.0));
+    vec3 normal     = texture(_normal_texture, _in_uv).rgb; // TODO: normal matrix on cpu
     float emissive  = texture(_emissive_texture, _in_uv).r;
     vec3 AO         = texture(_AO_texture, _in_uv).xyz;
 
-    //vec3 Lo = normalize(vec3(_scene_data.proj * _scene_data.view) * _in_pos);
+    //vec3 Lo = normalize(vec3(_scene_data.proj * _scene_data.view) * _scene_data.view_pos);
 
     //float cosLo = max(0.0, dot(normal, Lo));
     //vec3 Lr = 2.0 * cosLo * normal - Lo;
@@ -73,7 +54,7 @@ void main() {
 
     //vec3 directLighting;
     //{
-    //    vec3 Li = _scene_data.sunlight_direction.xyz;
+    //    vec3 Li = _scene_data.sunlight_direction.xyz * _scene_data.view_pos;
     //    vec3 Lh = normalize(Li + Lo);
     //    float cosLi = max(0.0, dot(normal, Li));
     //    float cosLh = max(0.0, dot(normal, Lh));
@@ -106,24 +87,40 @@ void main() {
 
     //    ambient = diffuseIBL + specularIBL;
     //}
-    //_out_frag_color = vec4(directLighting + ambient * albedo * AO, 1.0f);
+    //_out_frag_color = vec4(directLighting + ambient * normal * AO, 1.0f);
 
     // messy blin, something mb wrong with camera or space calculations
-    vec3 light_pos = _scene_data.sunlight_direction.xyz * _in_pos;
+    vec3 light_pos = _scene_data.sunlight_direction.xyz;
     vec3 light_color = _scene_data.sunlight_color.xyz;
-    vec3 ambient = 0.1 * light_color;
+    vec3 ambient = 0.4 * light_color;
 
     vec3 light_dir = normalize(light_pos - _in_pos);
     float diff = max(dot(normal, light_dir), 0.0);
     vec3 diffuse = diff * light_color;
 
+    vec3 specular = vec3(0);
     float spec_str = 0.1;
     vec3 view_dir = normalize(_scene_data.view_pos - _in_pos);
     vec3 reflect_dir = reflect(-light_dir, normal);
     float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 8);
-    vec3 specular = spec_str * spec * light_color;
 
-    vec3 result = (ambient + diffuse + specular) * albedo;
+    float ndotl = dot(normal, light_dir);
+    if(ndotl > 0) {
+        //float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 8);
+        specular = spec_str * spec * light_color;
+    }
+    // cool buggy effect lol
+    //vec3 specular;
+    //float spec_str = 0.1;
+    //vec3 view_dir = normalize(_scene_data.view_pos - _in_pos);
+    //vec3 reflect_dir = reflect(-light_dir, normal);
+    //float ndotl = dot(normal, light_dir);
+    //if(ndotl > 0) {
+    //    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 8);
+    //    specular = spec_str * spec * light_color;
+    //}
+
+    vec3 result = (ambient + diffuse + specular /* + emissive*/) * albedo;
     _out_frag_color = vec4(result, 1.0f);
 }
 

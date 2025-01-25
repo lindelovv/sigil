@@ -1,5 +1,6 @@
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-package __sigil_default
+
+package ism
+
 import glm "core:math/linalg/glsl"
 import "core:math/linalg"
 import "core:math"
@@ -112,4 +113,3 @@ get_view :: #force_inline proc(cam: Camera) -> glm.mat4 {
     return glm.mat4LookAt(cam.position, (cam.position + cam.forward), cam.up)
 }
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

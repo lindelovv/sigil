@@ -1,5 +1,6 @@
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-package __sigil_default
+
+package ism
+
 import sigil "../core"
 import "vendor:glfw"
 import vk "vendor:vulkan"
@@ -16,7 +17,7 @@ glfw :: proc() {
 
 //_____________________________
 window        : glfw.WindowHandle
-window_extent := [2]i32 { 1920, 1080 }
+window_extent := [2]i32 { 2560, 1440 } // { 1920, 1080 }
 fps           : f32
 ms            : f32
 time          : f32
@@ -141,4 +142,3 @@ setup_standard_bindings :: proc() {
     bind_input(glfw.KEY_ESCAPE, press = proc() { glfw.SetWindowShouldClose(window, true) })
 }
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
