@@ -16,7 +16,7 @@ import glm "core:math/linalg/glsl"
 import "core:mem"
 import "lib:assimp"
 import "vendor:stb/image"
-import "lib:odin-slang/slang"
+//import "lib:odin-slang/slang"
 
 vulkan :: proc() {
     using sigil
