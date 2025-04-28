@@ -1,11 +1,10 @@
 
 package ism
 
-import sigil "../core"
+import sigil "sigil:core"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 import "core:math/linalg/glsl"
-
 import "core:fmt"
 
 glfw :: proc() {
@@ -17,7 +16,6 @@ glfw :: proc() {
 
 //_____________________________
 window        : glfw.WindowHandle
-window_extent := [2]i32 { 2560, 1440 } // { 1920, 1080 }
 fps           : f32
 ms            : f32
 time          : f32
@@ -31,7 +29,9 @@ init_glfw :: proc() {
 
     glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
     glfw.WindowHint(glfw.DECORATED, glfw.FALSE)
-    window = glfw.CreateWindow(window_extent.x, window_extent.y, sigil.TITLE, nil, nil)
+    main := glfw.GetVideoMode(glfw.GetPrimaryMonitor())
+    window = glfw.CreateWindow(main.width, main.height, sigil.TITLE, nil, nil)
+    sigil.add_component(window)
     __ensure(window, "GLFW CreateWindow Failed")
     
     glfw.SetFramebufferSizeCallback(window, glfw.FramebufferSizeProc(on_resize))

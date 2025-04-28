@@ -5,7 +5,7 @@ import vk "vendor:vulkan"
 import "core:math/linalg/glsl"
 
 //_____________________________
-PBR_Material :: struct {
+pbr: struct {
     using _ : material,
     color             : AllocatedImage,
     metal_roughness   : AllocatedImage,
@@ -13,6 +13,7 @@ PBR_Material :: struct {
     emissive          : AllocatedImage,
     ambient_occlusion : AllocatedImage,
 }
+
 PBR_Uniform :: struct {
     color_factors           : glsl.vec4,
     metal_roughness_factors : glsl.vec4,
@@ -149,7 +150,7 @@ pbr_declare :: proc() {
         polygonMode = .FILL,
         lineWidth   = 1,
         cullMode    = { .BACK },
-        frontFace   = .CLOCKWISE,
+        frontFace   = .COUNTER_CLOCKWISE,
     }
     multisampling := vk.PipelineMultisampleStateCreateInfo {
         sType                 = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,

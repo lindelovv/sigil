@@ -1,22 +1,22 @@
 
+#+feature dynamic-literals
 package ism
 
-import sigil "../core"
+import sigil "sigil:core"
 import "core:dynlib"
 import "core:slice"
+import "core:strings"
 import "base:runtime"
 import vk "vendor:vulkan"
 import vma "lib:odin-vma"
 import "vendor:glfw"
 import "core:os"
 import "core:fmt"
-import "core:math"
-import "core:math/linalg"
-import glm "core:math/linalg/glsl"
 import "core:mem"
-import "lib:assimp"
+import "core:math"
+import glm "core:math/linalg/glsl"
 import "vendor:stb/image"
-//import "lib:odin-slang/slang"
+import "vendor:cgltf"
 
 vulkan :: proc() {
     using sigil
@@ -70,14 +70,10 @@ depth_img        : AllocatedImage
 immediate        : ImmediateSubmit
 sampler          : vk.Sampler
 
-//meshes           : [dynamic]Mesh
-
 error_image      : AllocatedImage
 scene_data       : SceneData
 gpu_scene_data   : GPU_SceneData
 scene_allocation : AllocatedBuffer
-
-pbr              : PBR_Material
 
 //_____________________________
 Frame :: struct {
@@ -115,12 +111,12 @@ AllocatedHandle :: union {
 }
 
 //_____________________________
-Vertex :: struct #align(16) {
-    position : glm.vec3,
+Vertex :: struct {
+    position : [3]f32,
     uv_x     : f32,
-    normal   : glm.vec3,
+    normal   : [3]f32,
     uv_y     : f32,
-    color    : glm.vec4,
+    color    : [4]f32,
 }
 
 //_____________________________
@@ -131,11 +127,7 @@ Bounds :: struct {
 }
 
 //_____________________________
-Mesh :: struct {
-    id          : u32,
-    surfaces    : [dynamic]RenderData,
-    buffers     : GPUMeshBuffer,
-}
+
 material :: struct {
     sampler         : vk.Sampler,
     data            : vk.Buffer,
@@ -146,29 +138,11 @@ material :: struct {
     pipeline        : vk.Pipeline,
     pipeline_layout : vk.PipelineLayout,
 }
-RenderData :: struct {
-    count       : u32,
-    first       : u32,
-    idx_buffer  : vk.Buffer,
-    material    : ^material,
-    transform   : glm.mat4,
-    pos         : glm.vec3,
-    address     : vk.DeviceAddress,
-}
-
-//_____________________________
-GPUMeshBuffer :: struct {
-    index   : AllocatedBuffer,
-    vertex  : AllocatedBuffer,
-    address : vk.DeviceAddress,
-}
 
 //_____________________________
 GPU_PushConstants :: struct {
+    model         : glm.mat4,
     vertex_buffer : vk.DeviceAddress,
-    transform     : glm.mat4,
-    pos           : glm.vec3,
-    time          : f32,
 }
 
 //_____________________________
@@ -179,6 +153,10 @@ DescriptorData :: struct {
     image_info  : [dynamic]vk.DescriptorImageInfo,
 }
 
+DescriptorInfo :: union {
+    DescriptorImageInfo,
+    DescriptorBufferInfo
+}
 DescriptorImageInfo :: struct {
     view    : vk.ImageView,
     sampler : vk.Sampler,
@@ -189,26 +167,24 @@ DescriptorBufferInfo :: struct {
     size    : vk.DeviceSize,
     offset  : vk.DeviceSize,
 }
-DescriptorInfo :: union {
-    DescriptorImageInfo,
-    DescriptorBufferInfo
-}
 
 //_____________________________
 SceneData :: struct {
-    set_layout        : vk.DescriptorSetLayout,
-    set               : vk.DescriptorSet,
-    pool              : vk.DescriptorPool,
-    pipeline          : vk.Pipeline,
-    pipeline_layout   : vk.PipelineLayout,
+    set_layout      : vk.DescriptorSetLayout,
+    set             : vk.DescriptorSet,
+    pool            : vk.DescriptorPool,
+    pipeline        : vk.Pipeline,
+    pipeline_layout : vk.PipelineLayout,
 }
-GPU_SceneData :: struct {
+GPU_SceneData :: struct #align(16) {
     view          : glm.mat4,
     proj          : glm.mat4,
+    model         : glm.mat4,
     ambient_color : glm.vec4,
-    sun_direction : glm.vec4,
     sun_color     : glm.vec4,
-    view_pos      : glm.vec3
+    sun_direction : glm.vec4,
+    view_pos      : glm.vec3,
+    time          : f32,
 }
 
 //_____________________________
@@ -536,16 +512,17 @@ init_vulkan :: proc() {
         //_____________________________
         // Update Descriptor Data
         gpu_scene_data = GPU_SceneData {
-            view          = get_view(main_camera),
-            proj          = linalg.matrix4_perspective(
-                                glm.radians_f32(main_camera.fov), 
-                                f32(swap_extent.width)/f32(swap_extent.height), 
-                                main_camera.near, main_camera.far, 
-                            ),
-            sun_color     = { .4, .4, .6,  1 },
-            sun_direction = { 0, .1, 0, 1 },
-            ambient_color = { 1, 1, 1,  1 },
-            view_pos      = main_camera.position,
+            view          = get_camera_view(),
+            proj          = get_camera_projection(),
+            model         = glm.mat4(1),
+            //{ 1, 0,  0, 0,
+            //  0, 1,  0, 0,
+            //  0, 0, 1, 0,
+            //  0, 0,  0, 1 },
+            sun_color     = { .4, .4, .6, 1 },
+            ambient_color = { 1, 1, 1, 1 },
+            sun_direction = { 0, 0, .1, 0 },
+            view_pos      = get_camera_pos(),
         }
         scene_allocation = create_buffer(size_of(GPU_SceneData), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
         scene_unifrom_data := cast(^GPU_SceneData)scene_allocation.info.pMappedData
@@ -679,7 +656,7 @@ init_vulkan :: proc() {
             pixels[y * 16 + x] = bool(((x % 2) ~ (y % 2))) ? magenta : black
         }
     }
-    error_image := create_image_from_buffer(&pixels, { 16, 16, 1 }, .R8G8B8A8_UNORM, { .SAMPLED })
+    error_image = create_image_from_buffer(&pixels, { 16, 16, 1 }, .R8G8B8A8_UNORM, { .SAMPLED })
 
     //_____________________________
     // Graphics Pipeline
@@ -713,10 +690,9 @@ init_vulkan :: proc() {
     )
 
     //_____________________________
-    // Shaders [soon to be slang :-)]
-	//global_session: ^slang.IGlobalSession
-	//assert(slang.createGlobalSession(slang.API_VERSION, &global_session) == slang.OK)
+    // Shaders
     pbr_declare() // TODO: make switching easier
+    //ui_declare()
     //rect_declare(global_session)
 
     //_____________________________
@@ -725,12 +701,38 @@ init_vulkan :: proc() {
 
     //_____________________________
     // Upload Mesh
-    load_mesh("res/models/DamagedHelmet.gltf")
+    i := 1
+    sign := false
+    //for i in 0..=99 { // really dumb stress-test
+        j := i
+        if sign do j *= -1
+        sign = !sign
+        m := load_mesh("res/models/DamagedHelmet.gltf")
+        //for &s in m.surfaces {
+        //    s.transform = glm.mat4Translate({ 0, 0, 1 })
+        //    //    1, 0,  0, 0,
+        //    //    0, 1,  0, 0,
+        //    //    0, 0, -1, 0,
+        //    //    0, 0,  0, 1,
+        //    //} * glm.mat4Translate(glm.vec3 { 0, 0, -1 })
+        //}
+    //}
 
-    rect_data := RenderData {
+    cube_data = render_data {
+        first     = 0,
+        count     = u32(len(cube_indices)),
+        material  = &pbr,
+        transform = glm.mat4(1),
+    }
+    append(&cube_mesh.surfaces, cube_data)
+    upload_mesh(cube_vertices, cube_indices, &cube_mesh)
+
+    rect_data := render_data {
         first     = 0,
         count     = u32(len(rect_indices)),
-        material  = &pbr
+        material  = &pbr,
+        transform = glm.mat4Translate(glm.vec3 { 0, 0, 0 }) * glm.mat4Scale(glm.vec3(100)),
+        //transform = glm.mat4Rotate(glm.vec3 { 0, -1, 0 }, 1.5708)
     }
     append(&rect_mesh.surfaces, rect_data)
     upload_mesh(rect_vertices, rect_indices, &rect_mesh)
@@ -853,27 +855,25 @@ write_descriptor :: proc(
 }
 
 //_____________________________
-upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, mesh: ^Mesh) {
+upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, mesh: ^mesh) {
     //mesh.id = u32(len(meshes))
 
     vtx_buffer_size := vk.DeviceSize(len(vertex_buffer) * size_of(Vertex))
     idx_buffer_size := vk.DeviceSize(len(index_buffer)  * size_of(u32))
 
-    mesh.buffers = {
-        vertex = create_buffer(vtx_buffer_size, { .STORAGE_BUFFER, .TRANSFER_DST, .SHADER_DEVICE_ADDRESS }, .GPU_ONLY),
-        index  = create_buffer(idx_buffer_size, { .INDEX_BUFFER, .TRANSFER_DST }, .GPU_ONLY),
-    }
+    mesh.vertex = create_buffer(vtx_buffer_size, { .STORAGE_BUFFER, .TRANSFER_DST, .SHADER_DEVICE_ADDRESS }, .GPU_ONLY)
+    mesh.index  = create_buffer(idx_buffer_size, { .INDEX_BUFFER, .TRANSFER_DST }, .GPU_ONLY)
+
     device_address_info := vk.BufferDeviceAddressInfo {
         sType  = .BUFFER_DEVICE_ADDRESS_INFO,
-        buffer = mesh.buffers.vertex.handle,
+        buffer = mesh.vertex.handle,
     }
-    mesh.buffers.address = vk.GetBufferDeviceAddress(device, &device_address_info)
+    mesh.address = vk.GetBufferDeviceAddress(device, &device_address_info)
     
     for &data in mesh.surfaces {
-        data.address    = mesh.buffers.address
-        data.idx_buffer = mesh.buffers.index.handle
-        data.transform  = glm.mat4(1)
-        data.pos        = glm.vec3(1)
+        data.address    = mesh.address
+        data.idx_buffer = mesh.index.handle
+        //data.transform  = glm.mat4(1)
     }
 
     staging_buffer := create_buffer(vtx_buffer_size + idx_buffer_size, { .TRANSFER_SRC }, .CPU_ONLY)
@@ -902,13 +902,13 @@ upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, 
             dstOffset = 0,
             size      = vtx_buffer_size,
         }
-        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.buffers.vertex.handle, 1, &vtx_copy)
+        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.vertex.handle, 1, &vtx_copy)
         idx_copy := vk.BufferCopy {
             srcOffset = vtx_buffer_size,
             dstOffset = 0,
             size      = idx_buffer_size,
         }
-        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.buffers.index.handle, 1, &idx_copy)
+        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.index.handle, 1, &idx_copy)
     }
     __ensure(vk.EndCommandBuffer(immediate.cmd), msg = "Failed to end immediate command buffer")
 
@@ -935,50 +935,109 @@ upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, 
 }
 
 //_____________________________
-load_mesh :: proc(path: cstring) {
-    file := assimp.ImportFile(path, { .Triangulate, .FlipUVs })
-    if file.mNumMeshes == 0 do return
+load_mesh :: proc(path: cstring) -> (mesh: mesh) {
+    if !os.is_file_path(string(path)) {
+        fmt.printfln("path %s is not a file path", path)
+        return
+    }
 
-    mesh := Mesh {/* id = u32(len(meshes)) */}
+    file_data, _ := cgltf.parse_file({}, path)
+    defer cgltf.free(file_data)
+    __ensure(
+        cgltf.load_buffers({}, file_data, path),
+        msg = fmt.aprintf("Failed to load buffers from path '%s'", path)
+    )
 
     vertex_buffer: [dynamic]Vertex
     index_buffer:  [dynamic]u32
-    for m: u32 = 0; m < file.mNumMeshes; m += 1 {
-        submesh := file.mMeshes[m]
-        data := RenderData {
-            material  = &pbr,
-            transform = glm.mat4Rotate(glm.vec3(1), glm.radians_f32(90)),
+    for m in file_data.meshes {
+        gpu_data := render_data {
+            material = &pbr,
+            transform = glm.mat4Translate(glm.vec3 { 0, 0, 1 }) * glm.mat4Rotate(glm.vec3 { 0, 0, 1 }, glm.radians_f32(-90)),
         }
+        for prim in m.primitives {
+            idx_accessor := prim.indices
+            idx_buffer := cast([^]u8)idx_accessor.buffer_view.buffer.data
+            idx_offset := idx_accessor.offset + idx_accessor.buffer_view.offset
 
-        data.first = u32(len(index_buffer))
-        for f: u32 = 0; f < submesh.mNumFaces; f += 1 {
-            face := submesh.mFaces[f]
-            assert(face.mNumIndices == 3, "Face does not have 3 indices")
-            append(&index_buffer, face.mIndices[0])
-            append(&index_buffer, face.mIndices[1])
-            append(&index_buffer, face.mIndices[2])
-        }
-        data.count = u32(len(index_buffer))
+            idx_count := int(idx_accessor.count)
 
-        for v: u32 = 0; v < submesh.mNumVertices; v += 1 {
-            vert := Vertex {
-                position = {
-                    f32(submesh.mVertices[v].x),
-                    f32(submesh.mVertices[v].y),
-                    f32(submesh.mVertices[v].z)
-                },
-                uv_x = f32(submesh.mTextureCoords[0][v].x),
-                normal = {
-                    f32(submesh.mNormals[v].x), 
-                    f32(submesh.mNormals[v].y), 
-                    f32(submesh.mNormals[v].z)
-                },
-                uv_y = f32(submesh.mTextureCoords[0][v].y),
-                color = { 1, 1, 1, 1 }
+            gpu_data.first = u32(len(index_buffer))
+            resize(&index_buffer, len(index_buffer) + int(idx_count))
+
+            gpu_data.count = u32(len(index_buffer))
+
+            idx_len := len(index_buffer) - int(idx_count)
+            #partial switch idx_accessor.component_type {
+                case .r_16, .r_16u:
+                    src := mem.slice_ptr(cast([^]u16)(&idx_buffer[idx_offset]), int(idx_count))
+                    for i in 0 ..< idx_count {
+                        index_buffer[idx_len + i] = u32(src[i])
+                    }
+                case .r_32u:
+                    src := mem.slice_ptr(cast([^]u32)(&idx_buffer[idx_offset]), int(idx_count))
+                    copy(index_buffer[idx_len:], src[:idx_count])
+                case:
+                    fmt.eprintln("Unsupported index type:", idx_accessor.component_type)
             }
-            append(&vertex_buffer, vert)
+            
+            pos_accessor : ^cgltf.accessor
+            nor_accessor   : ^cgltf.accessor
+            tex_accessor : ^cgltf.accessor
+            col_accessor    : ^cgltf.accessor
+            for attr in prim.attributes do #partial switch attr.type {
+                case .position: pos_accessor = attr.data
+                case .normal:   nor_accessor = attr.data
+                case .texcoord: tex_accessor = attr.data
+                case .color:    col_accessor = attr.data
+            }
+
+            vertex_count := int(pos_accessor.count)
+            old_len := len(vertex_buffer)
+            resize(&vertex_buffer, old_len + int(vertex_count))
+
+            if pos_accessor != nil {
+                pos_buffer := cast([^]u8)pos_accessor.buffer_view.buffer.data
+                pos_offset := pos_accessor.offset + pos_accessor.buffer_view.offset
+                pos_src := mem.slice_ptr(cast([^][3]f32)(&pos_buffer[pos_offset]), int(vertex_count))
+
+                for i in 0 ..< vertex_count {
+                    vertex_buffer[old_len + i].position = -pos_src[i]
+                }
+            }
+
+            if nor_accessor != nil {
+                norm_buffer := cast([^]u8)nor_accessor.buffer_view.buffer.data
+                norm_offset := nor_accessor.offset + nor_accessor.buffer_view.offset
+                norm_src    := mem.slice_ptr(cast([^][3]f32)(&norm_buffer[norm_offset]), int(vertex_count))
+
+                for i in 0 ..< vertex_count {
+                    vertex_buffer[old_len + i].normal = norm_src[i]
+                }
+            }
+
+            if tex_accessor != nil {
+                uv_buffer := cast([^]u8)tex_accessor.buffer_view.buffer.data
+                uv_offset := tex_accessor.offset + tex_accessor.buffer_view.offset
+                uv_src    := mem.slice_ptr(cast([^][2]f32)(&uv_buffer[uv_offset]), int(vertex_count))
+
+                for i in 0 ..< vertex_count {
+                    vertex_buffer[old_len + i].uv_x = uv_src[i].x
+                    vertex_buffer[old_len + i].uv_y = uv_src[i].y
+                }
+            }
+
+            if col_accessor != nil {
+                col_buffer := cast([^]u8)col_accessor.buffer_view.buffer.data
+                col_offset := col_accessor.offset + col_accessor.buffer_view.offset
+                col_src    := mem.slice_ptr(cast([^][4]f32)(&col_buffer[col_offset]), int(vertex_count))
+
+                for i in 0 ..< vertex_count {
+                    vertex_buffer[old_len + i].color = col_src[i]
+                }
+            }
         }
-        append(&mesh.surfaces, data)
+        append(&mesh.surfaces, gpu_data)
     }
 
     //________________
@@ -986,21 +1045,21 @@ load_mesh :: proc(path: cstring) {
     vtx_buffer_size := vk.DeviceSize(len(vertex_buffer) * size_of(Vertex))
     idx_buffer_size := vk.DeviceSize(len(index_buffer) * size_of(u32))
 
-    mesh.buffers = {
-        vertex = create_buffer(vtx_buffer_size, { .STORAGE_BUFFER, .TRANSFER_DST, .SHADER_DEVICE_ADDRESS }, .GPU_ONLY),
-        index  = create_buffer(idx_buffer_size, { .INDEX_BUFFER, .TRANSFER_DST }, .GPU_ONLY),
-    }
+    mesh.vertex = create_buffer(vtx_buffer_size, { .STORAGE_BUFFER, .TRANSFER_DST, .SHADER_DEVICE_ADDRESS }, .GPU_ONLY)
+    mesh.index  = create_buffer(idx_buffer_size, { .INDEX_BUFFER, .TRANSFER_DST }, .GPU_ONLY)
 
     device_address_info := vk.BufferDeviceAddressInfo {
         sType  = .BUFFER_DEVICE_ADDRESS_INFO,
-        buffer = mesh.buffers.vertex.handle,
+        buffer = mesh.vertex.handle,
     }
-    mesh.buffers.address = vk.GetBufferDeviceAddress(device, &device_address_info)
+    mesh.address = vk.GetBufferDeviceAddress(device, &device_address_info)
     
     for &data in mesh.surfaces {
-        data.address = mesh.buffers.address
-        data.idx_buffer = mesh.buffers.index.handle
+        data.address    = mesh.address
+        data.idx_buffer = mesh.index.handle
+        //fmt.printfln("mesh data 2 %#v", data)
     }
+
 
     staging_buffer := create_buffer(vtx_buffer_size + idx_buffer_size, { .TRANSFER_SRC }, .CPU_ONLY)
     defer destroy_buffer(staging_buffer)
@@ -1028,13 +1087,13 @@ load_mesh :: proc(path: cstring) {
             dstOffset = 0,
             size      = vtx_buffer_size,
         }
-        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.buffers.vertex.handle, 1, &vtx_copy)
+        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.vertex.handle, 1, &vtx_copy)
         idx_copy := vk.BufferCopy {
             srcOffset = vtx_buffer_size,
             dstOffset = 0,
             size      = idx_buffer_size,
         }
-        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.buffers.index.handle, 1, &idx_copy)
+        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.index.handle, 1, &idx_copy)
     }
     __ensure(vk.EndCommandBuffer(immediate.cmd), "Failed to end immediate command buffer")
     cmd_info := vk.CommandBufferSubmitInfo {
@@ -1051,6 +1110,7 @@ load_mesh :: proc(path: cstring) {
     __ensure(vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), msg = "Failed waiting for fences")
 
     sigil.add_component(mesh)
+    return
 }
 
 //_____________________________
@@ -1366,16 +1426,14 @@ tick_vulkan :: proc() {
             }
             vk.CmdSetScissor(frame.cmd, 0, 1, &scissor)
 
-            view := get_view(main_camera)
-            projection := glm.mat4PerspectiveInfinite(
-                glm.radians(main_camera.fov),
-                f32(swap_extent.width) / f32(swap_extent.height),
-                main_camera.far,
-            )
+            view       := get_camera_view()
+            projection := get_camera_projection()
 
             gpu_scene_data.view = view
+            //fmt.println("scene data view:", view)
             gpu_scene_data.proj = projection
-            gpu_scene_data.view_pos = main_camera.position
+            gpu_scene_data.view_pos = get_camera_pos()
+            gpu_scene_data.time = time
             mem.copy(scene_allocation.info.pMappedData, &gpu_scene_data, size_of(GPU_SceneData))
 
             scene_data_desc := DescriptorData { set = frame.descriptor.set }
@@ -1384,18 +1442,18 @@ tick_vulkan :: proc() {
             }
             vk.UpdateDescriptorSets(device, u32(len(scene_data_writes)), raw_data(scene_data_writes), 0, nil)
 
-            vk.CmdBindPipeline(frame.cmd, .GRAPHICS, pbr.pipeline)
-            vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, pbr.pipeline_layout, 0, 1, &frame.descriptor.set, 0, nil)
-            vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, pbr.pipeline_layout, 1, 1, &pbr.set,              0, nil)
 
-            push_const := GPU_PushConstants { time = time  }
-            camera_matrix := projection * view
-
-            for mesh in sigil.query(Mesh) {
+            for mesh in sigil.query(mesh) {
                 for data in mesh.surfaces {
-                    push_const.vertex_buffer = data.address
-                    push_const.pos = data.pos
-                    //push_const.transform[3][3] = 1
+
+                    vk.CmdBindPipeline(frame.cmd, .GRAPHICS, data.material.pipeline)
+                    vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, data.material.pipeline_layout, 0, 1, &frame.descriptor.set, 0, nil)
+                    vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, data.material.pipeline_layout, 1, 1, &data.material.set,    0, nil)
+
+                    push_const := GPU_PushConstants { 
+                        model         = data.transform,
+                        vertex_buffer = data.address,
+                    }
                     vk.CmdBindIndexBuffer(frame.cmd, data.idx_buffer, 0, .UINT32)
                     vk.CmdPushConstants(frame.cmd, data.material.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(GPU_PushConstants), &push_const)
                     vk.CmdDrawIndexed(frame.cmd, data.count, 1, data.first, 0, 0)
@@ -1468,27 +1526,32 @@ tick_vulkan :: proc() {
 }
 
 terminate_vulkan :: proc() {
-    __ensure(vk.DeviceWaitIdle(device))
+    //__ensure(vk.DeviceWaitIdle(device))
 
-    vk.DestroySwapchainKHR(device, swapchain, nil)
-    for view in swap_views do vk.DestroyImageView(device, view, nil)
-    for img in swapchain_images do vk.DestroyImage(device, img, nil)
+    //vk.DestroyImage(device, draw_img.handle, nil)
+    //vk.DestroyImageView(device, draw_img.view, nil)
 
-    // destroy the rest
+    //for img in swapchain_images do vk.DestroyImage(device, img, nil)
+    //for view in swap_views      do vk.DestroyImageView(device, view, nil)
 
-    free_imgui()
+    //vk.DestroySwapchainKHR(device, swapchain, nil)
 
-    for frame in frames {
-        vk.DestroyCommandPool(device, frame.pool, nil)
-        vk.DestroyFence(device, frame.fence, nil)
-        vk.DestroySemaphore(device, frame.swap_sem, nil)
-        vk.DestroySemaphore(device, frame.render_sem, nil)
-    }
-    vk.DestroyCommandPool(device, immediate.pool, nil)
-    vk.DestroyFence(device, immediate.fence, nil)
-    vk.DestroySurfaceKHR(instance, surface, nil)
-    vk.DestroyDevice(device, nil)
-    vk.DestroyDebugUtilsMessengerEXT(instance, dbg_messenger, nil)
-    vk.DestroyInstance(instance, nil)
+    //// destroy the rest
+
+    //free_imgui()
+
+    //for &frame in frames {
+    //    vk.DestroyCommandPool(device, frame.pool, nil)
+    //    vk.DestroyFence(device, frame.fence, nil)
+    //    vk.DestroySemaphore(device, frame.swap_sem, nil)
+    //    vk.DestroySemaphore(device, frame.render_sem, nil)
+    //}
+    //vk.DestroyCommandPool(device, immediate.pool, nil)
+    //vk.DestroyFence(device, immediate.fence, nil)
+
+    //vk.DestroySurfaceKHR(instance, surface, nil)
+    //vk.DestroyDevice(device, nil)
+    //vk.DestroyDebugUtilsMessengerEXT(instance, dbg_messenger, nil)
+    //vk.DestroyInstance(instance, nil)
 }
 

@@ -4,11 +4,11 @@ all:
 release:
 	odin build ./ -out:./build/sigil
 build c:
-	LD_LIBRARY_PATH=./build/ odin build ./ -out:./build/sigil -collection:lib=./lib/ -collection:sigil=./sigil/ -debug -extra-linker-flags:-lstdc++ -show-system-calls
+	odin build ./ -out:./build/sigil -collection:lib=./lib/ -collection:sigil=./sigil/ -debug -show-system-calls
 debug d:
-	LD_LIBRARY_PATH=./build/ gdb ./build/sigil
+	gdb ./build/sigil
 run r:
-	LD_LIBRARY_PATH=./build/ ./build/sigil
+	./build/sigil
 clean cln:
 	rm -f ./build/sigil
 

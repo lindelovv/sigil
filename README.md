@@ -1,16 +1,15 @@
 # sigil
 
 ## About
-Simple rendering engine built learning the Vulkan API and more advanced graphics programming techniques.\
-~~Currently working on PBR material setup.~~ (Reimpl everything in odin first)
+Simple rendering engine built learning the Vulkan API and more various graphics programming techniques.\
 
-Built & tested on Linux using gcc-13, shaderc-v2024.0 and meson 1.4. Some libraries are set up with custom meson patches in the repo to work on computers without pkg-config, the current setup works on some windows systems but not for others (to be investigated).
+Built & tested on Linux using odin 2025-03 and shaderc-v2024.0.
 
 ## Third party
 ### Libraries:
-[Vulkan-Hpp](https://github.com/KhronosGroup/Vulkan-Hpp)\
+[Vulkan](https://github.com/KhronosGroup/Vulkan-Headers)\
+[VMA](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)\
 [GLFW](https://github.com/glfw/glfw)\
-[GLM](https://github.com/g-truc/glm)\
 [ImGUI](https://github.com/ocornut/imgui)\
 [Open Asset Import Library](https://github.com/assimp/assimp)\
 [stb_image](https://github.com/nothings/stb)

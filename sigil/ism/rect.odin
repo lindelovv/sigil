@@ -8,16 +8,9 @@ import "core:fmt"
 import "core:time"
 
 rect := material {}
-rect_mesh : Mesh
 
 //_____________________________
-rect_vertices := [dynamic]Vertex {
-    { position = {  0.5, -0.5, 0 }, color = { 0, 0, 1, 1 } },
-    { position = {  0.5,  0.5, 0 }, color = { 1, 0, 1, 1 } },
-    { position = { -0.5, -0.5, 0 }, color = { 1, 0, 0, 1 } },
-    { position = { -0.5,  0.5, 0 }, color = { 0, 1, 0, 1 } },
-}
-rect_indices := [dynamic]u32 { 3, 1, 2, 2, 1, 0 }
+
 
 //rect_declare :: proc(global_session: ^slang.IGlobalSession) {
 	//start_compile_time := time.tick_now()

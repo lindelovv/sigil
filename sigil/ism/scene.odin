@@ -1,9 +1,11 @@
 
 package ism
 
-import sigil "../core"
+import sigil "sigil:core"
 import "vendor:glfw"
-import "core:math/linalg/glsl"
+import glm "core:math/linalg/glsl"
+import "core:fmt"
+import "core:math"
 
 scene :: proc() {
     using sigil
@@ -11,22 +13,14 @@ scene :: proc() {
     schedule(tick(tick_scene))
 }
 
-main_camera := Camera {
-    fov       = 70.0,
-    up        = WORLD_UP,
-    near      = 1000000,
-    far       = 0.01,
-    position = { -1.7, 2.7, -1.5 },
-    rotation = { -60, 28, 0 },
-}
-controller  := CameraController {
+controller  := camera_controller {
     movement_speed    = 1,
-    mouse_sensitivity = 24,
+    mouse_sensitivity = 28,
 }
 
 init_scene :: proc() {
+    init_camera()
     setup_keybinds()
-    init_camera(&main_camera)
 }
 
 setup_keybinds :: proc() {
@@ -87,6 +81,14 @@ setup_keybinds :: proc() {
 }
 
 tick_scene :: proc() {
-    update_camera(delta_time, &controller, &main_camera)
+    update_camera(delta_time)
+
+    //for mesh in sigil.query(Mesh) {
+    //    for &data in mesh.surfaces {
+    //        data.pos -= glm.vec3 { 0, 0, 0.0001 }
+    //    }
+    //}
+    wave := math.sin(3.0 * math.PI * 0.1 + time) * 0.001
+    gpu_scene_data.sun_direction += glm.vec4 { wave, 0, 0, 0 }
 }
 

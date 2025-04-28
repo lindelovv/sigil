@@ -84,12 +84,22 @@ draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
     imgui_glfw.NewFrame()
     imgui.NewFrame()
 
+    cam := sigil.query(camera)[0]
     imgui.Begin("performance", nil, { .NoTitleBar, .NoBackground, .NoResize, .NoMove, .NoCollapse, .NoMouseInputs })
     {
         //imgui.PushStyleColor(.Text, imgui.GetColorU32(.Header))
         imgui.SetWindowPos(imgui.Vec2 { 0, 0 })
         imgui.TextUnformatted(fmt.caprintf("fps: %.0f", fps))
         imgui.TextUnformatted(fmt.caprintf("ms:  %.3f", ms))
+        imgui.TextUnformatted("")
+        imgui.TextUnformatted(fmt.caprintf("fwd:   %.3f", cam.forward))
+        imgui.TextUnformatted(fmt.caprintf("up:    %.3f", cam.up))
+        imgui.TextUnformatted(fmt.caprintf("right: %.3f", cam.right))
+        imgui.TextUnformatted("")
+        imgui.TextUnformatted(fmt.caprintf("pitch: %.3f", cam.pitch))
+        imgui.TextUnformatted(fmt.caprintf("yaw: %.3f", cam.yaw))
+        imgui.TextUnformatted("")
+        imgui.TextUnformatted(fmt.caprintf("position: %.3f", get_camera_pos()))
         //imgui.PopStyleColor()
     }
     imgui.End()
