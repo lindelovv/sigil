@@ -1,6 +1,4 @@
 
-
-#+feature dynamic-literals
 package ism
 
 import vk "vendor:vulkan"
@@ -18,7 +16,7 @@ render_data :: struct {
     count       : u32,
     first       : u32,
     idx_buffer  : vk.Buffer,
-    material    : ^material,
+    material    : ^material_t,
     transform   : glm.mat4,
     address     : vk.DeviceAddress,
 }
@@ -28,35 +26,35 @@ cube_mesh : mesh
 rect_mesh : mesh
 
 // rect
-rect_vertices := [dynamic]Vertex {
+rect_vertices := []Vertex {
     { position = {  0.5, -0.5, 0 }, color = { 0, 0, 1, 1 } },
     { position = {  0.5,  0.5, 0 }, color = { 1, 0, 1, 1 } },
     { position = { -0.5, -0.5, 0 }, color = { 1, 0, 0, 1 } },
     { position = { -0.5,  0.5, 0 }, color = { 0, 1, 0, 1 } },
 }
-rect_indices := [dynamic]u32 { 3, 1, 2, 2, 1, 0 }
+rect_indices := []u32 { 3, 1, 2, 2, 1, 0 }
 
 // cube
-cube_vertices := [dynamic]Vertex {
-    { position = {  0.5, -0.5, 0 }, color = { 0, 0, 1, 1 } }, { position = {  0.5,  0.5, 0 }, color = { 1, 0, 1, 1 } },
-    { position = { -0.5, -0.5, 0 }, color = { 1, 0, 0, 1 } }, { position = { -0.5,  0.5, 0 }, color = { 0, 1, 0, 1 } },
+cube_vertices := []Vertex {
+    { position = {  0.5, -0.5, 0 },  color = { 0, 0, 1, 1 } }, { position = {  0.5,  0.5, 0 }, color = { 1, 0, 1, 1 } },
+    { position = { -0.5, -0.5, 0 },  color = { 1, 0, 0, 1 } }, { position = { -0.5,  0.5, 0 }, color = { 0, 1, 0, 1 } },
 
     { position = {  0.5, -0.5, -1 }, color = { 0, 0, 1, 1 } }, { position = {  0.5,  0.5, -1 }, color = { 1, 0, 1, 1 } },
     { position = { -0.5, -0.5, -1 }, color = { 1, 0, 0, 1 } }, { position = { -0.5,  0.5, -1 }, color = { 0, 1, 0, 1 } },
 
-    { position = { 0.5, -0.5, 0 }, color = { 0, 0, 1, 1 } }, { position = { 0.5,  0.5, 0 }, color = { 1, 0, 1, 1 } },
-    { position = { 0.5, -0.5, -1 }, color = { 1, 0, 0, 1 } }, { position = { 0.5,  0.5, -1 }, color = { 0, 1, 0, 1 } },
+    { position = { 0.5, -0.5, 0 },   color = { 0, 0, 1, 1 } }, { position = { 0.5,  0.5, 0 }, color = { 1, 0, 1, 1 } },
+    { position = { 0.5, -0.5, -1 },  color = { 1, 0, 0, 1 } }, { position = { 0.5,  0.5, -1 }, color = { 0, 1, 0, 1 } },
 
-    { position = { -0.5, -0.5, 0 }, color = { 0, 0, 1, 1 } }, { position = { -0.5, 0.5, 0 }, color = { 1, 0, 1, 1 } },
+    { position = { -0.5, -0.5, 0 },  color = { 0, 0, 1, 1 } }, { position = { -0.5, 0.5, 0 }, color = { 1, 0, 1, 1 } },
     { position = { -0.5, -0.5, -1 }, color = { 1, 0, 0, 1 } }, { position = { -0.5, 0.5, -1 }, color = { 0, 1, 0, 1 } },
 
-    { position = { -0.5, 0.5, -1 }, color = { 1, 0, 0, 1 } }, { position = { 0.5, 0.5, -1 }, color = { 0, 1, 0, 1 } },
-    { position = { -0.5, 0.5, 0 }, color = { 1, 0, 0, 1 } }, { position = { 0.5, 0.5, 0 }, color = { 0, 1, 0, 1 } },
+    { position = { -0.5, 0.5, -1 },  color = { 1, 0, 0, 1 } }, { position = { 0.5, 0.5, -1 }, color = { 0, 1, 0, 1 } },
+    { position = { -0.5, 0.5, 0 },   color = { 1, 0, 0, 1 } }, { position = { 0.5, 0.5, 0 }, color = { 0, 1, 0, 1 } },
 
-    { position = { 0.5, -0.5, 0 }, color = { 1, 0, 0, 1 } }, { position = { -0.5, -0.5, 0 }, color = { 0, 1, 0, 1 } },
-    { position = { 0.5, -0.5, -1 }, color = { 1, 0, 0, 1 } }, { position = { -0.5, -0.5, -1 }, color = { 0, 1, 0, 1 } },
+    { position = { 0.5, -0.5, 0 },   color = { 1, 0, 0, 1 } }, { position = { -0.5, -0.5, 0 }, color = { 0, 1, 0, 1 } },
+    { position = { 0.5, -0.5, -1 },  color = { 1, 0, 0, 1 } }, { position = { -0.5, -0.5, -1 }, color = { 0, 1, 0, 1 } },
 }
-cube_indices := [dynamic]u32 {
+cube_indices := []u32 {
     1,  0,      2,  2,      3,  1,
     5,  7,      6,  6,      4,  5,
     10, 8,      9,  9,      11, 10,

@@ -84,7 +84,7 @@ draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
     imgui_glfw.NewFrame()
     imgui.NewFrame()
 
-    cam := sigil.query(camera)[0]
+    cam := sigil.get_value(cam_entity, camera_t)
     imgui.Begin("performance", nil, { .NoTitleBar, .NoBackground, .NoResize, .NoMove, .NoCollapse, .NoMouseInputs })
     {
         //imgui.PushStyleColor(.Text, imgui.GetColorU32(.Header))
@@ -100,6 +100,9 @@ draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
         imgui.TextUnformatted(fmt.caprintf("yaw: %.3f", cam.yaw))
         imgui.TextUnformatted("")
         imgui.TextUnformatted(fmt.caprintf("position: %.3f", get_camera_pos()))
+        imgui.TextUnformatted("")
+        imgui.TextUnformatted(fmt.caprintf("entities: %v", len(sigil.core.entities) - 1))
+        imgui.TextUnformatted(fmt.caprintf("component types: %v", len(sigil.core.sets)))
         //imgui.PopStyleColor()
     }
     imgui.End()

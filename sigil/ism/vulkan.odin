@@ -70,6 +70,8 @@ depth_img        : AllocatedImage
 immediate        : ImmediateSubmit
 sampler          : vk.Sampler
 
+bindless         : material_t
+
 error_image      : AllocatedImage
 scene_data       : SceneData
 gpu_scene_data   : GPU_SceneData
@@ -331,7 +333,6 @@ init_vulkan :: proc() {
         synchronization2 = true,
         dynamicRendering = true,
     }
-
     device_create_info := vk.DeviceCreateInfo {
         sType                   = .DEVICE_CREATE_INFO,
         pNext                   = &features_vk_1_3,
@@ -354,7 +355,7 @@ init_vulkan :: proc() {
         device           = device,
         instance         = instance,
         pVulkanFunctions = &vk_fns,
-        flags            = { .BUFFER_DEVICE_ADDRESS }
+        flags            = { .BUFFER_DEVICE_ADDRESS },
     }
     __ensure(
         vma.CreateAllocator(&vma_info, &vma_allocator),
@@ -408,6 +409,74 @@ init_vulkan :: proc() {
         vk.CreateImageView(device, &img_view_create_info, nil, &img_view)
         append(&swap_views, img_view)
     }
+
+    //_____________________________
+    // Bindless pool
+    pool_sizes := []vk.DescriptorPoolSize {
+        {
+            type            = .COMBINED_IMAGE_SAMPLER, 
+            descriptorCount = 100000,
+        },
+        {
+            type            = .STORAGE_BUFFER, 
+            descriptorCount = 100000,
+        },
+        {
+            type            = .UNIFORM_BUFFER, 
+            descriptorCount = 100,
+        },
+    }
+    bindless_desc_pool_info := vk.DescriptorPoolCreateInfo {
+        sType         = .DESCRIPTOR_POOL_CREATE_INFO,
+        flags         = { .UPDATE_AFTER_BIND },
+        maxSets       = 10,
+        poolSizeCount = u32(len(pool_sizes)),
+        pPoolSizes    = raw_data(pool_sizes),
+    }
+    __ensure(
+        vk.CreateDescriptorPool(device, &bindless_desc_pool_info, nil, &bindless.pool),
+        msg = "Failed to create bindless descriptor pool"
+    )
+
+    //_____________________________
+    // Bindless Layout
+    bindless_bindings := []vk.DescriptorSetLayoutBinding {
+        {
+            binding         = 0,
+            descriptorType  = .COMBINED_IMAGE_SAMPLER,
+            descriptorCount = 100000,
+            stageFlags      = vk.ShaderStageFlags_ALL,
+        },
+        {
+            binding         = 1,
+            descriptorType  = .STORAGE_BUFFER,
+            descriptorCount = 100000,
+            stageFlags      = vk.ShaderStageFlags_ALL,
+        },
+    }
+    bindless_set_layout_info := vk.DescriptorSetLayoutCreateInfo {
+        sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        flags        = { .UPDATE_AFTER_BIND_POOL },
+        bindingCount = u32(len(bindless_bindings)),
+        pBindings    = raw_data(bindless_bindings),
+    }
+    __ensure(
+        vk.CreateDescriptorSetLayout(device, &bindless_set_layout_info, nil, &bindless.set_layout),
+        msg = "Faield to create bindless descriptor set layout"
+    )
+
+    //_____________________________
+    // Allocate Bindless Descriptor Set
+    bindless_allocate_info := vk.DescriptorSetAllocateInfo {
+        sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
+        descriptorPool     = bindless.pool,
+        descriptorSetCount = 1,
+        pSetLayouts        = &bindless.set_layout,
+    }
+    __ensure(
+        vk.AllocateDescriptorSets(device, &bindless_allocate_info, &bindless.set),
+        msg = "Failed to allocate bindless descriptor sets"
+    )
 
     //_____________________________
     // Draw & depth image

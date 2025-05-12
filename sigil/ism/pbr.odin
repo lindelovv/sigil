@@ -6,7 +6,7 @@ import "core:math/linalg/glsl"
 
 //_____________________________
 pbr: struct {
-    using _ : material,
+    using _ : material_t,
     color             : AllocatedImage,
     metal_roughness   : AllocatedImage,
     normal            : AllocatedImage,

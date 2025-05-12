@@ -9,7 +9,7 @@ import "core:fmt"
 
 WORLD_UP :: glm.vec3 { 0, 0, 1 }
 
-RequestMovement :: struct {
+request_movement_t :: struct {
     forward : bool,
     right   : bool,
     back    : bool,
@@ -17,25 +17,25 @@ RequestMovement :: struct {
     up      : bool,
     down    : bool,
 }
-RequestRotation :: struct {
+request_rotation_t :: struct {
     up      : bool,
     right   : bool,
     down    : bool,
     left    : bool,
-}          
+}
 
-camera_controller :: struct {
-    requested_movement : RequestMovement,
-    requested_rotation : RequestRotation,
+camera_controller_t :: struct {
+    requested_movement : request_movement_t,
+    requested_rotation : request_rotation_t,
     movement_speed     : f32,
     mouse_sensitivity  : f32,
     follow_mouse       : bool,
 }
 
-transform :: glm.mat4
-position :: distinct [3]f32
-velocity :: glm.vec3
-camera :: struct {
+transform_t :: glm.mat4
+position_t :: distinct [3]f32
+velocity_t :: glm.vec3
+camera_t :: struct {
     yaw       : f32,
     pitch     : f32,
     roll      : f32,
@@ -52,7 +52,7 @@ cam_entity: sigil.entity_t
 init_camera :: proc() {
     cam_entity = sigil.new_entity()
 
-    cam := sigil.add_component(cam_entity, camera {
+    cam := sigil.add(cam_entity, camera_t {
         fov     = 70.0,
         up      = WORLD_UP,
         near    = 0.1,
@@ -61,18 +61,19 @@ init_camera :: proc() {
         yaw     = 140,
         roll    = 0,
     })
-    sigil.add_component(cam_entity, position(glm.vec3{ -2.5, 2.5, 1.5 }))
-    sigil.add_component(cam_entity, glm.vec3{ -2.5, 2.5, 1.5 })
-    sigil.add_component(cam_entity, &controller)
-
+    sigil.add(cam_entity, position_t(glm.vec3{ -2.5, 2.5, 1.5 }))
+    sigil.add(cam_entity, sigil.name("cam"))
+    sigil.add(cam_entity, glm.vec3{ -2.5, 2.5, 1.5 })
+    sigil.add(cam_entity, camera_controller_t {
+        movement_speed    = 1,
+        mouse_sensitivity = 28,
+    })
     update_camera_vectors(&cam)
 }
 
 update_camera :: proc(delta_time: f32) {
-    for &sys in sigil.query(camera, position, ^camera_controller) {
-        cam := &sys._0
-        pos := &sys._1
-        ctrl := sys._2
+    for &q in sigil.query(camera_t, position_t, camera_controller_t) {
+        cam, pos, ctrl := &q.x, &q.y, &q.z
 
         if ctrl.requested_movement.forward do cam.velocity -= cam.forward
         if ctrl.requested_movement.back    do cam.velocity += cam.forward
@@ -100,8 +101,8 @@ update_camera :: proc(delta_time: f32) {
     }
 }
 
-update_camera_vectors :: proc(cam: ^camera) {
-    yaw := glm.radians(cam.yaw)
+update_camera_vectors :: proc(cam: ^camera_t) {
+    yaw   := glm.radians(cam.yaw)
     pitch := glm.radians(cam.pitch)
     cam.forward = {
         glm.cos(yaw) * glm.cos(pitch),
@@ -114,7 +115,8 @@ update_camera_vectors :: proc(cam: ^camera) {
 }
 
 get_camera_view :: #force_inline proc() -> glm.mat4 {
-    cam, position := expand_values(sigil.query(camera, position)[0])
+    cam      := sigil.get_ref(cam_entity, camera_t)^
+    position := sigil.get_ref(cam_entity, position_t)^
 
     eye    := glm.vec3(position)
     centre := (glm.vec3(position) + cam.forward)
@@ -131,7 +133,7 @@ get_camera_view :: #force_inline proc() -> glm.mat4 {
 }
 
 get_camera_projection :: #force_inline proc() -> glm.mat4 {
-    cam := sigil.query(camera)[0]
+    cam := sigil.get_ref(cam_entity, camera_t)
 
     a := f32(swap_extent.width) / f32(swap_extent.height)
     h := glm.tan(glm.radians(cam.fov) * 0.5)
@@ -147,6 +149,6 @@ get_camera_projection :: #force_inline proc() -> glm.mat4 {
 }
 
 get_camera_pos :: #force_inline proc() -> glm.vec3 {
-    return (glm.vec3)(sigil.query(camera, position)[0]._1)
+    return (glm.vec3)(sigil.get_value(cam_entity, position_t))
 }
 

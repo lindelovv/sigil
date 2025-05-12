@@ -5,7 +5,7 @@ import vk "vendor:vulkan"
 import "core:math/linalg/glsl"
 
 //_____________________________
-ui : struct { using _ : material }
+ui : struct { using _ : material_t }
 
 ui_declare :: proc() {
     ui_layout_bindings := []vk.DescriptorSetLayoutBinding {}

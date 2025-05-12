@@ -7,11 +7,13 @@ import vk "vendor:vulkan"
 import "core:math/linalg/glsl"
 import "core:fmt"
 
-glfw :: proc() {
+glfw :: proc(e: sigil.entity_t) -> typeid {
     using sigil
-    schedule(init(init_glfw))
-    schedule(tick(tick_glfw))
-    schedule(exit(exit_glfw))
+    add(e, name("glfw_module"))
+    schedule(e, init(init_glfw))
+    schedule(e, tick(tick_glfw))
+    schedule(e, exit(exit_glfw))
+    return none
 }
 
 //_____________________________
@@ -31,7 +33,7 @@ init_glfw :: proc() {
     glfw.WindowHint(glfw.DECORATED, glfw.FALSE)
     main := glfw.GetVideoMode(glfw.GetPrimaryMonitor())
     window = glfw.CreateWindow(main.width, main.height, sigil.TITLE, nil, nil)
-    sigil.add_component(window)
+    sigil.add(window)
     __ensure(window, "GLFW CreateWindow Failed")
     
     glfw.SetFramebufferSizeCallback(window, glfw.FramebufferSizeProc(on_resize))
