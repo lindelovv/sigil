@@ -5,14 +5,14 @@ import vk "vendor:vulkan"
 import glm "core:math/linalg/glsl"
 import "core:slice"
 
-mesh :: struct {
-    surfaces : [dynamic]render_data,
-    index    : AllocatedBuffer,
-    vertex   : AllocatedBuffer,
+mesh_t :: struct {
+    surfaces : [dynamic]render_data_t,
+    index    : allocated_buffer_t,
+    vertex   : allocated_buffer_t,
     address  : vk.DeviceAddress,
 }
 
-render_data :: struct {
+render_data_t :: struct {
     count       : u32,
     first       : u32,
     idx_buffer  : vk.Buffer,
@@ -21,12 +21,12 @@ render_data :: struct {
     address     : vk.DeviceAddress,
 }
 
-cube_data : render_data
-cube_mesh : mesh
-rect_mesh : mesh
+cube_data : render_data_t
+cube_mesh : mesh_t
+rect_mesh : mesh_t
 
 // rect
-rect_vertices := []Vertex {
+rect_vertices := []vertex_t {
     { position = {  0.5, -0.5, 0 }, color = { 0, 0, 1, 1 } },
     { position = {  0.5,  0.5, 0 }, color = { 1, 0, 1, 1 } },
     { position = { -0.5, -0.5, 0 }, color = { 1, 0, 0, 1 } },
@@ -35,7 +35,7 @@ rect_vertices := []Vertex {
 rect_indices := []u32 { 3, 1, 2, 2, 1, 0 }
 
 // cube
-cube_vertices := []Vertex {
+cube_vertices := []vertex_t {
     { position = {  0.5, -0.5, 0 },  color = { 0, 0, 1, 1 } }, { position = {  0.5,  0.5, 0 }, color = { 1, 0, 1, 1 } },
     { position = { -0.5, -0.5, 0 },  color = { 1, 0, 0, 1 } }, { position = { -0.5,  0.5, 0 }, color = { 0, 1, 0, 1 } },
 

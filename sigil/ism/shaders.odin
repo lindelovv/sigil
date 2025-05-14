@@ -2,14 +2,14 @@
 package ism
 import vk "vendor:vulkan"
 
-ShaderData :: struct {
-    pipeline       : ShaderPipeline,
-    buffers        : [dynamic]AllocatedBuffer,
+shader_data_t :: struct {
+    pipeline       : shader_pipeline_t,
+    buffers        : [dynamic]allocated_buffer_t,
     push_constants : rawptr,
     pc_size        : u32,
 }
 
-ShaderPipeline :: struct {
+shader_pipeline_t :: struct {
     name            : string,
     sampler         : vk.Sampler,
     data            : vk.Buffer,

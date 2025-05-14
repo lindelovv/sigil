@@ -1,5 +1,4 @@
 
-#+feature dynamic-literals
 package ism
 
 import sigil "sigil:core"
@@ -17,12 +16,15 @@ import "core:math"
 import glm "core:math/linalg/glsl"
 import "vendor:stb/image"
 import "vendor:cgltf"
+import "lib:slang"
 
-vulkan :: proc() {
+vulkan :: proc(e: sigil.entity_t) -> typeid {
     using sigil
-    schedule(init(init_vulkan))
-    schedule(tick(tick_vulkan))
-    schedule(exit(terminate_vulkan))
+    add(e, name("vulkan_module"))
+    schedule(e, init(init_vulkan))
+    schedule(e, tick(tick_vulkan))
+    schedule(e, exit(terminate_vulkan))
+    return none
 }
 
 VK_VERSION := vk.MAKE_VERSION(sigil.MAJOR_V, sigil.MINOR_V, sigil.PATCH_V)
@@ -59,61 +61,75 @@ swap_views       : [dynamic]vk.ImageView
 swap_extent      : vk.Extent2D
 resize_window    : bool = true
 
-frames           : [2]Frame
+frames           : [2]frame_t
 current_frame    : u32
 
 desc_pool        : vk.DescriptorPool
-draw_img         : AllocatedImage
+draw_img         : allocated_image_t
 draw_descriptor  : vk.DescriptorSet
 draw_extent      : vk.Extent2D
-depth_img        : AllocatedImage
-immediate        : ImmediateSubmit
+depth_img        : allocated_image_t
+immediate        : immediate_submit_t
 sampler          : vk.Sampler
 
-bindless         : material_t
+object_buffer    : allocated_buffer_t
+indirect_buffer  : allocated_buffer_t
+count_buffer     : allocated_buffer_t
+scene_ubo        : allocated_buffer_t
 
-error_image      : AllocatedImage
-scene_data       : SceneData
-gpu_scene_data   : GPU_SceneData
-scene_allocation : AllocatedBuffer
+bindless         : material_t
+textures         : [dynamic]vk.ImageView
+texture_indices  : map[vk.ImageView]u32
+
+materials        : [4096]material_t
+material_count   : u32
 
 //_____________________________
-Frame :: struct {
+global_session   : ^slang.IGlobalSession
+
+//_____________________________
+error_image      : allocated_image_t
+scene_data       : scene_data_t
+gpu_scene_data   : gpu_scene_data_t
+scene_allocation : allocated_buffer_t
+
+//_____________________________
+frame_t :: struct {
     pool       : vk.CommandPool,
     cmd        : vk.CommandBuffer,
     fence      : vk.Fence,
     swap_sem   : vk.Semaphore,
     render_sem : vk.Semaphore,
-    descriptor : DescriptorData,
+    descriptor : descriptor_data_t,
 }
 
 //_____________________________
-ImmediateSubmit :: struct {
+immediate_submit_t :: struct {
     fence: vk.Fence,
     cmd  : vk.CommandBuffer,
     pool : vk.CommandPool,
 }
 
 //_____________________________
-AllocatedBuffer :: struct {
+allocated_buffer_t :: struct {
     handle     : vk.Buffer,
     allocation : vma.Allocation,
     info       : vma.AllocationInfo,
 }
-AllocatedImage :: struct {
+allocated_image_t :: struct {
     handle     : vk.Image,
     view       : vk.ImageView,
     allocation : vma.Allocation,
     extent     : vk.Extent3D,
     format     : vk.Format,
 }
-AllocatedHandle :: union {
-    AllocatedBuffer, 
-    AllocatedImage,
+allocated_handle_t :: union {
+    allocated_buffer_t, 
+    allocated_image_t,
 }
 
 //_____________________________
-Vertex :: struct {
+vertex_t :: struct {
     position : [3]f32,
     uv_x     : f32,
     normal   : [3]f32,
@@ -122,15 +138,7 @@ Vertex :: struct {
 }
 
 //_____________________________
-Bounds :: struct {
-    origin : glm.vec3,
-    extent : glm.vec3,
-    radius : f32,
-}
-
-//_____________________________
-
-material :: struct {
+material_t :: struct {
     sampler         : vk.Sampler,
     data            : vk.Buffer,
     offset          : u32,
@@ -142,51 +150,71 @@ material :: struct {
 }
 
 //_____________________________
-GPU_PushConstants :: struct {
-    model         : glm.mat4,
-    vertex_buffer : vk.DeviceAddress,
-}
-
-//_____________________________
-DescriptorData :: struct {
+descriptor_data_t :: struct {
     set         : vk.DescriptorSet,
     bindings    : [dynamic]vk.DescriptorSetLayoutBinding,
     buffer_info : [dynamic]vk.DescriptorBufferInfo,
     image_info  : [dynamic]vk.DescriptorImageInfo,
 }
 
-DescriptorInfo :: union {
-    DescriptorImageInfo,
-    DescriptorBufferInfo
+descriptor_info_t :: union {
+    descriptor_image_info_t,
+    descriptor_buffer_info_t
 }
-DescriptorImageInfo :: struct {
+descriptor_image_info_t :: struct {
     view    : vk.ImageView,
     sampler : vk.Sampler,
     layout  : vk.ImageLayout,
 }
-DescriptorBufferInfo :: struct {
-    buffer  : AllocatedBuffer,
+descriptor_buffer_info_t :: struct {
+    buffer  : allocated_buffer_t,
     size    : vk.DeviceSize,
     offset  : vk.DeviceSize,
 }
 
 //_____________________________
-SceneData :: struct {
+gpu_draw_command_t :: struct #align(16) {
+    index_count    : u32,
+    instance_count : u32,
+    first_index    : u32,
+    vertex_offset  : u32,
+    first_instance : u32,
+    material_id    : u32,
+    mesh_id        : u32,
+}
+
+gpu_object_data_t :: struct #align(16) {
+    model      : glm.mat4,
+    prev_model : glm.mat4,
+    bounds     : glm.vec4,
+}
+
+//_____________________________
+scene_data_t :: struct {
     set_layout      : vk.DescriptorSetLayout,
     set             : vk.DescriptorSet,
     pool            : vk.DescriptorPool,
     pipeline        : vk.Pipeline,
     pipeline_layout : vk.PipelineLayout,
 }
-GPU_SceneData :: struct #align(16) {
+gpu_scene_data_t :: struct #align(16) {
     view          : glm.mat4,
     proj          : glm.mat4,
     model         : glm.mat4,
     ambient_color : glm.vec4,
     sun_color     : glm.vec4,
-    sun_direction : glm.vec4,
-    view_pos      : glm.vec3,
+    sun_direction : glm.vec3,
     time          : f32,
+    view_pos      : glm.vec3,
+    frame_index   : u32,
+}
+
+//_____________________________
+gpu_push_constants_t :: struct #align(16) {
+    model         : glm.mat4,
+    vertex_buffer : vk.DeviceAddress,
+    material_id   : u32,
+    sampler_index : u32,
 }
 
 //_____________________________
@@ -199,7 +227,10 @@ dbg_callback  : vk.ProcDebugUtilsMessengerCallbackEXT : proc "cdecl" (
 ) -> b32 {
     context = runtime.default_context()
     when ODIN_DEBUG {
-        fmt.printf("__%s: %s\n", msg_severity, p_callback_data.pMessage)
+        if msg_severity == { .INFO    } do fmt.printfln("VK INFO:    \n%s\n", p_callback_data.pMessage)
+        if msg_severity == { .VERBOSE } do fmt.printfln("VK VERBOSE: \n%s\n", p_callback_data.pMessage)
+        if msg_severity == { .WARNING } do fmt.printfln("VK WARNING: \n%s\n", p_callback_data.pMessage)
+        if msg_severity == { .ERROR   } do fmt.printfln("VK ERROR:   \n%s\n", p_callback_data.pMessage)
     }
     return false
 }
@@ -319,13 +350,15 @@ init_vulkan :: proc() {
         sType            = .DEVICE_QUEUE_CREATE_INFO,
         queueFamilyIndex = queue_family,
         queueCount       = 1,
-        pQueuePriorities = &queue_priorities
+        pQueuePriorities = &queue_priorities,
     }
-
     features_vk_1_2 := vk.PhysicalDeviceVulkan12Features {
-        sType               = .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-        bufferDeviceAddress = true,
-        descriptorIndexing  = true,
+        sType    = .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        bufferDeviceAddress                      = true,
+        descriptorIndexing                       = true,
+        runtimeDescriptorArray                   = true,
+        descriptorBindingPartiallyBound          = true,
+        descriptorBindingVariableDescriptorCount = true,
     }
     features_vk_1_3 := vk.PhysicalDeviceVulkan13Features {
         sType            = .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -341,7 +374,7 @@ init_vulkan :: proc() {
         enabledLayerCount       = u32(len(validation_layers)),
         ppEnabledLayerNames     = raw_data(validation_layers),
         enabledExtensionCount   = u32(len(device_extensions)),
-        ppEnabledExtensionNames = raw_data(device_extensions)
+        ppEnabledExtensionNames = raw_data(device_extensions),
     }
     vk.CreateDevice(phys_device, &device_create_info, nil, &device)
     vk.GetDeviceQueue(device, queue_family, 0, &queue)
@@ -580,26 +613,22 @@ init_vulkan :: proc() {
 
         //_____________________________
         // Update Descriptor Data
-        gpu_scene_data = GPU_SceneData {
+        gpu_scene_data = gpu_scene_data_t {
             view          = get_camera_view(),
             proj          = get_camera_projection(),
             model         = glm.mat4(1),
-            //{ 1, 0,  0, 0,
-            //  0, 1,  0, 0,
-            //  0, 0, 1, 0,
-            //  0, 0,  0, 1 },
-            sun_color     = { .4, .4, .6, 1 },
-            ambient_color = { 1, 1, 1, 1 },
-            sun_direction = { 0, 0, .1, 0 },
+            sun_color     = { .4, .4, .6, 1  },
+            ambient_color = {  1,  1,  1, 1  },
+            sun_direction = {  0,  3,  5  },
             view_pos      = get_camera_pos(),
         }
-        scene_allocation = create_buffer(size_of(GPU_SceneData), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
-        scene_unifrom_data := cast(^GPU_SceneData)scene_allocation.info.pMappedData
+        scene_allocation = create_buffer(size_of(gpu_scene_data_t), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
+        scene_unifrom_data := cast(^gpu_scene_data_t)scene_allocation.info.pMappedData
         scene_unifrom_data = &gpu_scene_data
 
-        scene_desc := DescriptorData { set = frame.descriptor.set }
+        scene_desc := descriptor_data_t { set = frame.descriptor.set }
         scene_writes := []vk.WriteDescriptorSet {
-            write_descriptor(&scene_desc, 0, .UNIFORM_BUFFER, DescriptorBufferInfo { scene_allocation, size_of(GPU_SceneData), 0 }),
+            write_descriptor(&scene_desc, 0, .UNIFORM_BUFFER, descriptor_buffer_info_t { scene_allocation, size_of(gpu_scene_data_t), 0 }),
         }
         vk.UpdateDescriptorSets(device, u32(len(scene_writes)), raw_data(scene_writes), 0, nil)
     }
@@ -646,7 +675,7 @@ init_vulkan :: proc() {
 
     //_____________________________
     // Descriptor Pool
-    sizes := [dynamic]vk.DescriptorPoolSize {
+    sizes := []vk.DescriptorPoolSize {
         { type = .STORAGE_IMAGE,          descriptorCount = 1 },
         { type = .UNIFORM_BUFFER,         descriptorCount = 3 },
         { type = .COMBINED_IMAGE_SAMPLER, descriptorCount = 5 },
@@ -758,9 +787,14 @@ init_vulkan :: proc() {
         msg = "Failed to allocate descriptor set"
     )
 
+    __ensure(
+        slang.createGlobalSession(slang.API_VERSION, &global_session),
+        msg = "failed to create global slang session"
+    )
+
     //_____________________________
     // Shaders
-    pbr_declare() // TODO: make switching easier
+    pbr_declare(global_session) // TODO: make switching easier
     //ui_declare()
     //rect_declare(global_session)
 
@@ -770,24 +804,17 @@ init_vulkan :: proc() {
 
     //_____________________________
     // Upload Mesh
-    i := 1
-    sign := false
-    //for i in 0..=99 { // really dumb stress-test
-        j := i
-        if sign do j *= -1
-        sign = !sign
-        m := load_mesh("res/models/DamagedHelmet.gltf")
-        //for &s in m.surfaces {
-        //    s.transform = glm.mat4Translate({ 0, 0, 1 })
-        //    //    1, 0,  0, 0,
-        //    //    0, 1,  0, 0,
-        //    //    0, 0, -1, 0,
-        //    //    0, 0,  0, 1,
-        //    //} * glm.mat4Translate(glm.vec3 { 0, 0, -1 })
-        //}
+    vertices, indices := parse_gltf("res/models/DamagedHelmet.gltf")
+    //for x in -2..=2 do for y in -2..=2 do for z in 1..=5 {
+        x, y, z := 1, 1, 1
+        m: mesh_t
+        upload_mesh(vertices, indices, &m)
+        for &s in m.surfaces {
+            s.transform = glm.mat4Translate({ f32(x) * 3, f32(y) * 3, f32(z) * 3 })
+        }
     //}
 
-    cube_data = render_data {
+    cube_data = render_data_t {
         first     = 0,
         count     = u32(len(cube_indices)),
         material  = &pbr,
@@ -796,7 +823,7 @@ init_vulkan :: proc() {
     append(&cube_mesh.surfaces, cube_data)
     upload_mesh(cube_vertices, cube_indices, &cube_mesh)
 
-    rect_data := render_data {
+    rect_data := render_data_t {
         first     = 0,
         count     = u32(len(rect_indices)),
         material  = &pbr,
@@ -887,9 +914,10 @@ create_shader_module :: proc(path: string) -> (shader: vk.ShaderModule) {
 
 //_____________________________
 write_descriptor :: proc(
-    data: ^DescriptorData, binding: u32, 
-    type: vk.DescriptorType, 
-    resource: DescriptorInfo
+    data     : ^descriptor_data_t,
+    binding  : u32, 
+    type     : vk.DescriptorType, 
+    resource : descriptor_info_t,
 ) -> (write: vk.WriteDescriptorSet) {
     write = {
         sType           = .WRITE_DESCRIPTOR_SET,
@@ -899,7 +927,7 @@ write_descriptor :: proc(
         descriptorType  = type,
     }
     switch info in resource {
-        case DescriptorImageInfo:  {
+        case descriptor_image_info_t:  {
             img_info := vk.DescriptorImageInfo {
                 sampler      = info.sampler,
                 imageView    = info.view,
@@ -909,7 +937,7 @@ write_descriptor :: proc(
             i := len(data.image_info) - 1
             write.pImageInfo = &data.image_info[i]
         }
-        case DescriptorBufferInfo: {
+        case descriptor_buffer_info_t: {
             buffer_info := vk.DescriptorBufferInfo {
                 buffer = info.buffer.handle,
                 offset = info.offset,
@@ -924,10 +952,17 @@ write_descriptor :: proc(
 }
 
 //_____________________________
-upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, mesh: ^mesh) {
+upload_mesh :: proc(vertex_buffer: []vertex_t, index_buffer: []u32, mesh: ^mesh_t) {
     //mesh.id = u32(len(meshes))
 
-    vtx_buffer_size := vk.DeviceSize(len(vertex_buffer) * size_of(Vertex))
+    append(&mesh.surfaces, render_data_t {
+        material = &pbr,
+        transform = glm.mat4Translate(glm.vec3 { 0, 0, 1 }) * glm.mat4Rotate(glm.vec3 { 0, 0, 1 }, glm.radians_f32(-90)),
+        first = 0,
+        count = u32(len(index_buffer))
+    })
+
+    vtx_buffer_size := vk.DeviceSize(len(vertex_buffer) * size_of(vertex_t))
     idx_buffer_size := vk.DeviceSize(len(index_buffer)  * size_of(u32))
 
     mesh.vertex = create_buffer(vtx_buffer_size, { .STORAGE_BUFFER, .TRANSFER_DST, .SHADER_DEVICE_ADDRESS }, .GPU_ONLY)
@@ -1000,14 +1035,13 @@ upload_mesh :: proc(vertex_buffer: [dynamic]Vertex, index_buffer: [dynamic]u32, 
         msg = "Failed waiting for fences"
     )
 
-    sigil.add_component(mesh^)
+    sigil.add(sigil.new_entity(),mesh^)
 }
 
-//_____________________________
-load_mesh :: proc(path: cstring) -> (mesh: mesh) {
+parse_gltf :: proc(path: cstring) -> ([]vertex_t, []u32) {
     if !os.is_file_path(string(path)) {
         fmt.printfln("path %s is not a file path", path)
-        return
+        return {}, {}
     }
 
     file_data, _ := cgltf.parse_file({}, path)
@@ -1017,24 +1051,17 @@ load_mesh :: proc(path: cstring) -> (mesh: mesh) {
         msg = fmt.aprintf("Failed to load buffers from path '%s'", path)
     )
 
-    vertex_buffer: [dynamic]Vertex
+    vertex_buffer: [dynamic]vertex_t
     index_buffer:  [dynamic]u32
     for m in file_data.meshes {
-        gpu_data := render_data {
-            material = &pbr,
-            transform = glm.mat4Translate(glm.vec3 { 0, 0, 1 }) * glm.mat4Rotate(glm.vec3 { 0, 0, 1 }, glm.radians_f32(-90)),
-        }
         for prim in m.primitives {
             idx_accessor := prim.indices
             idx_buffer := cast([^]u8)idx_accessor.buffer_view.buffer.data
             idx_offset := idx_accessor.offset + idx_accessor.buffer_view.offset
 
             idx_count := int(idx_accessor.count)
-
-            gpu_data.first = u32(len(index_buffer))
             resize(&index_buffer, len(index_buffer) + int(idx_count))
 
-            gpu_data.count = u32(len(index_buffer))
 
             idx_len := len(index_buffer) - int(idx_count)
             #partial switch idx_accessor.component_type {
@@ -1106,79 +1133,15 @@ load_mesh :: proc(path: cstring) -> (mesh: mesh) {
                 }
             }
         }
-        append(&mesh.surfaces, gpu_data)
     }
+    return vertex_buffer[:], index_buffer[:]
+}
 
-    //________________
-    // upload mesh
-    vtx_buffer_size := vk.DeviceSize(len(vertex_buffer) * size_of(Vertex))
-    idx_buffer_size := vk.DeviceSize(len(index_buffer) * size_of(u32))
-
-    mesh.vertex = create_buffer(vtx_buffer_size, { .STORAGE_BUFFER, .TRANSFER_DST, .SHADER_DEVICE_ADDRESS }, .GPU_ONLY)
-    mesh.index  = create_buffer(idx_buffer_size, { .INDEX_BUFFER, .TRANSFER_DST }, .GPU_ONLY)
-
-    device_address_info := vk.BufferDeviceAddressInfo {
-        sType  = .BUFFER_DEVICE_ADDRESS_INFO,
-        buffer = mesh.vertex.handle,
-    }
-    mesh.address = vk.GetBufferDeviceAddress(device, &device_address_info)
-    
-    for &data in mesh.surfaces {
-        data.address    = mesh.address
-        data.idx_buffer = mesh.index.handle
-        //fmt.printfln("mesh data 2 %#v", data)
-    }
-
-
-    staging_buffer := create_buffer(vtx_buffer_size + idx_buffer_size, { .TRANSFER_SRC }, .CPU_ONLY)
-    defer destroy_buffer(staging_buffer)
-    buffer_data := staging_buffer.info.pMappedData
-    mem.copy(buffer_data, raw_data(vertex_buffer), int(vtx_buffer_size))
-	mem.copy(mem.ptr_offset((^u8)(buffer_data), vtx_buffer_size), raw_data(index_buffer), int(idx_buffer_size))
-
-    __ensure(
-        vk.ResetFences(device, 1, &immediate.fence), 
-        msg = "Failed resetting immediate fence"
-    )
-    __ensure(
-        vk.ResetCommandBuffer(immediate.cmd, {}), 
-        msg = "Failed to reset command buffer"
-    )
-
-    cmd_begin_info := vk.CommandBufferBeginInfo {
-        sType = .COMMAND_BUFFER_BEGIN_INFO,
-        flags = { .ONE_TIME_SUBMIT }
-    }
-    __ensure(vk.BeginCommandBuffer(immediate.cmd, &cmd_begin_info), msg = "Failed to being immediate command buffer")
-    {
-        vtx_copy := vk.BufferCopy {
-            srcOffset = 0,
-            dstOffset = 0,
-            size      = vtx_buffer_size,
-        }
-        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.vertex.handle, 1, &vtx_copy)
-        idx_copy := vk.BufferCopy {
-            srcOffset = vtx_buffer_size,
-            dstOffset = 0,
-            size      = idx_buffer_size,
-        }
-        vk.CmdCopyBuffer(immediate.cmd, staging_buffer.handle, mesh.index.handle, 1, &idx_copy)
-    }
-    __ensure(vk.EndCommandBuffer(immediate.cmd), "Failed to end immediate command buffer")
-    cmd_info := vk.CommandBufferSubmitInfo {
-        sType         = .COMMAND_BUFFER_SUBMIT_INFO,
-        commandBuffer = immediate.cmd,
-        deviceMask    = 0,
-    }
-    submit_info := vk.SubmitInfo2 {
-        sType                  = .SUBMIT_INFO_2,
-        commandBufferInfoCount = 1,
-        pCommandBufferInfos    = &cmd_info,
-    }
-    __ensure(vk.QueueSubmit2(queue, 1, &submit_info, immediate.fence),      msg = "Failed to sumbit queue")
-    __ensure(vk.WaitForFences(device, 1, &immediate.fence, true, max(u64)), msg = "Failed waiting for fences")
-
-    sigil.add_component(mesh)
+//_____________________________
+load_mesh :: proc(path: cstring) -> (mesh: mesh_t) {
+    vertices, indices := parse_gltf(path)
+    upload_mesh(vertices, indices, &mesh)
+    sigil.add(sigil.new_entity(), mesh)
     return
 }
 
@@ -1187,7 +1150,7 @@ create_buffer :: proc(
     buffer_size: vk.DeviceSize, 
     buffer_usage: vk.BufferUsageFlags, 
     mem_usage: vma.MemoryUsage
-) -> (buffer: AllocatedBuffer) {
+) -> (buffer: allocated_buffer_t) {
 
     buffer_info := vk.BufferCreateInfo {
         sType = .BUFFER_CREATE_INFO,
@@ -1206,12 +1169,12 @@ create_buffer :: proc(
 }
 
 //_____________________________
-destroy_buffer :: proc(buffer: AllocatedBuffer) {
+destroy_buffer :: proc(buffer: allocated_buffer_t) {
     vma.DestroyBuffer(vma_allocator, buffer.handle, buffer.allocation)
 }
 
 //_____________________________
-load_image :: proc(format: vk.Format, usage: vk.ImageUsageFlags, path: cstring) -> AllocatedImage {
+load_image :: proc(format: vk.Format, usage: vk.ImageUsageFlags, path: cstring) -> allocated_image_t {
     width, height: i32
     pixels := image.load(path, &width, &height, nil, 4 /* STBI_rgb_alpha */)
     if pixels == nil {
@@ -1222,8 +1185,8 @@ load_image :: proc(format: vk.Format, usage: vk.ImageUsageFlags, path: cstring) 
 }
 
 //_____________________________
-create_image :: proc(format: vk.Format, flags: vk.ImageUsageFlags, extent: vk.Extent3D) -> AllocatedImage {
-    alloc_img := AllocatedImage { extent = extent, format = format }
+create_image :: proc(format: vk.Format, flags: vk.ImageUsageFlags, extent: vk.Extent3D) -> allocated_image_t {
+    alloc_img := allocated_image_t { extent = extent, format = format }
 
     img_info := vk.ImageCreateInfo {
         sType       = .IMAGE_CREATE_INFO,
@@ -1267,7 +1230,7 @@ create_image :: proc(format: vk.Format, flags: vk.ImageUsageFlags, extent: vk.Ex
 }
 
 //_____________________________
-create_image_from_buffer :: proc(data: rawptr, extent: vk.Extent3D, format: vk.Format, usage: vk.ImageUsageFlags) -> AllocatedImage {
+create_image_from_buffer :: proc(data: rawptr, extent: vk.Extent3D, format: vk.Format, usage: vk.ImageUsageFlags) -> allocated_image_t {
     size: vk.DeviceSize = vk.DeviceSize(extent.depth * extent.width * extent.height * 4)
     upload_buffer := create_buffer(size, { .TRANSFER_SRC }, .CPU_TO_GPU)
     defer destroy_buffer(upload_buffer)
@@ -1328,6 +1291,31 @@ create_image_from_buffer :: proc(data: rawptr, extent: vk.Extent3D, format: vk.F
         msg = "Failed waiting for fences"
     )
     return img
+}
+
+register_image :: proc(image_view: vk.ImageView) -> u32 {
+    if index, ok := texture_indices[image_view]; ok {
+        return index
+    }
+    index := u32(len(textures))
+    append(&textures, image_view)
+    texture_indices[image_view] = index
+
+    image_info := vk.DescriptorImageInfo {
+        imageView   = image_view,
+        imageLayout = .SHADER_READ_ONLY_OPTIMAL,
+    }
+    write := vk.WriteDescriptorSet {
+        sType           = .WRITE_DESCRIPTOR_SET,
+        dstSet          = bindless.set,
+        dstBinding      = 1,
+        dstArrayElement = index,
+        descriptorType  = .SAMPLED_IMAGE,
+        pImageInfo      = &image_info,
+        descriptorCount = 1,
+    }
+    vk.UpdateDescriptorSets(device, 1, &write, 0, nil)
+    return index
 }
 
 //_____________________________
@@ -1499,32 +1487,31 @@ tick_vulkan :: proc() {
             projection := get_camera_projection()
 
             gpu_scene_data.view = view
-            //fmt.println("scene data view:", view)
             gpu_scene_data.proj = projection
             gpu_scene_data.view_pos = get_camera_pos()
             gpu_scene_data.time = time
-            mem.copy(scene_allocation.info.pMappedData, &gpu_scene_data, size_of(GPU_SceneData))
+            mem.copy(scene_allocation.info.pMappedData, &gpu_scene_data, size_of(gpu_scene_data_t))
 
-            scene_data_desc := DescriptorData { set = frame.descriptor.set }
+            scene_data_desc := descriptor_data_t { set = frame.descriptor.set }
             scene_data_writes := []vk.WriteDescriptorSet {
-                write_descriptor(&scene_data_desc, 0, .UNIFORM_BUFFER, DescriptorBufferInfo { scene_allocation, size_of(GPU_SceneData), 0 }),
+                write_descriptor(&scene_data_desc, 0, .UNIFORM_BUFFER, descriptor_buffer_info_t { scene_allocation, size_of(gpu_scene_data_t), 0 }),
             }
             vk.UpdateDescriptorSets(device, u32(len(scene_data_writes)), raw_data(scene_data_writes), 0, nil)
 
 
-            for mesh in sigil.query(mesh) {
+            for mesh in sigil.query(mesh_t) {
                 for data in mesh.surfaces {
 
                     vk.CmdBindPipeline(frame.cmd, .GRAPHICS, data.material.pipeline)
                     vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, data.material.pipeline_layout, 0, 1, &frame.descriptor.set, 0, nil)
                     vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, data.material.pipeline_layout, 1, 1, &data.material.set,    0, nil)
 
-                    push_const := GPU_PushConstants { 
+                    push_const := gpu_push_constants_t { 
                         model         = data.transform,
                         vertex_buffer = data.address,
                     }
                     vk.CmdBindIndexBuffer(frame.cmd, data.idx_buffer, 0, .UINT32)
-                    vk.CmdPushConstants(frame.cmd, data.material.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(GPU_PushConstants), &push_const)
+                    vk.CmdPushConstants(frame.cmd, data.material.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(gpu_push_constants_t), &push_const)
                     vk.CmdDrawIndexed(frame.cmd, data.count, 1, data.first, 0, 0)
                 }
             }

@@ -1,16 +1,21 @@
+ifeq ($(OS),Windows_NT)
+	EXT=.exe
+else
+	EXT=
+endif
 
 all:
 	$(MAKE) c r
 release:
-	odin build ./ -out:./build/sigil
+	odin build ./ -out:./build/sigil$(EXT)
 build c:
-	odin build ./ -out:./build/sigil -collection:lib=./lib/ -collection:sigil=./sigil/ -debug -show-system-calls
+	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/ -debug -show-system-calls
 debug d:
-	gdb ./build/sigil
+	gdb ./build/sigil$(EXT)
 run r:
-	./build/sigil
+	./build/sigil$(EXT)
 clean cln:
-	rm -f ./build/sigil
+	rm -f ./build/sigil$(EXT)
 
 
 NAME=default

@@ -28,7 +28,7 @@ ui_declare :: proc() {
     ui_push_const := vk.PushConstantRange {
         stageFlags = { .VERTEX, .FRAGMENT },
         offset     = 0,
-        size       = size_of(GPU_PushConstants),
+        size       = size_of(gpu_push_constants_t),
     }
     layouts := []vk.DescriptorSetLayout {
         scene_data.set_layout,
@@ -43,7 +43,7 @@ ui_declare :: proc() {
     }
     __ensure(vk.CreatePipelineLayout(device, &pipeline_layout_info, nil, &ui.pipeline_layout), "Failed to create graphics pipeline layout")
     
-    desc := DescriptorData { set = ui.set }
+    desc := descriptor_data_t { set = ui.set }
     ui_writes := []vk.WriteDescriptorSet {}
     vk.UpdateDescriptorSets(device, u32(len(ui_writes)), raw_data(ui_writes), 0, nil)
 

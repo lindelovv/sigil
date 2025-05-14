@@ -1,3 +1,8 @@
+#version 430
+#extension GL_GOOGLE_include_directive : require
+
+#include "bindless.glsl"
+
 layout( set = 0, binding = 0 ) uniform SceneData {
     mat4 view;
     mat4 proj;
