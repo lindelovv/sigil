@@ -1,4 +1,10 @@
 
+#include "common.slang"
+
+static const float  PI          = 3.141592;
+static const float  Epsilon     = 0.00001;
+static const float3 Fdielectric = float3(0.04);
+
 struct vs_output_t {
     [[vk::location(0)]] float4 clip   : SV_Position;
     [[vk::location(1)]] float3 pos    : POSITION;
@@ -11,49 +17,23 @@ struct fs_output_t {
     [[vk::location(0)]] float4 color  : COLOR0;
 };
 
-struct vertex_t {
-    float3 position;
-    float  uv_x;
-    float3 normal;
-    float  uv_y;
-    float4 color;
-};
-
-struct scene_data_t {
-    float4x4 view;
-    float4x4 proj;
-    float4x4 model;
-    float4   ambient_color;
-    float4   sunlight_color;
-    float4   sunlight_direction;
-    float3   view_pos;
-    float    time;
-};
-
 struct material_data_t {
     float4 albedo_factors;
     float4 metal_roughness_factors;
 };
 
 struct push_constant_t {
-    float4x4 model;
+    float4x4      model;
+    float4        bounds;
     Ptr<vertex_t> vertices;
+    uint          albedo;
+    uint          normal;
+    uint          metal_roughness;
+    uint          emissive;
+    uint          ao;
 };
 
 [[vk::push_constant]] ConstantBuffer<push_constant_t> pc;
-
-[[vk::binding(0, 0)]] ConstantBuffer<scene_data_t> scene_data;
-[[vk::binding(1, 0)]] ConstantBuffer<material_data_t> material_data;
-
-[[vk::binding(1, 1)]] Sampler2D albedo_texture;
-[[vk::binding(2, 1)]] Sampler2D metal_roughness_texture;
-[[vk::binding(3, 1)]] Sampler2D normal_texture;
-[[vk::binding(4, 1)]] Sampler2D emissive_texture;
-[[vk::binding(5, 1)]] Sampler2D AO_texture;
-
-static const float  PI          = 3.141592;
-static const float  Epsilon     = 0.00001;
-static const float3 Fdielectric = float3(0.04);
 
 [shader("vertex")]
 vs_output_t vs_main(uint vi: SV_VertexID) {
@@ -71,36 +51,15 @@ vs_output_t vs_main(uint vi: SV_VertexID) {
     return out;
 }
 
-float ndfGGX(float cosLh, float roughness) {
-    float alpha = roughness * roughness;
-    float alpha2 = alpha * alpha;
-    float denom = (cosLh * cosLh) * (alpha2 - 1.0) + 1.0;
-    return alpha2 / (PI * denom * denom);
-}
-
-float gaSchlickG1(float cosTheta, float k) {
-    return cosTheta / (cosTheta * (1.0 - k) + k);
-}
-
-float gaSchlickGXX(float cosLi, float cosLo, float roughness) {
-    float r = roughness + 1.0;
-    float k = (r * r) / 8.0;
-    return gaSchlickG1(cosLi, k) * gaSchlickG1(cosLo, k);
-}
-
-float3 fresnelSchlick(float3 F0, float cosTheta) {
-    return F0 + (float3(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
-}
-
 [shader("fragment")]
 fs_output_t fs_main(vs_output_t in) {
-    float3 albedo   = albedo_texture.Sample(in.uv).xyz;
-    float metalness = metal_roughness_texture.Sample(in.uv).r;
-    float roughness = metal_roughness_texture.Sample(in.uv).g;
-    //float3 normal     = normalize(in.normal * normalize(2.0 * normal_texture.Sample(in.uv).rgb - 1.0));
-    float3 normal   = normal_texture.Sample(in.uv).rgb; // TODO: normal matrix on cpu
-    float emissive  = emissive_texture.Sample(in.uv).r;
-    float3 AO       = AO_texture.Sample(in.uv).xyz;
+    float3 albedo    = sample_texture(pc.albedo, in.uv).xyz;
+    float  metalness = sample_texture(pc.metal_roughness, in.uv).r;
+    float  roughness = sample_texture(pc.metal_roughness, in.uv).g;
+    //float3 normal    = normalize(in.normal * normalize(2.0 * sample_texture(normal, in.uv).rgb - 1.0));
+    float3 normal    = sample_texture(pc.normal, in.uv).rgb; // TODO: normal matrix on cpu
+    float  emissive  = sample_texture(pc.emissive, in.uv).r;
+    float3 ao        = sample_texture(pc.ao, in.uv).xyz;
 
     //float3 Lo = normalize(float3(scene_data.proj * scene_data.view) * scene_data.view_pos);
 
@@ -222,5 +181,26 @@ fs_output_t fs_main(vs_output_t in) {
     //fs_output_t out;
     //out.color = float4(color, 1.0);
     //return out;
+}
+
+float ndfGGX(float cosLh, float roughness) {
+    float alpha = roughness * roughness;
+    float alpha2 = alpha * alpha;
+    float denom = (cosLh * cosLh) * (alpha2 - 1.0) + 1.0;
+    return alpha2 / (PI * denom * denom);
+}
+
+float gaSchlickG1(float cosTheta, float k) {
+    return cosTheta / (cosTheta * (1.0 - k) + k);
+}
+
+float gaSchlickGXX(float cosLi, float cosLo, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return gaSchlickG1(cosLi, k) * gaSchlickG1(cosLo, k);
+}
+
+float3 fresnelSchlick(float3 F0, float cosTheta) {
+    return F0 + (float3(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
 }
 

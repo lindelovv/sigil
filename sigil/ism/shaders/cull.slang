@@ -1,0 +1,47 @@
+
+#include "common.slang"
+
+[[vk::binding(0, 1)]] StructuredBuffer<gpu_object_data_t> object_data;
+[[vk::binding(1, 1)]] RWStructuredBuffer<gpu_draw_command_t> draw_commands;
+[[vk::binding(2, 1)]] RWBuffer<uint> draw_count;
+
+bool frustum_cull(float4 bounds, float4x4 view_proj) {
+    float4 clip_pos = mul(view_proj, float4(bounds.xyz, 1.0));
+    float radius = bounds.w;
+    return (abs(clip_pos.x) > clip_pos.w + radius
+         || abs(clip_pos.y) > clip_pos.w + radius
+         || clip_pos.z < 0 || clip_pos.z > clip_pos.w + radius
+    );
+}
+
+//bool occlusion_cull(float4 bounds, Texture2D depth_tex, float4x4 view_proj) {
+//    float4 screen_pos = mul(view_proj, float4(bounds.xyz, 1.0));
+//    screen_pos.xyz /= screen_pos.w;
+//    float2 uv = screen_pos.xy * 0.5 + 0.5;
+//    float depth_sample = depth_tex.SampleLevel(uv, 0).r;
+//    return (screen_pos.z - bounds.w) > depth_sample;
+//}
+
+bool is_visible(float4 bounds, float4x4 view_proj) {
+    return frustum_cull(bounds, view_proj);
+}
+
+[numthreads(64, 1, 1)]
+void main(uint3 id : SV_DispatchThreadID) {
+    gpu_objecif (id.x == 0) {
+        draw_count[0] = 0;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if (id.x >= MAX_OBJECTS) return;
+
+    t_data_t  obj = object_data[id.x];
+    gpu_draw_command_t cmd = draw_commands[id.x]
+
+    if(is_visible(obj.bounds, mul(scene_data.proj, scene_data.view))) {
+        uint index = 0;
+        InterlockedAdd(draw_count[0], 1, index);
+        draw_commands[index] = cmd;
+    }
+}
+

@@ -86,9 +86,5 @@ tick_scene :: proc() {
 
     wave := math.sin(3.0 * math.PI * 0.1 + time) * 0.001
     gpu_scene_data.sun_direction += glm.vec3 { wave, -wave, wave }
-
-    //for mesh in sigil.query(mesh) {
-    //    mesh.surfaces[0].transform *= glm.mat4Translate(glm.vec3 { 0, 0, wave })
-    //}
 }
 

@@ -28,7 +28,7 @@ ui_declare :: proc() {
     ui_push_const := vk.PushConstantRange {
         stageFlags = { .VERTEX, .FRAGMENT },
         offset     = 0,
-        size       = size_of(gpu_push_constants_t),
+        size       = size_of(push_constant_t),
     }
     layouts := []vk.DescriptorSetLayout {
         scene_data.set_layout,

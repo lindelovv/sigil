@@ -9,7 +9,6 @@ mesh_t :: struct {
     surfaces : [dynamic]render_data_t,
     index    : allocated_buffer_t,
     vertex   : allocated_buffer_t,
-    address  : vk.DeviceAddress,
 }
 
 render_data_t :: struct {
@@ -17,12 +16,12 @@ render_data_t :: struct {
     first       : u32,
     idx_buffer  : vk.Buffer,
     material    : ^material_t,
-    transform   : glm.mat4,
     address     : vk.DeviceAddress,
+    bounds      : glm.vec4,
+    gpu_data    : gpu_object_data_t,
 }
 
 cube_data : render_data_t
-cube_mesh : mesh_t
 rect_mesh : mesh_t
 
 // rect

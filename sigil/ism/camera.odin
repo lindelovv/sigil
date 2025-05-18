@@ -47,6 +47,7 @@ camera_t :: struct {
     near      : f32,
     far       : f32,
 }
+
 cam_entity: sigil.entity_t
 
 init_camera :: proc() {
@@ -68,6 +69,17 @@ init_camera :: proc() {
         movement_speed    = 1,
         mouse_sensitivity = 28,
     })
+
+    cube_mesh: mesh_t
+    cube_data = render_data_t {
+        first     = 0,
+        count     = u32(len(cube_indices)),
+        material  = &pbr,
+    }
+    append(&cube_mesh.surfaces, cube_data)
+    upload_mesh(cube_vertices, cube_indices, &cube_mesh)
+    //for &s in cube_mesh.surfaces do sigil.add(cam_entity, s)
+
     update_camera_vectors(&cam)
 }
 
@@ -97,7 +109,7 @@ update_camera :: proc(delta_time: f32) {
         }
         cam.pitch = glm.clamp(cam.pitch, -89, 89)
         update_camera_vectors(cam)
-        cube_mesh.surfaces[0].transform = glm.mat4Translate(pos^.xyz + -(cam.forward * 4) - glm.vec3 { 0, 0, -1 })
+        //sigil.get_ref(cam_entity, render_data_t).gpu_data.model = glm.mat4Translate(pos^.xyz + -(cam.forward * 4) - glm.vec3 { 0, 0, -1 })
     }
 }
 

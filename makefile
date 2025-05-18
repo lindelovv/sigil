@@ -7,7 +7,7 @@ endif
 all:
 	$(MAKE) c r
 release:
-	odin build ./ -out:./build/sigil$(EXT)
+	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/
 build c:
 	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/ -debug -show-system-calls
 debug d:
