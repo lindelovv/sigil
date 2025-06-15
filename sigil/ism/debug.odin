@@ -6,6 +6,7 @@ import vk "vendor:vulkan"
 import "vendor:cgltf"
 import "lib:slang"
 import "lib:jolt"
+import "vendor:miniaudio"
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
@@ -34,7 +35,10 @@ __ensure_gltfres :: #force_inline proc(res: cgltf.result, msg: string = "") {
 __ensure_jolt :: #force_inline proc(res: jolt.PhysicsUpdateError, msg: string = "") {
     when ODIN_DEBUG do if res != .None do fmt.printf("__error: %s\n", msg)
 }
-__ensure :: proc { __ensure_sresult, __ensure_vkresult, __ensure_bool, __ensure_b32, __ensure_ptr, __ensure_gltfres, __ensure_jolt }
+__ensure_miniaudio :: #force_inline proc(res: miniaudio.result, msg: string = "") {
+    when ODIN_DEBUG do if res != .SUCCESS do fmt.printf("__error: %s\n", msg)
+}
+__ensure :: proc { __ensure_sresult, __ensure_vkresult, __ensure_bool, __ensure_b32, __ensure_ptr, __ensure_gltfres, __ensure_jolt, __ensure_miniaudio }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
