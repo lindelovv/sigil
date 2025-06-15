@@ -636,8 +636,8 @@ init_vulkan :: proc() {
         //_____________________________
         // Update Descriptor Data
         gpu_scene_data = gpu_scene_data_t {
-            view          = get_camera_view(),
-            proj          = get_camera_projection(),
+            view          = glm.mat4(1),
+            proj          = glm.mat4(1),
             model         = glm.mat4(1),
             sun_color     = { .4, .4, .6, 1  },
             ambient_color = {  1,  1,  1, 1  },
@@ -824,6 +824,8 @@ init_vulkan :: proc() {
         slang.createGlobalSession(slang.API_VERSION, &global_session),
         msg = "failed to create global slang session"
     )
+
+    init_camera()
 
     //_____________________________
     // Shaders

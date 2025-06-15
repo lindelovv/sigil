@@ -1,19 +1,20 @@
-# sigil
+# \__sigil\_
 
 ## About
-Simple rendering engine built learning the Vulkan API and more various graphics programming techniques.\
+Simple rendering engine built learning the vulkan api and more various graphics programming techniques.
 
-Built & tested on Linux using odin 2025-03 and shaderc-v2024.0.
+Built & tested on Linux using odin 2025-05 and slangc 2025.8.1.
 
 ## Third party
-### Libraries:
-[Vulkan](https://github.com/KhronosGroup/Vulkan-Headers)\
-[VMA](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)\
-[GLFW](https://github.com/glfw/glfw)\
-[ImGUI](https://github.com/ocornut/imgui)\
-[Open Asset Import Library](https://github.com/assimp/assimp)\
-[stb_image](https://github.com/nothings/stb)
+### Lib:
+[vulkan](https://github.com/KhronosGroup/Vulkan-Headers)\
+[vma](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)\
+[glfw](https://github.com/glfw/glfw)\
+[dear imgui](https://github.com/ocornut/imgui)\
+[stb_image](https://github.com/nothings/stb)\
+[slang](https://github.com/shader-slang/slang)\
+[jolt](https://github.com/jrouwe/JoltPhysics)
 
 ### Assets:
-[Damaged Helmet (glTF-Sample-Models)](https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/2.0/DamagedHelmet)
+[damaged helmet (gltf-sample-models)](https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/2.0/DamagedHelmet)
 

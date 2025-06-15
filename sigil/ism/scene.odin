@@ -16,7 +16,6 @@ scene :: proc(e: sigil.entity_t) -> typeid {
 }
 
 init_scene :: proc() {
-    init_camera()
     setup_keybinds()
 }
 

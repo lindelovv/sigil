@@ -78,7 +78,7 @@ init_camera :: proc() {
     }
     append(&cube_mesh.surfaces, cube_data)
     upload_mesh(cube_vertices, cube_indices, &cube_mesh)
-    //for &s in cube_mesh.surfaces do sigil.add(cam_entity, s)
+    for &s in cube_mesh.surfaces do sigil.add(cam_entity, s)
 
     update_camera_vectors(&cam)
 }
@@ -109,7 +109,7 @@ update_camera :: proc(delta_time: f32) {
         }
         cam.pitch = glm.clamp(cam.pitch, -89, 89)
         update_camera_vectors(cam)
-        //sigil.get_ref(cam_entity, render_data_t).gpu_data.model = glm.mat4Translate(pos^.xyz + -(cam.forward * 4) - glm.vec3 { 0, 0, -1 })
+        sigil.get_ref(cam_entity, render_data_t).gpu_data.model = glm.mat4Translate(pos^.xyz + -(cam.forward * 4) - glm.vec3 { 0, 0, -1 })
     }
 }
 
