@@ -1,5 +1,5 @@
 
-#include "common.slang"
+#include "common.shared.slang"
 
 static const float  PI          = 3.141592;
 static const float  Epsilon     = 0.00001;
@@ -15,11 +15,6 @@ struct vs_output_t {
 
 struct fs_output_t {
     [[vk::location(0)]] float4 color  : COLOR0;
-};
-
-struct material_data_t {
-    float4 albedo_factors;
-    float4 metal_roughness_factors;
 };
 
 struct push_constant_t {

@@ -88,4 +88,3 @@ exit_jolt :: proc() {
     jolt.JobSystem_Destroy(job_sys)
     jolt.Shutdown()
 }
-

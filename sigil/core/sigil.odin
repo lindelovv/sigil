@@ -20,6 +20,7 @@ PATCH_V :: 2
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
+
 // not used as of now
 HAS_AVX2  :: #config(HAS_AVX2, ODIN_ARCH == .amd64 && false)
 HAS_SSE4  :: #config(HAS_SSE4, ODIN_ARCH == .amd64 && false)
@@ -103,7 +104,6 @@ schedule :: #force_inline proc(e: entity_t, fn: $type) where intrinsics.type_is_
 }
 
 run :: #force_inline proc() {
-    //test()
     for fn in query(init) { fn() }
     main_loop: for !request_exit { for fn in query(tick) { fn() }; free_all(context.temp_allocator) }
     for fn in query(exit) { fn() }

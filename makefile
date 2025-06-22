@@ -4,10 +4,20 @@ else
 	EXT=
 endif
 
+SHADER_DIR := sigil/ism/shaders
+SPV_TARGETS := $(patsubst $(SHADER_DIR)/%.slang,$(SHADER_DIR)/%.spv,\
+    $(filter-out $(SHADER_DIR)/%.shared.slang,$(wildcard $(SHADER_DIR)/*.slang)))
+
+$(SHADER_DIR)/%.spv: $(SHADER_DIR)/%.slang
+	slangc -target spirv -profile spirv_1_5 \
+	       -fvk-use-entrypoint-name \
+	       -fvk-use-gl-layout \
+	       -O1 -o $@ $<
+
 all:
 	$(MAKE) c r
-release:
-	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/
+release: $(SPV_TARGETS)
+	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/ -o:speed 
 build c:
 	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/ -debug -show-system-calls
 debug d:
@@ -16,15 +26,3 @@ run r:
 	./build/sigil$(EXT)
 clean cln:
 	rm -f ./build/sigil$(EXT)
-
-
-NAME=default
-
-vertexc scv:
-	glslc -c ./sigil/ism/shaders/$(NAME).vert -o ./res/shaders/$(NAME).vert.spv
-fragmentc scf:
-	glslc -c ./sigil/ism/shaders/$(NAME).frag -o ./res/shaders/$(NAME).frag.spv
-computec scc:
-	glslc -c ./sigil/ism/shaders/$(NAME).comp -o ./res/shaders/$(NAME).comp.spv
-shaderc sc:
-	$(MAKE) vertexc && $(MAKE) fragmentc && $(MAKE) fragmentc

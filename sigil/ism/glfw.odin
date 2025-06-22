@@ -26,7 +26,9 @@ delta_time    : f32
 
 //_____________________________
 init_glfw :: proc() {
-    glfw.InitHint(glfw.PLATFORM, glfw.PLATFORM_X11) // needed for renderdoc on wayland lol
+    when ODIN_OS == .Linux {
+        glfw.InitHint(glfw.PLATFORM, glfw.PLATFORM_X11) // needed for renderdoc on wayland lol
+    }
     __ensure(glfw.Init(), "GLFW Init Failed")
 
     glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)

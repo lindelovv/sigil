@@ -323,7 +323,7 @@ init_vulkan :: proc() {
     when ODIN_DEBUG {
         dbg_create_info: vk.DebugUtilsMessengerCreateInfoEXT = {
             sType           = .DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            messageSeverity = { .WARNING, .ERROR /*, .VERBOSE, .INFO */ },
+            messageSeverity = { .WARNING, .ERROR , .VERBOSE, /* .INFO */ },
             messageType     = { .GENERAL, .VALIDATION, .PERFORMANCE },
             pfnUserCallback = dbg_callback
         }
@@ -352,7 +352,13 @@ init_vulkan :: proc() {
         vk.EnumeratePhysicalDevices(instance, &phys_count, raw_data(phys_device_list)), 
         msg = "VK: EnumeratePhysicalDevices Error"
     )
-    phys_device = phys_device_list[0]
+    // TODO: PROPERLY CHECK THIS, WOULD HAVE SAVED SO MUCH TIME ON LAPTOP DEBUGGING
+    //       VERY DIRTY SOLUTION
+    when ODIN_OS == .Linux {
+        phys_device = phys_device_list[0]
+    } else when ODIN_OS == .Windows {
+        phys_device = phys_device_list[1]
+    }
 
     //_____________________________
     // Device
@@ -1097,10 +1103,10 @@ upload_mesh /* +-+-+-+-+-+-+-+ */ :: proc(
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 parse_gltf :: proc(path: cstring) -> ([]vertex_t, []u32) {
-    if !os.is_file_path(string(path)) {
-        fmt.printfln("path %s is not a file path", path)
-        return {}, {}
-    }
+    //if !os.is_file_path(string(path)) {
+    //    fmt.printfln("path %s is not a file path", path)
+    //    return {}, {}
+    //}
 
     file_data, _ := cgltf.parse_file({}, path)
     defer cgltf.free(file_data)

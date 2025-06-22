@@ -18,6 +18,11 @@ struct scene_data_t {
     float    time;
 };
 
+struct material_data_t {
+    float4 albedo_factors;
+    float4 metal_roughness_factors;
+};
+
 [[vk::binding(0, 0)]] ConstantBuffer<scene_data_t> scene_data;
 [[vk::binding(1, 0)]] ConstantBuffer<material_data_t> material_data;
 

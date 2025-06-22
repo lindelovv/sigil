@@ -41,108 +41,110 @@ pbr_push_const: pbr_push_constant_t
 pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
     pbr_entity = sigil.new_entity()
 
-    code, diagnostics: ^slang.IBlob
-    target_desc := slang.TargetDesc {
-		structureSize = size_of(slang.TargetDesc),
-		format        = .SPIRV,
-		flags         = { .GENERATE_SPIRV_DIRECTLY },
-		profile       = global_session->findProfile("sm_6_0"),
-	}
+    when ODIN_DEBUG {
+        code, diagnostics: ^slang.IBlob
+        target_desc := slang.TargetDesc {
+	    	structureSize = size_of(slang.TargetDesc),
+	    	format        = .SPIRV,
+	    	flags         = { .GENERATE_SPIRV_DIRECTLY },
+	    	profile       = global_session->findProfile("spirv_1_5"),
+	    }
 
-	compiler_option_entries := [?]slang.CompilerOptionEntry{
-		{ name = .VulkanUseEntryPointName, value = { intValue0 = 1 } },
-	}
-	session_desc := slang.SessionDesc {
-		structureSize            = size_of(slang.SessionDesc),
-		targets                  = &target_desc,
-		targetCount              = 1,
-		compilerOptionEntries    = &compiler_option_entries[0],
-		compilerOptionEntryCount = 1,
-	}
+	    compiler_option_entries := [?]slang.CompilerOptionEntry{
+	    	{ name = .VulkanUseEntryPointName, value = { intValue0 = 1 } },
+	    }
+	    session_desc := slang.SessionDesc {
+	    	structureSize            = size_of(slang.SessionDesc),
+	    	targets                  = &target_desc,
+	    	targetCount              = 1,
+	    	compilerOptionEntries    = &compiler_option_entries[0],
+	    	compilerOptionEntryCount = len(compiler_option_entries),
+	    }
 
-	session: ^slang.ISession
-	__ensure(
-        global_session->createSession(session_desc, &session),
-        msg = "failed to create slang session"
-    )
-	defer session->release()
+	    session: ^slang.ISession
+	    __ensure(
+            global_session->createSession(session_desc, &session),
+            msg = "failed to create slang session"
+        )
+	    defer session->release()
 
-	module := session->loadModule("sigil/ism/shaders/pbr.slang", &diagnostics)
-    __ensure(module, "failed to load module")
+	    module := session->loadModule("sigil/ism/shaders/pbr.slang", &diagnostics)
+        if module == nil {
+            fmt.println("Shader compile error!")
+            if diagnostics != nil {
+                buffer := slice.bytes_from_ptr(
+                diagnostics->getBufferPointer(),
+                int(diagnostics->getBufferSize()),
+                )
+                fmt.println(string(buffer))
+            }
+            return
+        }
+        __ensure(module, "failed to load module")
+        defer module->release()
 
-	defer module->release()
+	    vertex_entry: ^slang.IEntryPoint
+        __ensure(
+            module->findEntryPointByName("vs_main", &vertex_entry),
+            msg = "failed to find vertex entry point"
+        )
 
-    if diagnostics != nil {
-		buffer := slice.bytes_from_ptr(
-			diagnostics->getBufferPointer(),
-			int(diagnostics->getBufferSize()),
-		)
-		fmt.println(string(buffer))
-	}
+	    fragment_entry: ^slang.IEntryPoint
+	    __ensure(
+            module->findEntryPointByName("fs_main", &fragment_entry),
+            msg = "failed to find fragmnet entry point"
+        )
 
-	vertex_entry: ^slang.IEntryPoint
-	__ensure(
-        module->findEntryPointByName("vs_main", &vertex_entry),
-        msg = "failed to find vertex entry point"
-    )
+	    if vertex_entry == nil {
+	    	fmt.println("Expected 'vs_main' entry point")
+	    	return;
+	    }
+	    if fragment_entry == nil {
+	    	fmt.println("Expected 'fs_main' entry point")
+	    	return;
+	    }
 
-	fragment_entry: ^slang.IEntryPoint
-	__ensure(
-        module->findEntryPointByName("fs_main", &fragment_entry),
-        msg = "failed to find fragmnet entry point"
-    )
+	    components: [3]^slang.IComponentType = { module, vertex_entry, fragment_entry }
 
-	if vertex_entry == nil {
-		fmt.println("Expected 'vs_main' entry point")
-		return;
-	}
-	if fragment_entry == nil {
-		fmt.println("Expected 'fs_main' entry point")
-		return;
-	}
+	    linked_program: ^slang.IComponentType
+	    __ensure(
+            session->createCompositeComponentType(&components[0], len(components), &linked_program, &diagnostics),
+            msg = "failed to create component types"
+        )
+        if diagnostics != nil {
+	    	buffer := slice.bytes_from_ptr(
+	    		diagnostics->getBufferPointer(),
+	    		int(diagnostics->getBufferSize()),
+	    	)
+	    	fmt.println(string(buffer))
+	    }
 
-	components: [3]^slang.IComponentType = { module, vertex_entry, fragment_entry }
+	    target_code: ^slang.IBlob
+	    __ensure(
+            linked_program->getTargetCode(0, &target_code, &diagnostics),
+            msg = "failed getting shader target code"
+        )
+        
+        if diagnostics != nil {
+	    	buffer := slice.bytes_from_ptr(
+	    		diagnostics->getBufferPointer(),
+	    		int(diagnostics->getBufferSize()),
+	    	)
+	    	fmt.println(string(buffer))
+	    }
 
-	linked_program: ^slang.IComponentType
-	__ensure(
-        session->createCompositeComponentType(&components[0], len(components), &linked_program, &diagnostics),
-        msg = "failed to create component types"
-    )
-    if diagnostics != nil {
-		buffer := slice.bytes_from_ptr(
-			diagnostics->getBufferPointer(),
-			int(diagnostics->getBufferSize()),
-		)
-		fmt.println(string(buffer))
-	}
-
-	target_code: ^slang.IBlob
-	__ensure(
-        linked_program->getTargetCode(0, &target_code, &diagnostics),
-        msg = "failed getting shader target code"
-    )
-    //if diagnostics != nil {
-	//	buffer := slice.bytes_from_ptr(
-	//		diagnostics->getBufferPointer(),
-	//		int(diagnostics->getBufferSize()),
-	//	)
-	//	fmt.println(string(buffer)) // has error but still works ?
-    //            // (0): error 100: failed to load downstream compiler 'spirv-opt'
-    //            // (0): note 99999: failed to load dynamic library 'pthread'
-    //            // (0): note 99999: failed to load dynamic library 'slang-glslang'
-	//}
-
-	code_size := target_code->getBufferSize()
-	source_code := slice.bytes_from_ptr(target_code->getBufferPointer(), auto_cast code_size)
-
-	info := vk.ShaderModuleCreateInfo {
-		sType    = .SHADER_MODULE_CREATE_INFO,
-		codeSize = len(source_code),
-        pCode    = raw_data(slice.reinterpret([]u32, source_code)),
+	    code_size := target_code->getBufferSize()
+	    source_code := slice.bytes_from_ptr(target_code->getBufferPointer(), auto_cast code_size)
+    } else {
+        source_code :: #load("shaders/pbr.spv") // not working, fix later (probably in makefile)
     }
-
-	vk_module: vk.ShaderModule
-	__ensure(
+    info := vk.ShaderModuleCreateInfo {
+        sType    = .SHADER_MODULE_CREATE_INFO,
+        codeSize = len(source_code),
+        pCode    = (^u32)(raw_data(slice.reinterpret([]u32, source_code))),
+    }
+    vk_module: vk.ShaderModule
+    __ensure(
         vk.CreateShaderModule(device, &info, nil, &vk_module),
         msg = "failed to create shader module"
     )
