@@ -34,6 +34,7 @@ camera_controller_t :: struct {
 
 transform_t :: glm.mat4
 position_t :: distinct [3]f32
+rotation_t :: distinct quaternion128
 velocity_t :: glm.vec3
 camera_t :: struct {
     yaw       : f32,

@@ -20,7 +20,6 @@ PATCH_V :: 2
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-
 // not used as of now
 HAS_AVX2  :: #config(HAS_AVX2, ODIN_ARCH == .amd64 && false)
 HAS_SSE4  :: #config(HAS_SSE4, ODIN_ARCH == .amd64 && false)
@@ -219,7 +218,7 @@ query_2 :: #force_inline proc(
     x: t1,
     y: t2
 } {
-    g := get_or_create_group(t1, t2)
+    g := get_or_declare_group(t1, t2)
     if g == nil do return {}
     slice1 := get_component_slice(g, t1)
     slice2 := get_component_slice(g, t2)
@@ -235,7 +234,7 @@ query_3 :: #force_inline proc(
     y: t2,
     z: t3
 } {
-    g := get_or_create_group(t1, t2, t3)
+    g := get_or_declare_group(t1, t2, t3)
     if g == nil do return {}
     slice1 := get_component_slice(g, t1)
     slice2 := get_component_slice(g, t2)
@@ -254,7 +253,7 @@ query_4 :: #force_inline proc(
     z: t3,
     w: t4
 } {
-    g := get_or_create_group(t1, t2, t3, t4)
+    g := get_or_declare_group(t1, t2, t3, t4)
     if g == nil do return {}
     slice1 := get_component_slice(g, t1)
     slice2 := get_component_slice(g, t2)
@@ -271,20 +270,20 @@ types_hash :: proc(types: ..typeid) -> (h: u64) { for t in types do h ~= (^u64)(
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-get_or_create_group_2 :: proc($t1, $t2: typeid) -> ^group_t {
+get_or_declare_group_2 :: proc($t1, $t2: typeid) -> ^group_t {
     if _, ok := core.sets[t1]; !ok do return {}
     if _, ok := core.sets[t2]; !ok do return {}
 
     hash := types_hash(t1, t2)
     if group, exists := &core.groups[hash]; exists do return group
     group := new(group_t)
-    if !create_group(group, t1, t2) { free(group); return nil }
+    if !declare_group(group, t1, t2) { free(group); return nil }
     maintain_group_storage(group)
     core.groups[hash] = group^
     return group
 }
 
-get_or_create_group_3 :: proc($t1, $t2, $t3: typeid) -> ^group_t {
+get_or_declare_group_3 :: proc($t1, $t2, $t3: typeid) -> ^group_t {
     if _, ok := core.sets[t1]; !ok do return {}
     if _, ok := core.sets[t2]; !ok do return {}
     if _, ok := core.sets[t3]; !ok do return {}
@@ -292,13 +291,13 @@ get_or_create_group_3 :: proc($t1, $t2, $t3: typeid) -> ^group_t {
     hash := types_hash(t1, t2, t3)
     if group, exists := &core.groups[hash]; exists do return group
     group := new(group_t)
-    if !create_group(group, t1, t2, t3) { free(group); return nil }
+    if !declare_group(group, t1, t2, t3) { free(group); return nil }
     maintain_group_storage(group)
     core.groups[hash] = group^
     return group
 }
 
-get_or_create_group_4 :: proc($type1, $type2, $type3, $type4: typeid) -> ^group_t {
+get_or_declare_group_4 :: proc($type1, $type2, $type3, $type4: typeid) -> ^group_t {
     if _, ok := core.sets[t1]; !ok do return {}
     if _, ok := core.sets[t2]; !ok do return {}
     if _, ok := core.sets[t3]; !ok do return {}
@@ -307,14 +306,14 @@ get_or_create_group_4 :: proc($type1, $type2, $type3, $type4: typeid) -> ^group_
     hash := types_hash(type1, type2, type3, type4)
     if group, exists := &core.groups[hash]; exists do return group
     group := new(group_t)
-    if !create_group(group, type1, type2, type3, type4) { free(group); return nil }
+    if !declare_group(group, type1, type2, type3, type4) { free(group); return nil }
     maintain_group_storage(group)
     core.groups[hash] = group^
     return group
 }
-get_or_create_group :: proc { get_or_create_group_2, get_or_create_group_3, get_or_create_group_4 }
+get_or_declare_group :: proc { get_or_declare_group_2, get_or_declare_group_3, get_or_declare_group_4 }
 
-create_group_2 :: proc(group: ^group_t, $type1, $type2: typeid) -> bool {
+declare_group_2 :: proc(group: ^group_t, $type1, $type2: typeid) -> bool {
     group.components = bit_array.create(len(core.sets))
     bit_array.set(group.components, core.sets[type1].id)
     bit_array.set(group.components, core.sets[type2].id)
@@ -330,7 +329,7 @@ create_group_2 :: proc(group: ^group_t, $type1, $type2: typeid) -> bool {
     return true
 }
 
-create_group_3 :: proc(group: ^group_t, $type1, $type2, $type3: typeid) -> bool {
+declare_group_3 :: proc(group: ^group_t, $type1, $type2, $type3: typeid) -> bool {
     group.components = bit_array.create(len(core.sets))
     bit_array.set(group.components, core.sets[type1].id)
     bit_array.set(group.components, core.sets[type2].id)
@@ -349,7 +348,7 @@ create_group_3 :: proc(group: ^group_t, $type1, $type2, $type3: typeid) -> bool 
     return true
 }
 
-create_group_4 :: proc(group: ^group_t, $type1, $type2, $type3, $type4: typeid) -> bool {
+declare_group_4 :: proc(group: ^group_t, $type1, $type2, $type3, $type4: typeid) -> bool {
     group.components = bit_array.create(len(core.sets))
     bit_array.set(group.components, core.sets[type1].id)
     bit_array.set(group.components, core.sets[type2].id)
@@ -371,7 +370,7 @@ create_group_4 :: proc(group: ^group_t, $type1, $type2, $type3, $type4: typeid) 
     return true
 }
 
-create_group :: proc { create_group_2, create_group_3, create_group_4 }
+declare_group :: proc { declare_group_2, declare_group_3, declare_group_4 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
