@@ -9,7 +9,7 @@ import "core:fmt"
 
 glfw :: proc(e: sigil.entity_t) -> typeid {
     using sigil
-    add(e, name("glfw_module"))
+    add(e, name_t("glfw_module"))
     schedule(e, init(init_glfw))
     schedule(e, tick(tick_glfw))
     schedule(e, exit(exit_glfw))
@@ -42,6 +42,7 @@ init_glfw :: proc() {
     glfw.SetInputMode(window, glfw.CURSOR, glfw.CURSOR_NORMAL)
     glfw.SetKeyCallback(window, glfw.KeyProc(keyboard_callback))
     glfw.SetMouseButtonCallback(window, glfw.MouseButtonProc(mouse_callback))
+    glfw.SetScrollCallback(window, glfw.ScrollProc(scroll_callback))
     glfw.MakeContextCurrent(window)
 
     setup_standard_bindings()
@@ -96,6 +97,9 @@ KeyCallback :: struct {
     release: proc(),
 }
 
+MOUSE_SCROLL_DOWN :: 349
+MOUSE_SCROLL_UP   :: 350
+
 //_____________________________
 bind_input :: proc {
     bind_input_keycallback,
@@ -137,6 +141,17 @@ mouse_callback :: proc(window: glfw.WindowHandle, button: i32, action: i32, mods
     if callback, exists := input_callbacks[button]; exists {
         if action == glfw.PRESS   { if callback.press != nil   { callback.press()   } }
         if action == glfw.RELEASE { if callback.release != nil { callback.release() } }
+    }
+}
+
+//_____________________________
+scroll_callback :: proc(window: glfw.WindowHandle, x, y: f64) {
+    button : i32 = 0
+    if y > 0 do button = MOUSE_SCROLL_UP
+    if y < 0 do button = MOUSE_SCROLL_DOWN
+    if button == 0 do return
+    if callback, exists := input_callbacks[button]; exists {
+        if callback.press != nil   { callback.press() }
     }
 }
 

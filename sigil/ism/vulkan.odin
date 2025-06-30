@@ -21,10 +21,14 @@ import "lib:slang"
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 vulkan :: proc(e: sigil.entity_t) -> typeid {
     using sigil
-    add(e, name("vulkan_module"))
+    add(e, name_t("vulkan_module"))
     schedule(e, init(init_vulkan))
     schedule(e, tick(tick_vulkan))
     schedule(e, exit(terminate_vulkan))
+    
+    r := before { tick_vulkan }
+    fmt.println(r)
+
     return none
 }
 
@@ -323,7 +327,7 @@ init_vulkan :: proc() {
     when ODIN_DEBUG {
         dbg_create_info: vk.DebugUtilsMessengerCreateInfoEXT = {
             sType           = .DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            messageSeverity = { .WARNING, .ERROR , .VERBOSE, /* .INFO */ },
+            messageSeverity = { .WARNING, .ERROR , /* .VERBOSE, .INFO */ },
             messageType     = { .GENERAL, .VALIDATION, .PERFORMANCE },
             pfnUserCallback = dbg_callback
         }
@@ -843,45 +847,6 @@ init_vulkan :: proc() {
     // imgui
     init_imgui(&swapchain_create_info)
 
-    //_____________________________
-    // Upload Mesh
-    vertices, indices := parse_gltf("res/models/DamagedHelmet.gltf")
-    //for x in -2..=2 do for y in -2..=2 do for z in 1..=5 {
-        x, y, z := 1, 1, 1
-        m: mesh_t
-        upload_mesh(vertices, indices, &m)
-        mesh_e := sigil.new_entity()
-        sigil.add(mesh_e, m)
-        for &s in m.surfaces {
-            s.gpu_data.model = glm.mat4Translate({ f32(x) * 3, f32(y) * 3, f32(z) * 3 })
-            sigil.add(mesh_e, s)
-        }
-    //}
-
-    //cube_e := sigil.new_entity()
-    //cube_data = render_data_t {
-    //    first     = 0,
-    //    count     = u32(len(cube_indices)),
-    //    material  = &pbr,
-    //}
-    //append(&cube_mesh.surfaces, cube_data)
-    //upload_mesh(cube_vertices, cube_indices, &cube_mesh)
-    //for &s in cube_mesh.surfaces do sigil.add(cube_e, s)
-
-    rect_e := sigil.new_entity()
-    rect_data := render_data_t {
-        first     = 0,
-        count     = u32(len(rect_indices)),
-        material  = &pbr,
-        gpu_data  = {
-            model = glm.mat4Translate(glm.vec3 { 0, 0, 0 }) * glm.mat4Scale(glm.vec3(100)),
-            //transform = glm.mat4Rotate(glm.vec3 { 0, -1, 0 }, 1.5708)
-        }
-    }
-    append(&rect_mesh.surfaces, rect_data)
-    upload_mesh(rect_vertices, rect_indices, &rect_mesh)
-    for &s in rect_mesh.surfaces do sigil.add(rect_e, s)
-
     vk.GetPhysicalDeviceProperties(phys_device, &physdevice_props)
 
     vk.CmdEndDebugUtilsLabelEXT(immediate.cmd)
@@ -1044,6 +1009,7 @@ upload_mesh /* +-+-+-+-+-+-+-+ */ :: proc(
         data.idx_buffer = mesh.index.handle
         data.gpu_data.bounds = glm.vec4{ center.x, center.y, center.z, radius }
     }
+    //fmt.printfln("%#v", mesh.surfaces)
 
     staging_buffer := create_buffer(vtx_buffer_size + idx_buffer_size, { .TRANSFER_SRC }, .CPU_ONLY)
     defer destroy_buffer(staging_buffer)
@@ -1102,7 +1068,7 @@ upload_mesh /* +-+-+-+-+-+-+-+ */ :: proc(
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-parse_gltf :: proc(path: cstring) -> ([]vertex_t, []u32) {
+parse_gltf :: proc(path: cstring) -> ([]vertex_t, []u32) { // only a single mesh rn effectivly, gotta sort that in the future sometime
     //if !os.is_file_path(string(path)) {
     //    fmt.printfln("path %s is not a file path", path)
     //    return {}, {}
@@ -1230,8 +1196,11 @@ create_buffer /* +-+-+-+-+-+ */ :: proc(
     return buffer
 }
 
-/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-register_buffer :: proc(buffer: vk.Buffer, size: vk.DeviceSize) -> u32 {
+
+register_buffer /* +-+ */ :: proc(
+    buffer : vk.Buffer,
+    size   : vk.DeviceSize
+/* +-+-+-+-+-+-+-+-+-+ */ ) -> u32 {
     if index, ok := buffer_indices[buffer]; ok {
         return index
     }
@@ -1613,7 +1582,10 @@ tick_vulkan :: proc() {
             //vk.CmdBindPipeline(frame.cmd, .COMPUTE, cull_pipeline)
             //vk.CmdBindDescriptorSets(frame.cmd, .COMPUTE, cull_pipeline_layout, 0, 1, &cull_descriptor.set, 0, nil)
             
+            //fmt.println("new")
             for data in sigil.query(render_data_t) {
+                // todo: need to set up material system to enable dynamic texturing for different meshes
+                //fmt.println(data)
                 vk.CmdBindPipeline(frame.cmd, .GRAPHICS, data.material.pipeline)
                 sets := []vk.DescriptorSet { frame.descriptor.set, data.material.set, bindless.set }
                 vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, data.material.pipeline_layout, 0, u32(len(sets)), raw_data(sets), 0, nil)

@@ -10,8 +10,8 @@ main :: proc() { /* سيجيل */
         use(ism.glfw)
         use(ism.vulkan)
         use(ism.miniaudio)
-        use(ism.scene)
         use(ism.jolt)
+        use(ism.scene)
         run()
 }
 

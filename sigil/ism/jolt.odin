@@ -4,13 +4,12 @@ package ism
 import sigil "sigil:core"
 import "lib:jolt"
 import "core:math/rand"
+import "core:fmt"
 import glm "core:math/linalg/glsl"
-
-// todo: implement all of it :-)
 
 jolt :: proc(e: sigil.entity_t) -> typeid {
     using sigil
-    add(e, name("jolt_module"))
+    add(e, name_t("jolt_module"))
     schedule(e, init(init_jolt))
     schedule(e, tick(tick_jolt))
     schedule(e, exit(exit_jolt))
@@ -29,13 +28,15 @@ BROAD_PHASE_LAYER_NUM :: 2
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-physics_system : ^jolt.PhysicsSystem
-job_system : ^jolt.JobSystem
-body_interface: ^jolt.BodyInterface
+physics_system     : ^jolt.PhysicsSystem
+job_system         : ^jolt.JobSystem
+body_interface     : ^jolt.BodyInterface
 narrow_phase_query : ^jolt.NarrowPhaseQuery
 
 floor_id: jolt.BodyID
 box_e: sigil.entity_t
+
+physics_id_t :: distinct jolt.BodyID
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
@@ -86,69 +87,20 @@ init_jolt :: proc() {
 	body_interface = jolt.PhysicsSystem_GetBodyInterface(physics_system)
 	narrow_phase_query = jolt.PhysicsSystem_GetNarrowPhaseQuery(physics_system)
 
-	floor_shape := jolt.BoxShape_Create(&{25, 0.5, 25}, jolt.DEFAULT_CONVEX_RADIUS)
-
-	floor_settings := jolt.BodyCreationSettings_Create3(
-		cast(^jolt.Shape)floor_shape,
-		&{0, 0, 0},
-		nil,
-		.JPH_MotionType_Static,
-		OBJECT_LAYER_NON_MOVING,
-	)
-	defer jolt.BodyCreationSettings_Destroy(floor_settings)
-
-	jolt.BodyCreationSettings_SetRestitution(floor_settings, 0.5)
-	jolt.BodyCreationSettings_SetFriction(floor_settings, 0.5)
-
-	floor_id = jolt.BodyInterface_CreateAndAddBody(
-		body_interface,
-		floor_settings,
-		.JPH_Activation_DontActivate,
-	)
-	
-	box_shape := jolt.BoxShape_Create(&{ 1, 1, 1 }, jolt.DEFAULT_CONVEX_RADIUS)
-	jolt.PhysicsSystem_OptimizeBroadPhase(physics_system)
-	
-	box_e = sigil.new_entity()
-
-	pos := sigil.add(box_e, position_t {
-		rand.float32_range(-22, 22),
-		rand.float32_range(20, 30),
-		rand.float32_range(-22, 22),
-	})
-	sigil.add(box_e, rotation_t(0))
-
-	box_settings := jolt.BodyCreationSettings_Create3(
-		cast(^jolt.Shape)box_shape,
-		cast(^[3]f32)&pos,
-		nil,
-		.JPH_MotionType_Dynamic,
-		OBJECT_LAYER_MOVING,
-	)
-	defer jolt.BodyCreationSettings_Destroy(box_settings)
-	
-	id := jolt.BodyInterface_CreateAndAddBody(body_interface, box_settings, .JPH_Activation_Activate)
-	sigil.add(box_e, jolt.BodyID(id))
+	jolt.PhysicsSystem_SetGravity(physics_system, &{ 0, 0, -9.8 })
 }
 
-//@(system(requires = [Position], writes = [Velocity])) // something like this would be cool
 tick_jolt :: proc() {
     __ensure(
 		jolt.PhysicsSystem_Update(physics_system, delta_time, 1, job_system),
 		"physics system update error"
 	)
-	for &q in sigil.query(position_t, rotation_t, jolt.BodyID) { // TODO: this proved entity grouping is broken, fix
-		pos, rot, id := (^[3]f32)(&q.x), (^quaternion128)(&q.y), q.z
-		
+	for &q in sigil.query(position_t, rotation_t, physics_id_t, render_data_t) {
+        pos, rot, id, render := (^[3]f32)(&q.x), (^quaternion128)(&q.y), u32(q.z), &q.w
 		jolt.BodyInterface_GetPosition(body_interface, id, pos)
 		jolt.BodyInterface_GetRotation(body_interface, id, rot)
-
-		is_active := jolt.BodyInterface_IsActive(body_interface, id)
+		render.gpu_data.model = glm.mat4Translate(([3]f32)(pos^)) * glm.mat4FromQuat(quaternion128(rot^))
 	}
-	//for &q in sigil.query(position_t, rotation_t, render_data_t) {
-	//	pos, rot, data := q.x, q.y, &q.z
-	//	data.gpu_data.model = glm.mat4Translate(([3]f32)(pos)) * glm.mat4FromQuat(quaternion128(rot))
-	//}
 }
 
 exit_jolt :: proc() {
@@ -156,3 +108,4 @@ exit_jolt :: proc() {
     jolt.JobSystem_Destroy(job_system)
     jolt.Shutdown()
 }
+

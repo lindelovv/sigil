@@ -14,7 +14,7 @@ audio_time: f32 = 0.0
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 miniaudio :: proc(e: sigil.entity_t) -> typeid {
     using sigil
-    add(e, name("miniaudio_module"))
+    add(e, name_t("miniaudio_module"))
     schedule(e, init(init_miniaudio))
     schedule(e, exit(deinit_miniaudio))
     return none

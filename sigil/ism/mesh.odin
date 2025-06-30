@@ -22,6 +22,7 @@ render_data_t :: struct {
 }
 
 cube_data : render_data_t
+cube_mesh : mesh_t
 rect_mesh : mesh_t
 
 // rect

@@ -26,3 +26,4 @@ run r:
 	./build/sigil$(EXT)
 clean cln:
 	rm -f ./build/sigil$(EXT)
+

@@ -44,27 +44,28 @@ set_t :: struct {
     indices    : [dynamic]int,
     count      : int,
     id         : int,
+    type       : typeid,
 }
 
 group_t :: struct {
     entities   : [dynamic]entity_t,
     components : ^bit_array.Bit_Array,
-    type_range : [dynamic]type_range_t,
+    range      : map[typeid]range_t,
 }
 
-type_range_t :: struct {
-    type   : typeid,
+range_t :: struct {
     offset : int,
+    count  : int,
 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-name :: distinct string
+name_t :: distinct string
 
 // todo: implement an actual scheduler for this, but might not be needed tbh
 
 module_create_info_t :: struct {
-    name: name,
+    name: name_t,
     id  : entity_t,
 }
 module :: #type proc(entity_t) -> typeid
@@ -73,9 +74,14 @@ tick :: distinct #type proc()
 exit :: distinct #type proc()
 none :: distinct #type proc()
 
-relation :: struct($topic, $target: typeid) { target, target }
-before :: struct(fn: proc()) { using fn }
-after  :: struct(fn: proc()) { using fn }
+// later note: relations would be good to solve for all entities, then modules could just be that
+// example: before(owner, module)
+relation :: struct($topic, $target: typeid) { topic, target }
+
+tag_t :: distinct struct {} // maybe use?
+
+before     :: distinct []proc()
+after      :: distinct []proc()
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
@@ -87,19 +93,20 @@ request_exit : bool
     core = {}
     /* INVALID */ new_entity()
     /*  WORLD  */ new_entity()
-    add(WORLD,  name("world"))
+    add(WORLD,  name_t("world"))
 }
 
 use :: #force_inline proc(setup: module) { e := new_entity(); add(e, setup(e)) }
 
-schedule :: #force_inline proc(e: entity_t, fn: $type) where intrinsics.type_is_proc(type) {
+schedule :: #force_inline proc(e: entity_t, fn: $type, conditions: []union { before, after } = nil) where intrinsics.type_is_proc(type) {
     // add require param to schedule proc depending on dependant modules
     // as in: before(module), after(other_module)
+    // update: condition union with before and after arrays of proc addresses
     add(e, type(fn))
-
-    // later note: relations would be good to solve for all entities, then modules could just be that
-    // example: before(owner, module)
-    relation :: struct($topic, $target: typeid) { target, target }
+    for type in conditions do switch condition in type {
+        case before: for fn in condition {}
+        case after:  for fn in condition {}
+    }
 }
 
 run :: #force_inline proc() {
@@ -120,6 +127,10 @@ new_entity :: #force_inline proc() -> entity_t {
 get_entity :: #force_inline proc(entity: entity_t) -> entity_t {
     for e in core.entities { if e == entity do return e }
     return 0
+}
+
+is_valid_entity :: proc(entity: entity_t) -> bool {
+    return entity != INVALID
 }
 
 has_component :: #force_inline proc(entity: entity_t, type: typeid) -> bool {
@@ -159,6 +170,7 @@ add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> type {
         set.components = new([dynamic]type)
         append((^[dynamic]type)(set.components), type{}) // dummy for invalid
         set.id = len(core.sets)
+        set.type = type
     }
 
     data := cast(^[dynamic]type)(set.components)
@@ -183,7 +195,6 @@ add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> type {
         if bit_array.get(group.components, core.sets[type].id) && has_all_components(e, group.components) {
             if !slice.contains(group.entities[:], e) {
                 append(&group.entities, e)
-                maintain_group_storage(&group)
             }
         }
     }
@@ -212,53 +223,54 @@ query_1 :: #force_inline proc($type: typeid) -> []type {
 }
 
 query_2 :: #force_inline proc(
-    $t1: typeid,
-    $t2: typeid
+    $type1: typeid,
+    $type2: typeid
 ) -> #soa[]struct {
-    x: t1,
-    y: t2
+    x: type1,
+    y: type2
 } {
-    g := get_or_declare_group(t1, t2)
+    g := get_or_declare_group(type1, type2)
     if g == nil do return {}
-    slice1 := get_component_slice(g, t1)
-    slice2 := get_component_slice(g, t2)
+    slice1 := get_component_slice(g, type1)
+    slice2 := get_component_slice(g, type2)
     return soa_zip(slice1, slice2)
 }
 
 query_3 :: #force_inline proc(
-    $t1: typeid,
-    $t2: typeid,
-    $t3: typeid
+    $type1: typeid,
+    $type2: typeid,
+    $type3: typeid
 ) -> #soa[]struct {
-    x: t1,
-    y: t2,
-    z: t3
+    x: type1,
+    y: type2,
+    z: type3
 } {
-    g := get_or_declare_group(t1, t2, t3)
+    g := get_or_declare_group(type1, type2, type3)
     if g == nil do return {}
-    slice1 := get_component_slice(g, t1)
-    slice2 := get_component_slice(g, t2)
-    slice3 := get_component_slice(g, t3)
+    slice1 := get_component_slice(g, type1)
+    slice2 := get_component_slice(g, type2)
+    slice3 := get_component_slice(g, type3)
+    //fmt.printfln("soa %v %v %v \n %#v", typeid_of(type1), typeid_of(type2), typeid_of(type3), soa_zip(slice1, slice2, slice3))
     return soa_zip(slice1, slice2, slice3)
 }
 
 query_4 :: #force_inline proc(
-    $t1: typeid,
-    $t2: typeid,
-    $t3: typeid,
-    $t4: typeid
+    $type1: typeid,
+    $type2: typeid,
+    $type3: typeid,
+    $type4: typeid
 ) -> #soa[]struct {
-    x: t1,
-    y: t2,
-    z: t3,
-    w: t4
+    x: type1,
+    y: type2,
+    z: type3,
+    w: type4
 } {
-    g := get_or_declare_group(t1, t2, t3, t4)
+    g := get_or_declare_group(type1, type2, type3, type4)
     if g == nil do return {}
-    slice1 := get_component_slice(g, t1)
-    slice2 := get_component_slice(g, t2)
-    slice3 := get_component_slice(g, t3)
-    slice4 := get_component_slice(g, t4)
+    slice1 := get_component_slice(g, type1)
+    slice2 := get_component_slice(g, type2)
+    slice3 := get_component_slice(g, type3)
+    slice4 := get_component_slice(g, type4)
     return soa_zip(slice1, slice2, slice3, slice4)
 }
 
@@ -270,183 +282,135 @@ types_hash :: proc(types: ..typeid) -> (h: u64) { for t in types do h ~= (^u64)(
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-get_or_declare_group_2 :: proc($t1, $t2: typeid) -> ^group_t {
-    if _, ok := core.sets[t1]; !ok do return {}
-    if _, ok := core.sets[t2]; !ok do return {}
+get_or_declare_group_2 :: proc($type1, $type2: typeid) -> ^group_t {
+    if _, ok := core.sets[type1]; !ok do return {}
+    if _, ok := core.sets[type2]; !ok do return {}
 
-    hash := types_hash(t1, t2)
+    hash := types_hash(type1, type2)
     if group, exists := &core.groups[hash]; exists do return group
     group := new(group_t)
-    if !declare_group(group, t1, t2) { free(group); return nil }
-    maintain_group_storage(group)
+    sets : []set_t = { core.sets[type1], core.sets[type2] }
+    if !declare_group(group, sets[:]) { free(group); return nil }
     core.groups[hash] = group^
     return group
 }
 
-get_or_declare_group_3 :: proc($t1, $t2, $t3: typeid) -> ^group_t {
-    if _, ok := core.sets[t1]; !ok do return {}
-    if _, ok := core.sets[t2]; !ok do return {}
-    if _, ok := core.sets[t3]; !ok do return {}
+get_or_declare_group_3 :: proc($type1, $type2, $type3: typeid) -> ^group_t {
+    if _, ok := core.sets[type1]; !ok do return {}
+    if _, ok := core.sets[type2]; !ok do return {}
+    if _, ok := core.sets[type3]; !ok do return {}
 
-    hash := types_hash(t1, t2, t3)
+    hash := types_hash(type1, type2, type3)
     if group, exists := &core.groups[hash]; exists do return group
     group := new(group_t)
-    if !declare_group(group, t1, t2, t3) { free(group); return nil }
-    maintain_group_storage(group)
+    sets : []set_t = { core.sets[type1], core.sets[type2], core.sets[type3] }
+    if !declare_group(group, sets[:]) { free(group); return nil }
     core.groups[hash] = group^
     return group
 }
 
 get_or_declare_group_4 :: proc($type1, $type2, $type3, $type4: typeid) -> ^group_t {
-    if _, ok := core.sets[t1]; !ok do return {}
-    if _, ok := core.sets[t2]; !ok do return {}
-    if _, ok := core.sets[t3]; !ok do return {}
-    if _, ok := core.sets[t4]; !ok do return {}
+    if _, ok := core.sets[type1]; !ok do return {}
+    if _, ok := core.sets[type2]; !ok do return {}
+    if _, ok := core.sets[type3]; !ok do return {}
+    if _, ok := core.sets[type4]; !ok do return {}
 
     hash := types_hash(type1, type2, type3, type4)
     if group, exists := &core.groups[hash]; exists do return group
     group := new(group_t)
-    if !declare_group(group, type1, type2, type3, type4) { free(group); return nil }
-    maintain_group_storage(group)
+    sets : []set_t = { core.sets[type1], core.sets[type2], core.sets[type3], core.sets[type4] }
+    if !declare_group(group, sets[:]) { free(group); return nil }
     core.groups[hash] = group^
     return group
 }
 get_or_declare_group :: proc { get_or_declare_group_2, get_or_declare_group_3, get_or_declare_group_4 }
 
-declare_group_2 :: proc(group: ^group_t, $type1, $type2: typeid) -> bool {
-    group.components = bit_array.create(len(core.sets))
-    bit_array.set(group.components, core.sets[type1].id)
-    bit_array.set(group.components, core.sets[type2].id)
-    for e in core.entities do if has_all_components(e, group.components) {
-        append(&group.entities, e)
+declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
+    new_group.components = bit_array.create(len(core.sets))
+    for set in sets {
+        bit_array.set(new_group.components, set.id)
     }
-    if len(group.entities) == 0 do return false
-    set := core.sets[type1].count < core.sets[type2].count ? core.sets[type1] : core.sets[type2]
-    //if len(set.indices) < len(core.entities) do resize(&set.indices, len(core.entities) + 1)
-    sort_entities(group.entities[:], set.indices[:])
-    add_group_type(group, type1)
-    add_group_type(group, type2)
+    
+    count := 0
+    for e in core.entities {
+        if is_valid_entity(e) && has_all_components(e, new_group.components) {
+            append(&new_group.entities, e)
+            count += 1
+        }
+    }
+    if count == 0 do return false
+
+    to_sort := make([dynamic]set_t)
+    for set in sets {
+        max, min := 1, max(int)
+        for e in new_group.entities {
+            if set.indices[e] < min && set.indices[e] != 0 do min = set.indices[e]
+            if set.indices[e] > max do max = set.indices[e]
+            //fmt.println(max, min)
+        }
+        if max - count == min { // already in ok order (not thinking about other groups)
+            fmt.println(max, count, min, max - count)
+            new_group.range[set.type] = range_t { min, count }
+            fmt.println(min, max, set.type, new_group.range[set.type])
+            fmt.println(set.indices)
+        } else {
+            append(&to_sort, set)
+        }
+    }
+    // broken as shit
+    //swap :: proc(arr: rawptr, a, b, size: int) {
+    //    if a == b do return
+    //    ptr_a := rawptr(uintptr(arr) + (uintptr(a) * uintptr(size)))
+    //    ptr_b := rawptr(uintptr(arr) + (uintptr(b) * uintptr(size)))
+    //    tmp := make([]byte, size)
+    //    defer delete(tmp)
+    //    mem.copy(raw_data(tmp), ptr_a, size)
+    //    mem.copy(ptr_a, ptr_b, size)
+    //    mem.copy(ptr_b, raw_data(tmp), size)
+    //}
+    for set in to_sort {
+        min := max(int)
+        for e in new_group.entities {
+            if set.indices[e] == 0 do fmt.println("invalid")
+            if set.indices[e] < min do min = set.indices[e]
+        }
+        //for e, i in new_group.entities {
+        //    if set.indices[e] != i {
+        //        if len(set.indices) < i + 1 do continue
+        //        set.indices[i + 1], set.indices[i] = set.indices[i], set.indices[i + 1]
+        //        swap(set.components, i, i + 1, set.sizeof_type)
+        //        //set.components[i + 1], set.indices[i] = set.indices[i], set.indices[i + 1]
+        //    }
+        //}
+        new_group.range[set.type] = range_t { min, count }
+    }
+    //fmt.printfln("%#v", new_group.range)
+
+    //compare_t :: struct {
+    //    group   : group_t,
+    //    type    : typeid,
+    //    overlap : [2]int,
+    //}
+    //overlap := make([dynamic]compare_t)
+    //for hash, group in core.groups do for set in sets {
+    //    if bit_array.get(new_group.components, set.id) {
+    //        range := group.range[set.type]
+    //        append(&overlap, compare_t { group, set.type, { range.offset, range.count } })
+    //        fmt.println(set.type, range.offset, range.count)
+    //    }
+    //}
+    //for group in overlap {
+    //    // figure out how to handle sorting these sections, who should take president
+    //}
+
     return true
 }
-
-declare_group_3 :: proc(group: ^group_t, $type1, $type2, $type3: typeid) -> bool {
-    group.components = bit_array.create(len(core.sets))
-    bit_array.set(group.components, core.sets[type1].id)
-    bit_array.set(group.components, core.sets[type2].id)
-    bit_array.set(group.components, core.sets[type3].id)
-    for e in core.entities do if has_all_components(e, group.components) {
-        append(&group.entities, e)
-    }
-    if len(group.entities) == 0 do return false
-    set := core.sets[type1].count < core.sets[type2].count ? core.sets[type1] : core.sets[type2]
-    set = set.count < core.sets[type3].count ? set : core.sets[type3]
-    //if len(set.indices) < len(core.entities) do resize(&set.indices, len(core.entities) + 1)
-    sort_entities(group.entities[:], set.indices[:])
-    add_group_type(group, type1)
-    add_group_type(group, type2)
-    add_group_type(group, type3)
-    return true
-}
-
-declare_group_4 :: proc(group: ^group_t, $type1, $type2, $type3, $type4: typeid) -> bool {
-    group.components = bit_array.create(len(core.sets))
-    bit_array.set(group.components, core.sets[type1].id)
-    bit_array.set(group.components, core.sets[type2].id)
-    bit_array.set(group.components, core.sets[type3].id)
-    bit_array.set(group.components, core.sets[type4].id)
-    for e in core.entities do if has_all_components(e, group.components) {
-        append(&group.entities, e)
-    }
-    if len(group.entities) == 0 do return false
-    set := core.sets[type1].count < core.sets[type2].count ? core.sets[type1] : core.sets[type2]
-    set  = set.count < core.sets[type3].count ? set : core.sets[type3]
-    set  = set.count < core.sets[type4].count ? set : core.sets[type4]
-    //if len(set.indices) < len(core.entities) do resize(&set.indices, len(core.entities) + 1)
-    sort_entities(group.entities[:], set.indices[:])
-    add_group_type(group, type1)
-    add_group_type(group, type2)
-    add_group_type(group, type3)
-    add_group_type(group, type4)
-    return true
-}
-
-declare_group :: proc { declare_group_2, declare_group_3, declare_group_4 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-add_group_type :: proc(group: ^group_t, $type: typeid) {
-    set := core.sets[type]
-    data := cast(^[dynamic]type)(set.components)
-    entities := group.entities[:]
-    required := len(entities) - 1
-    start := 1
-
-    // find start
-    min := start + required
-    if len(data) < min do resize(data, min)
-    for {
-        free := true
-        for check := start; check < start + required; check += 1 {
-            for e in entities do if set.indices[e] == check { free = false; break }
-            if !free do break
-        }
-        if free do break
-        start += 1
-        if start + required > len(data) do resize(data, start + required)
-    }
-
-    info := type_range_t { type = type }
-    info.offset = start
-
-    // defrag
-    required = info.offset + len(entities)
-    if len(data) < required do resize(data, required)
-    temp := make([]type, len(entities))
-    for e, i in entities do temp[i] = data[set.indices[e]]
-    for e, i in entities {
-        data[info.offset + i] = temp[i]
-        set.indices[e] = info.offset + i
-    }
-    delete(temp)
-
-    append(&group.type_range, info)
-}
-
-maintain_group_storage :: proc(group: ^group_t) {
-    if len(group.entities) == 0 do return
-    primary_type := group.type_range[0].type
-    primary_set := core.sets[primary_type]
-    sort_entities(group.entities[:], primary_set.indices[:])
-    for info in &group.type_range {
-        t := info.type
-        set := core.sets[t]
-        component_size := runtime.type_info_base(type_info_of(t)).size
-        required_size := info.offset + len(group.entities)
-        if len((^[dynamic]byte)(set.components)^) < required_size {
-            resize((^[dynamic]byte)(set.components), required_size)
-        }
-        temp := make([dynamic]byte, len(group.entities) * component_size)
-        defer delete(temp)
-        for e, i in group.entities {
-            src := rawptr(uintptr(set.components) + uintptr(set.indices[e] * component_size))
-            dst := rawptr(uintptr(raw_data(temp)) + uintptr(i * component_size))
-            mem.copy(dst, src, component_size)
-        }
-        for e, i in group.entities {
-            new_idx := info.offset + i
-            dst := rawptr(uintptr(set.components) + uintptr(new_idx * component_size))
-            src := rawptr(uintptr(raw_data(temp)) + uintptr(i * component_size))
-            mem.copy(dst, src, component_size)
-            if info.type == primary_type do for type, set in core.sets do if has_component(e, type) {
-                set.indices[e] = new_idx
-            }
-        }
-    }
-}
-
 get_component_slice :: proc(g: ^group_t, $t: typeid) -> []t {
     set := core.sets[t]
-    for info in g.type_range do if info.type == t {
+    if info, exists := g.range[t]; exists {
         data := cast(^[dynamic]t)(set.components)
         start := info.offset
         end := start + len(g.entities)
@@ -466,23 +430,6 @@ has_all_components :: proc(entity: entity_t, mask: ^bit_array.Bit_Array) -> bool
         if (core.flags[entity].bits[i] & mask.bits[i]) != mask.bits[i] do return false
     }
     return true
-}
-
-sort_entities :: proc(entities: []entity_t, indices: []int) {
-    if len(entities) <= 1 do return
-    pivot := indices[entities[len(entities) / 2]]
-    left, right := 0, len(entities) - 1
-
-    for left <= right {
-        for indices[entities[left]] < pivot  do left += 1
-        for indices[entities[right]] > pivot do right -= 1
-        if left <= right {
-            entities[left], entities[right] = entities[right], entities[left]
-            left += 1; right -= 1
-        }
-    }
-    sort_entities(entities[:right+1], indices)
-    sort_entities(entities[left:], indices)
 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

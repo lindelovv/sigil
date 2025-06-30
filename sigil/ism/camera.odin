@@ -6,6 +6,7 @@ import glm "core:math/linalg/glsl"
 import "core:math/linalg"
 import "core:math"
 import "core:fmt"
+import "lib:jolt"
 
 WORLD_UP :: glm.vec3 { 0, 0, 1 }
 
@@ -41,7 +42,6 @@ camera_t :: struct {
     pitch     : f32,
     roll      : f32,
     fov       : f32,
-    velocity  : glm.vec3,
     forward   : glm.vec3,
     right     : glm.vec3,
     up        : glm.vec3,
@@ -50,6 +50,7 @@ camera_t :: struct {
 }
 
 cam_entity: sigil.entity_t
+cam_cube_e: sigil.entity_t
 
 init_camera :: proc() {
     cam_entity = sigil.new_entity()
@@ -59,49 +60,57 @@ init_camera :: proc() {
         up      = WORLD_UP,
         near    = 0.1,
         far     = 1000000,
-        pitch   = 0,
-        yaw     = 140,
+        pitch   = 20,
+        yaw     = 225,
         roll    = 0,
     })
-    sigil.add(cam_entity, position_t(glm.vec3{ -2.5, 2.5, 1.5 }))
-    sigil.add(cam_entity, sigil.name("cam"))
-    sigil.add(cam_entity, glm.vec3{ -2.5, 2.5, 1.5 })
+    sigil.add(cam_entity, position_t(glm.vec3{ -11, -11, 13 }))
+    sigil.add(cam_entity, rotation_t(0))
+    sigil.add(cam_entity, velocity_t(0))
+    sigil.add(cam_entity, sigil.name_t("cam"))
+    //sigil.add(cam_entity, glm.vec3{ -2.5, 2.5, 1.5 })
     sigil.add(cam_entity, camera_controller_t {
         movement_speed    = 1,
         mouse_sensitivity = 28,
     })
 
-    cube_mesh: mesh_t
-    cube_data = render_data_t {
-        first     = 0,
-        count     = u32(len(cube_indices)),
-        material  = &pbr,
-    }
-    append(&cube_mesh.surfaces, cube_data)
-    upload_mesh(cube_vertices, cube_indices, &cube_mesh)
-    for &s in cube_mesh.surfaces do sigil.add(cam_entity, s)
+    //cam_cube_e = sigil.new_entity()
+    //cube_mesh: mesh_t
+    //cube_data = render_data_t {
+    //    first     = 0,
+    //    count     = u32(len(cube_indices)),
+    //    material  = &pbr,
+    //}
+    //append(&cube_mesh.surfaces, cube_data)
+    //upload_mesh(cube_vertices, cube_indices, &cube_mesh)
+    //sigil.add(cam_cube_e, cube_mesh.surfaces[0]) 
+    //sigil.add(cam_cube_e, position_t(0)) 
+    //sigil.add(cam_cube_e, rotation_t(0)) 
 
     update_camera_vectors(&cam)
 }
 
 update_camera :: proc(delta_time: f32) {
-    for &q in sigil.query(camera_t, position_t, camera_controller_t) {
-        cam, pos, ctrl := &q.x, &q.y, &q.z
+    for &q in sigil.query(camera_t, position_t, camera_controller_t, physics_id_t) {
+        cam, pos, ctrl, id := &q.x, &q.y, &q.z, u32(q.w)
 
-        if ctrl.requested_movement.forward do cam.velocity -= cam.forward
-        if ctrl.requested_movement.back    do cam.velocity += cam.forward
-        if ctrl.requested_movement.right   do cam.velocity += cam.right
-        if ctrl.requested_movement.left    do cam.velocity -= cam.right
-        if ctrl.requested_movement.up      do cam.velocity += WORLD_UP
-        if ctrl.requested_movement.down    do cam.velocity -= WORLD_UP
+        velocity := glm.vec3 { 0, 0, 0 }
+        if ctrl.requested_movement.forward do velocity -= cam.forward
+        if ctrl.requested_movement.back    do velocity += cam.forward
+        if ctrl.requested_movement.right   do velocity += cam.right
+        if ctrl.requested_movement.left    do velocity -= cam.right
+        if ctrl.requested_movement.up      do velocity += WORLD_UP
+        if ctrl.requested_movement.down    do velocity -= WORLD_UP
 
         if ctrl.requested_rotation.right do cam.yaw   += ctrl.mouse_sensitivity * delta_time
         if ctrl.requested_rotation.left  do cam.yaw   -= ctrl.mouse_sensitivity * delta_time
         if ctrl.requested_rotation.up    do cam.pitch -= ctrl.mouse_sensitivity * delta_time
         if ctrl.requested_rotation.down  do cam.pitch += ctrl.mouse_sensitivity * delta_time
 
-        pos^ += (cam.velocity * ctrl.movement_speed * delta_time).xyz
-        cam.velocity = glm.vec3 { 0, 0, 0 }
+        //pos^ += (velocity * ctrl.movement_speed * delta_time).xyz
+        velocity *= ctrl.movement_speed
+		jolt.BodyInterface_SetLinearVelocity(body_interface, id, &velocity)
+		jolt.BodyInterface_GetPosition(body_interface, id, cast(^[3]f32)pos)
 
         if ctrl.follow_mouse {
             offset := (get_mouse_movement() * ctrl.mouse_sensitivity) * delta_time
@@ -110,8 +119,16 @@ update_camera :: proc(delta_time: f32) {
         }
         cam.pitch = glm.clamp(cam.pitch, -89, 89)
         update_camera_vectors(cam)
-        sigil.get_ref(cam_entity, render_data_t).gpu_data.model = glm.mat4Translate(pos^.xyz + -(cam.forward * 4) - glm.vec3 { 0, 0, -1 })
+        //sigil.get_ref(cam_cube_e, render_data_t).gpu_data.model = glm.mat4Translate(pos^.xyz + -(cam.forward * 4) - glm.vec3 { 0, 0, -1 })
     }
+	//for &q in sigil.query(velocity_t, jolt.BodyID) {
+	//	vel, id := &q.x, q.y
+    //    // this just makes gravity take effect when not controlling,
+    //    // which could be fun for like a drone control or something lol
+    //    //if math.round_f32(vel.x) == 0 && math.round_f32(vel.y) == 0 && math.round_f32(vel.z) == 0.0 do continue
+    //    jolt.BodyInterface_SetLinearVelocity(body_interface, id, vel)
+    //    vel^ -= vel^ / 10
+    //}
 }
 
 update_camera_vectors :: proc(cam: ^camera_t) {
@@ -130,6 +147,7 @@ update_camera_vectors :: proc(cam: ^camera_t) {
 get_camera_view :: #force_inline proc() -> glm.mat4 {
     cam      := sigil.get_ref(cam_entity, camera_t)^
     position := sigil.get_ref(cam_entity, position_t)^
+    //fmt.println(position)
 
     eye    := glm.vec3(position)
     centre := (glm.vec3(position) + cam.forward)
