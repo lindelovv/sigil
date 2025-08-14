@@ -1,4 +1,3 @@
-
 package ism
 
 import "core:fmt"

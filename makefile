@@ -5,21 +5,22 @@ else
 endif
 
 SHADER_DIR := sigil/ism/shaders
-SPV_TARGETS := $(patsubst $(SHADER_DIR)/%.slang,$(SHADER_DIR)/%.spv,\
+SPV_TARGETS := $(patsubst ./$(SHADER_DIR)/%.slang,$(SHADER_DIR)/%.spv,\
     $(filter-out $(SHADER_DIR)/%.shared.slang,$(wildcard $(SHADER_DIR)/*.slang)))
 
 $(SHADER_DIR)/%.spv: $(SHADER_DIR)/%.slang
-	slangc -target spirv -profile spirv_1_5 \
+	./lib/slang/bin/slangc -target spirv -profile spirv_1_6 \
 	       -fvk-use-entrypoint-name \
 	       -fvk-use-gl-layout \
 	       -O1 -o $@ $<
 
 all:
 	$(MAKE) c r
-release: $(SPV_TARGETS)
+release: 
+	$(SPV_TARGETS)
 	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/ -o:speed 
 build c:
-	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/ -debug -show-system-calls
+	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/ -debug
 debug d:
 	gdb ./build/sigil$(EXT)
 run r:

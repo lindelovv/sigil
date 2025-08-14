@@ -1,8 +1,8 @@
-
 package ism
 
 import sigil "sigil:core"
 import "lib:jolt"
+import "core:math"
 import "core:math/rand"
 import "core:fmt"
 import glm "core:math/linalg/glsl"
@@ -95,12 +95,29 @@ tick_jolt :: proc() {
 		jolt.PhysicsSystem_Update(physics_system, delta_time, 1, job_system),
 		"physics system update error"
 	)
-	for &q in sigil.query(position_t, rotation_t, physics_id_t, render_data_t) {
-        pos, rot, id, render := (^[3]f32)(&q.x), (^quaternion128)(&q.y), u32(q.z), &q.w
-		jolt.BodyInterface_GetPosition(body_interface, id, pos)
-		jolt.BodyInterface_GetRotation(body_interface, id, rot)
-		render.gpu_data.model = glm.mat4Translate(([3]f32)(pos^)) * glm.mat4FromQuat(quaternion128(rot^))
+	for &q in sigil.query(physics_id_t, transform_t) {
+        id, transform := u32(q.x), (^glm.mat4)(&q.y)
+        scale := glm.vec3 { glm.length(transform[0].xyz), glm.length(transform[1].xyz), glm.length(transform[2].xyz) }
+        jolt.BodyInterface_GetWorldTransform(body_interface, id, transform)
+        transform[0].xyz = glm.normalize(transform[0].xyz) * scale.x
+        transform[1].xyz = glm.normalize(transform[1].xyz) * scale.y
+        transform[2].xyz = glm.normalize(transform[2].xyz) * scale.z
 	}
+}
+
+add_physics_shape :: proc(e: sigil.entity_t, pos: ^glm.vec3, rot: ^glm.quat, scl: ^glm.vec3, motion_type: jolt.MotionType = .JPH_MotionType_Dynamic) {
+    settings: ^jolt.BodyCreationSettings
+    if motion_type == .JPH_MotionType_Static {
+        shape := jolt.BoxShape_Create(&{1 * scl.x, 1 * scl.y, 0.1}, jolt.DEFAULT_CONVEX_RADIUS)
+        settings = jolt.BodyCreationSettings_Create3(cast(^jolt.Shape)shape, pos, rot, motion_type, OBJECT_LAYER_NON_MOVING)
+    }
+    else {
+        shape := jolt.SphereShape_Create(scl.x)
+        settings = jolt.BodyCreationSettings_Create3(cast(^jolt.Shape)shape, pos, rot, motion_type, OBJECT_LAYER_MOVING)
+    }
+    defer jolt.BodyCreationSettings_Destroy(settings)
+    id := jolt.BodyInterface_CreateAndAddBody(body_interface, settings, .JPH_Activation_Activate)
+    sigil.add(e, physics_id_t(id))
 }
 
 exit_jolt :: proc() {

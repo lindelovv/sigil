@@ -10,7 +10,6 @@ struct vertex_t {
 struct scene_data_t {
     float4x4 view;
     float4x4 proj;
-    float4x4 model;
     float4   ambient_color;
     float4   sunlight_color;
     float4   sunlight_direction;
@@ -23,12 +22,13 @@ struct material_data_t {
     float4 metal_roughness_factors;
 };
 
-[[vk::binding(0, 0)]] ConstantBuffer<scene_data_t> scene_data;
+[[vk::binding(0, 0)]] ConstantBuffer<scene_data_t>    scene_data;
 [[vk::binding(1, 0)]] ConstantBuffer<material_data_t> material_data;
 
-[[vk::binding(0, 2)]] Buffer<float> buffers[];
-[[vk::binding(1, 2)]] Texture2D     textures[];
-[[vk::binding(2, 2)]] SamplerState  sampler;
+[[vk::binding(0, 2)]] StructuredBuffer<float4x4> transforms;
+[[vk::binding(1, 2)]] Texture2D textures[];
+[[vk::binding(2, 2)]] SamplerState sampler;
 
+#define get_transform(index) transforms[index]
 #define sample_texture(index, uv) textures[NonUniformResourceIndex(index)].Sample(sampler, uv)
 

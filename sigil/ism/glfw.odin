@@ -1,4 +1,3 @@
-
 package ism
 
 import sigil "sigil:core"
@@ -23,6 +22,7 @@ ms            : f32
 time          : f32
 delta_time    : f32
 @(private="file") prev_delta : f32
+init_time     : bool
 
 //_____________________________
 init_glfw :: proc() {
@@ -56,6 +56,7 @@ on_resize :: proc() {
 
 //_____________________________
 tick_glfw :: proc() {
+    if !init_time { glfw.SetTime(0); init_time = true }
     last_mouse_position = mouse_position
     x, y := glfw.GetCursorPos(window)
     mouse_position = glsl.vec2 { f32(x), f32(y) }
@@ -68,6 +69,9 @@ tick_glfw :: proc() {
 
     fps = (1000 / delta_time) / 1000
     ms = delta_time * 1000
+
+    for fn in input_queue do fn()
+    clear(&input_queue)
 
     sigil.request_exit = cast(bool)glfw.WindowShouldClose(window)
 }
@@ -84,6 +88,7 @@ exit_glfw :: proc() {
 //_____________________________
 // Input
 input_callbacks     := make(map[Key]KeyCallback)
+input_queue         := make([dynamic]proc())
 mouse_position      :  glsl.vec2
 last_mouse_position :  glsl.vec2
 
@@ -131,8 +136,8 @@ bind_input_press_release :: proc(key: Key, press: proc(), release: proc()) {
 //_____________________________
 keyboard_callback :: proc(window: glfw.WindowHandle, key: i32, scancode: i32, action: i32, mods: i32) {
     if callback, exists := input_callbacks[key]; exists {
-        if action == glfw.PRESS   { if callback.press != nil   { callback.press()   } }
-        if action == glfw.RELEASE { if callback.release != nil { callback.release() } }
+        if action == glfw.PRESS   { if callback.press != nil   { append(&input_queue, callback.press)   } }
+        if action == glfw.RELEASE { if callback.release != nil { append(&input_queue, callback.release) } }
     }
 }
 
@@ -151,7 +156,7 @@ scroll_callback :: proc(window: glfw.WindowHandle, x, y: f64) {
     if y < 0 do button = MOUSE_SCROLL_DOWN
     if button == 0 do return
     if callback, exists := input_callbacks[button]; exists {
-        if callback.press != nil   { callback.press() }
+        if callback.press != nil   { append(&input_queue, callback.press) }
     }
 }
 

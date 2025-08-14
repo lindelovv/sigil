@@ -1,4 +1,3 @@
-
 package ism
 
 import vk "vendor:vulkan"
@@ -43,7 +42,7 @@ rect := material_t {}
 
 	//blob: ^IBlob
 
-	//module: ^IModule = session->loadModule("sigil/ism/shaders/rect.slang", &diagnostics)
+	//module: ^IModule = session->loadModule("sigil/ism/renderer/shaders/rect.slang", &diagnostics)
 	//if module == nil {
 	//	fmt.println("Shader compile error!")
 	//	return

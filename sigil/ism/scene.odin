@@ -1,4 +1,3 @@
-
 package ism
 
 import sigil "sigil:core"
@@ -16,95 +15,55 @@ scene :: proc(e: sigil.entity_t) -> typeid {
     return none
 }
 
+follow : bool
+
 init_scene :: proc() {
     setup_keybinds()
 
     //_____________________________
     // Upload Mesh
-    vertices, indices := parse_gltf("res/models/DamagedHelmet.gltf")
-    for x in -2..=2 do for y in -2..=2 do for z in 2..=5 {
-        //x, y, z := 3, 3, 3
-        m: mesh_t
-        upload_mesh(vertices, indices, &m)
-        mesh_e := sigil.new_entity()
-        //sigil.add(mesh_e, m)
-        sigil.add(mesh_e, position_t { f32(x) * 3, f32(y) * 3, f32(z) * 3 })
-        //sigil.add(mesh_e, rotation_t(0))
-        sigil.add(mesh_e, m.surfaces[0])
-        //for &s in m.surfaces {
-        //    s.gpu_data.model = glm.mat4Translate({ f32(x) * 3, f32(y) * 3, f32(z) * 3 })
-        //    sigil.add(mesh_e, s)
-        //}
-        //fmt.println(mesh_e)
-    }
-
-    e_e := sigil.new_entity()
-    cube_data = render_data_t {
-        first     = 0,
-        count     = u32(len(cube_indices)),
-        material  = &pbr,
-        gpu_data  = {
-            model = glm.mat4Translate({ -1, -1, 1 })
-        }
-    }
-    append(&cube_mesh.surfaces, cube_data)
-    upload_mesh(cube_vertices, cube_indices, &cube_mesh)
-    sigil.add(e_e, cube_mesh.surfaces[0])
-
-    rect_e := sigil.new_entity()
-    rect_data := render_data_t {
-        first     = 0,
-        count     = u32(len(rect_indices)),
-        material  = &pbr,
-        gpu_data  = {
-            model = glm.mat4Translate(glm.vec3 { 0, 0, 0 }) * glm.mat4Scale(glm.vec3(100)),
-        }
-    }
-    append(&rect_mesh.surfaces, rect_data)
-    upload_mesh(rect_vertices, rect_indices, &rect_mesh)
-    sigil.add(rect_e, rect_mesh.surfaces[0])
-
-	floor_shape := jolt.BoxShape_Create(&{50, 50, 0.5}, jolt.DEFAULT_CONVEX_RADIUS)
-
-	floor_settings := jolt.BodyCreationSettings_Create3(
-		cast(^jolt.Shape)floor_shape,
-		&{0, 0, 0},
-		nil,
-		.JPH_MotionType_Static,
-		OBJECT_LAYER_NON_MOVING,
-	)
-	defer jolt.BodyCreationSettings_Destroy(floor_settings)
-
-	jolt.BodyCreationSettings_SetRestitution(floor_settings, 0.5)
-	jolt.BodyCreationSettings_SetFriction(floor_settings, 0.5)
-
-	floor_id = jolt.BodyInterface_CreateAndAddBody(body_interface, floor_settings, .JPH_Activation_DontActivate)
-
-    //cube_mesh: mesh_t
-    //cube_data = render_data_t {
-    //    first     = 0,
-    //    count     = u32(len(cube_indices)),
-    //    material  = &pbr,
+    //helmet := parse_gltf("res/models/DamagedHelmet.gltf")
+    //for x in -2..=2 do for y in -2..=2 do for z in 2..=5 {
+    //    //x, y, z := 3, 3, 3
+    //    mesh_e := sigil.new_entity()
+    //    r_data := upload_mesh(helmet[0].vertices, helmet[0].indices)
+    //    sigil.add(mesh_e, position_t { f32(x) * 3, f32(y) * 3, f32(z) * 3 })
+    //    sigil.add(mesh_e, transform_t(0))
+    //    sigil.add(mesh_e, r_data)
     //}
-    //append(&cube_mesh.surfaces, cube_data)
-    //upload_mesh(cube_vertices, cube_indices, &cube_mesh)
-    //for &s in cube_mesh.surfaces do sigil.add(box_e, s)
+    scene := parse_gltf_scene("res/models/scene.glb")
 
-    cube_e := sigil.new_entity()
-    c_data := render_data_t {
-        first     = 0,
-        count     = u32(len(cube_indices)),
-        material  = &pbr,
-        gpu_data  = {
-            model = glm.mat4Translate(glm.vec3 { 4, 4, 2 }),
-        }
-    }
-    m: mesh_t
-    append(&m.surfaces, cube_data)
-    upload_mesh(cube_vertices, cube_indices, &m)
-    sigil.add(cube_e, m.surfaces[0])
+    //e_e := sigil.new_entity()
+    //cube_data = upload_mesh(cube_vertices, cube_indices)
+    //sigil.add(e_e, cube_data)
+    //_, e_e_trans_idx := sigil.add(e_e, transform_t(glm.mat4Translate({ -1, -1, 1 })))
 
-	pos := sigil.add(cube_e, position_t { 4, 4, 4 })
+    //rect_e := sigil.new_entity()
+    //rect_data := upload_mesh(rect_vertices, rect_indices)
+    //sigil.add(rect_e, rect_data)
+    //_, rect_e_trans_idx := sigil.add(rect_e, transform_t(glm.mat4Translate(glm.vec3 { 0, 0, 0 }) * glm.mat4Scale(glm.vec3(100))))
+
+	//floor_shape := jolt.BoxShape_Create(&{10, 10, 0.5}, jolt.DEFAULT_CONVEX_RADIUS)
+
+	//floor_settings := jolt.BodyCreationSettings_Create3(
+	//	cast(^jolt.Shape)floor_shape,
+	//	&{0, 0, -1},
+	//	nil,
+	//	.JPH_MotionType_Static,
+	//	OBJECT_LAYER_NON_MOVING,
+	//)
+	//defer jolt.BodyCreationSettings_Destroy(floor_settings)
+
+	//jolt.BodyCreationSettings_SetRestitution(floor_settings, 0.5)
+	//jolt.BodyCreationSettings_SetFriction(floor_settings, 0.5)
+
+	//floor_id = jolt.BodyInterface_CreateAndAddBody(body_interface, floor_settings, .JPH_Activation_DontActivate)
+
+    //cube_e := sigil.new_entity()
+    //c_data := upload_mesh(cube_vertices, cube_indices)
+    //sigil.add(cube_e, c_data)
+    //sigil.add(cube_e, transform_t(0))
+	//pos, _ := sigil.add(cube_e, position_t { 4, 4, 4 })
 	//sigil.add(cube_e, rotation_t(0))
 	//sigil.add(cube_e, velocity_t(0))
 	//sigil.add(cube_e, sigil.name("phys cube"))
@@ -112,28 +71,27 @@ init_scene :: proc() {
 	box_shape := jolt.SphereShape_Create(0.8)//(&{ 1, 1, 1 }, jolt.DEFAULT_CONVEX_RADIUS)
 	box_settings := jolt.BodyCreationSettings_Create3(
 		cast(^jolt.Shape)box_shape,
-		cast(^[3]f32)&pos,
+		cast(^[3]f32)&{0,0,0},
 		nil,
 		.JPH_MotionType_Dynamic,
 		OBJECT_LAYER_MOVING,
 	)
 	defer jolt.BodyCreationSettings_Destroy(box_settings)
 
-    e : sigil.entity_t = 10
-    for x in -2..=2 do for y in -2..=2 do for z in 3..=6 {    
-        //x, y, z := 0, 0, 5
-	    id := jolt.BodyInterface_CreateAndAddBody(body_interface, box_settings, .JPH_Activation_Activate)
-        jolt.BodyInterface_SetPosition(body_interface, id, &{ f32(x) * 3, f32(y) * 3, f32(z) * 3}, .JPH_Activation_Activate)
-	    sigil.add(e, physics_id_t(id))
-	    sigil.add(e, position_t(0))
-	    sigil.add(e, rotation_t(0))
-        e += 1
-    }
+    //e : sigil.entity_t = 9
+    //for x in -2..=2 do for y in -2..=2 do for z in 3..=6 {    
+    //    //x, y, z := 0, 0, 5
+	//    id := jolt.BodyInterface_CreateAndAddBody(body_interface, box_settings, .JPH_Activation_Activate)
+    //    jolt.BodyInterface_SetPosition(body_interface, id, &{ f32(x) * 3, f32(y) * 3, f32(z) * 3}, .JPH_Activation_Activate)
+	//    sigil.add(e, physics_id_t(id))
+	//    sigil.add(e, position_t(0))
+	//    sigil.add(e, rotation_t(0))
+    //    e += 1
+    //}
 	id := jolt.BodyInterface_CreateAndAddBody(body_interface, box_settings, .JPH_Activation_Activate)
     jolt.BodyInterface_SetPosition(body_interface, id, cast(^[3]f32)sigil.get_ref(cam_entity, position_t), .JPH_Activation_Activate)
-	sigil.add(cam_entity, rotation_t(0))
+	//sigil.add(cam_entity, rotation_t(0))
 	sigil.add(cam_entity, physics_id_t(id))
-    //fmt.println(cam_entity)
 
 	jolt.PhysicsSystem_OptimizeBroadPhase(physics_system)
 }
@@ -211,12 +169,84 @@ setup_keybinds :: proc() {
             fmt.printfln("%#v", sigil.query(position_t, render_data_t))
         },
     )
+
+    bind_input(glfw.KEY_F,
+        press   = proc() { follow = !follow  },
+    )
+
+    bind_input(glfw.KEY_B,
+        press   = proc() {
+            //fmt.println(sigil.get_component_slice(&sigil.core.groups[sigil.types_hash(render_data_t, transform_t)], transform_t))
+            //fmt.println(sigil.core.groups[sigil.types_hash(render_data_t, transform_t)])
+            sigil.remove_component(auto_cast n, render_data_t)
+            n += 1
+            //fmt.println()
+            //g := &sigil.core.groups[sigil.types_hash(render_data_t, transform_t)]
+            //fmt.println(g)
+            //fmt.println()
+            //fmt.println(sigil.get_component_slice(&sigil.core.groups[sigil.types_hash(render_data_t, transform_t)], transform_t))
+            //fmt.println()
+            //slice1 := sigil.get_component_slice(g, render_data_t)
+            //slice2 := sigil.get_component_slice(g, transform_t)
+            //fmt.printfln("=-== %#v", slice1)
+            //fmt.printfln("mmmmmm %#v", slice2)
+        },
+    )
 }
+n := 9
 
 tick_scene :: proc() {
     update_camera(delta_time)
 
     wave := math.sin(3.0 * math.PI * 0.1 + time) * 0.001
     gpu_scene_data.sun_direction += glm.vec3 { wave, -wave, wave }
+
+    if follow {
+        target: [3]f32
+        cam_id := sigil.get_value(cam_entity, physics_id_t)
+	    jolt.BodyInterface_GetPosition(body_interface, u32(cam_id), &target)
+        for &q in sigil.query(transform_t, physics_id_t) {
+            transform, id := &q.x, u32(q.y)
+
+            pos: [3]f32
+	        jolt.BodyInterface_GetPosition(body_interface, id, &pos)
+            z := pos.z
+            movement := move_towards(pos, target, 0.01)
+            //movement.z = pos.z
+	    	jolt.BodyInterface_SetPosition(body_interface, id, &movement, .JPH_Activation_Activate)
+
+            src_rot: glm.quat
+            jolt.BodyInterface_GetRotation(body_interface, id, &src_rot)
+            target_dir := glm.normalize(target - pos)
+            rot := rotate_towards(src_rot, target_dir, glm.radians(f32(1.0)))
+            //offset_rot := glm.quatAxisAngle(glm.normalize(glm.vec3{0, 1, 0}), 90.0)
+            //rot = rot * offset_rot
+            jolt.BodyInterface_SetRotation(body_interface, id, &rot, .JPH_Activation_Activate)
+
+	    	//jolt.BodyInterface_SetLinearAndAngularVelocity(body_interface, id, &target_dir, &target_dir)
+        }
+    }
+}
+
+move_towards :: proc(src, dst: glm.vec3, mdd: f32) -> glm.vec3 {
+    x, y, z: f32 = dst.x - src.x, dst.y - src.y, dst.z - src.z
+    sqdist: f32 = x*x + y*y + z*z
+    if sqdist == 0 || (mdd >= 0 && sqdist <= mdd*mdd) do return dst
+    dist: f32 = math.sqrt(sqdist)
+    return glm.vec3 { src.x + x / dist * mdd, src.y + y / dist * mdd, src.z + z / dist * mdd }
+}
+
+rotate_towards :: proc(q: glm.quat, target: glm.vec3, angle_step: f32) -> glm.quat {
+    forward := glm.quatMulVec3(q, target)
+    axis := glm.cross(forward, target)
+    angle := glm.acos(glm.dot(forward, glm.normalize(target)))
+
+    if (glm.length(axis) > 0.0001) {
+        axis = glm.normalize(axis);
+        inc := glm.quatAxisAngle(axis, glm.min(angle_step, angle))
+        return inc * q
+    } else {
+        return q
+    }
 }
 

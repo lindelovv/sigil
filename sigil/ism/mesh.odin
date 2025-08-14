@@ -1,29 +1,15 @@
-
 package ism
 
 import vk "vendor:vulkan"
 import glm "core:math/linalg/glsl"
 import "core:slice"
 
-mesh_t :: struct {
-    surfaces : [dynamic]render_data_t,
-    index    : allocated_buffer_t,
-    vertex   : allocated_buffer_t,
-}
-
-render_data_t :: struct {
-    count       : u32,
-    first       : u32,
-    idx_buffer  : vk.Buffer,
-    material    : ^material_t,
-    address     : vk.DeviceAddress,
-    bounds      : glm.vec4,
-    gpu_data    : gpu_object_data_t,
+mesh_data_t :: struct {
+    vertices: []vertex_t,
+    indices : []u32,
 }
 
 cube_data : render_data_t
-cube_mesh : mesh_t
-rect_mesh : mesh_t
 
 // rect
 rect_vertices := []vertex_t {

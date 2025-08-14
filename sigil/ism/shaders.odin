@@ -1,4 +1,3 @@
-
 package ism
 import vk "vendor:vulkan"
 
@@ -19,5 +18,13 @@ shader_pipeline_t :: struct {
     pool            : vk.DescriptorPool,
     pipeline        : vk.Pipeline,
     pipeline_layout : vk.PipelineLayout,
+}
+
+material_definition_t :: struct {
+    albedo_texture    : u32,
+    normal_texture    : u32,
+    roughness_texture : u32,
+    occlusion_texture : u32,
+    emissive_texture  : u32,
 }
 

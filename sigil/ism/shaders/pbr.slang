@@ -18,9 +18,8 @@ struct fs_output_t {
 };
 
 struct push_constant_t {
-    float4x4      model;
-    float4        bounds;
     Ptr<vertex_t> vertices;
+    uint          model;
     uint          albedo;
     uint          normal;
     uint          metal_roughness;
@@ -33,14 +32,15 @@ struct push_constant_t {
 [shader("vertex")]
 vs_output_t vs_main(uint vi: SV_VertexID) {
     vertex_t v = pc.vertices[vi];
-    float4 world_pos = mul(float4(v.position, 1.f), pc.model);
+    float4x4 model = get_transform(pc.model);
+    float4 world_pos = mul(float4(v.position, 1.f), model);
     float4 view_pos = mul(world_pos, scene_data.view);
     float4 clip_pos = mul(view_pos, scene_data.proj);
 
     vs_output_t out;
     out.clip = clip_pos;
     out.pos = world_pos.xyz;
-    out.normal = mul((float3x3)pc.model, v.normal);
+    out.normal = mul((float3x3)model, v.normal);
     out.color = v.color.xyz;
     out.uv = float2(v.uv_x, v.uv_y);
     return out;

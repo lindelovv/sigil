@@ -1,4 +1,3 @@
-
 package ism
 
 import sigil "../core"
@@ -33,10 +32,6 @@ camera_controller_t :: struct {
     follow_mouse       : bool,
 }
 
-transform_t :: glm.mat4
-position_t :: distinct [3]f32
-rotation_t :: distinct quaternion128
-velocity_t :: glm.vec3
 camera_t :: struct {
     yaw       : f32,
     pitch     : f32,
@@ -55,7 +50,7 @@ cam_cube_e: sigil.entity_t
 init_camera :: proc() {
     cam_entity = sigil.new_entity()
 
-    cam := sigil.add(cam_entity, camera_t {
+    cam, _ := sigil.add(cam_entity, camera_t {
         fov     = 70.0,
         up      = WORLD_UP,
         near    = 0.1,
@@ -166,7 +161,7 @@ get_camera_view :: #force_inline proc() -> glm.mat4 {
 get_camera_projection :: #force_inline proc() -> glm.mat4 {
     cam := sigil.get_ref(cam_entity, camera_t)
 
-    a := f32(swap_extent.width) / f32(swap_extent.height)
+    a := f32(swapchain.extent.width) / f32(swapchain.extent.height)
     h := glm.tan(glm.radians(cam.fov) * 0.5)
     f := cam.far
     n := cam.near

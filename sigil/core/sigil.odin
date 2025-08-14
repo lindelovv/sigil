@@ -1,4 +1,3 @@
-
 package __sigil
 
 import "core:fmt"
@@ -20,35 +19,28 @@ PATCH_V :: 2
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-// not used as of now
-HAS_AVX2  :: #config(HAS_AVX2, ODIN_ARCH == .amd64 && false)
-HAS_SSE4  :: #config(HAS_SSE4, ODIN_ARCH == .amd64 && false)
-HAS_NEON  :: #config(HAS_NEON, ODIN_ARCH == .arm64)
-
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-entity_t :: distinct int
-
-WORLD    :: entity_t(1)
+entity_t :: u32
 INVALID  :: entity_t(0)
+WORLD    :: entity_t(1)
 
 core: struct {
-    entities : [dynamic]entity_t,
-    flags    : [dynamic]^bit_array.Bit_Array,
-    sets     : map[typeid]set_t,
-    groups   : map[u64]group_t,
+    entities   : [dynamic]entity_t,
+    flags      : [dynamic]bit_array.Bit_Array,
+    sets       : map[typeid]set_t,
+    groups     : map[u64]group_t,
+    set_lookup : map[int]typeid,
 }
 
 set_t :: struct {
-    components : rawptr,
+    components : rawptr `fmt: "v,count"`,
     indices    : [dynamic]int,
     count      : int,
     id         : int,
     type       : typeid,
+    t_size     : int,
 }
 
 group_t :: struct {
-    entities   : [dynamic]entity_t,
     components : ^bit_array.Bit_Array,
     range      : map[typeid]range_t,
 }
@@ -80,8 +72,8 @@ relation :: struct($topic, $target: typeid) { topic, target }
 
 tag_t :: distinct struct {} // maybe use?
 
-before     :: distinct []proc()
-after      :: distinct []proc()
+before :: distinct []proc()
+after  :: distinct []proc()
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
@@ -111,7 +103,7 @@ schedule :: #force_inline proc(e: entity_t, fn: $type, conditions: []union { bef
 
 run :: #force_inline proc() {
     for fn in query(init) { fn() }
-    main_loop: for !request_exit { for fn in query(tick) { fn() }; free_all(context.temp_allocator) }
+    main_loop: for !request_exit { for fn in query(tick) { fn() } free_all(context.temp_allocator) }
     for fn in query(exit) { fn() }
 }
 
@@ -120,25 +112,39 @@ run :: #force_inline proc() {
 new_entity :: #force_inline proc() -> entity_t {
     e := entity_t(len(core.entities))
     append(&core.entities, e)
-    append(&core.flags, bit_array.create(len(core.sets)))
+    append(&core.flags, bit_array.create(len(core.sets))^)
     return e
+}
+
+// borked
+delete_entity :: #force_inline proc(entity: entity_t) {
+    if !entity_is_valid(entity) do return
+    cont := true
+    it := bit_array.make_iterator(&core.flags[entity])
+    for cont {
+        id: int
+        id, cont = bit_array.iterate_by_set(&it)
+
+        _set := core.sets[core.set_lookup[id]]
+        remove_component(entity, type_of(_set.type)) // this is wrong lol, pretty sure type_of(_set.type) just returns typeid
+    }
 }
 
 get_entity :: #force_inline proc(entity: entity_t) -> entity_t {
     for e in core.entities { if e == entity do return e }
-    return 0
+    return INVALID
 }
 
-is_valid_entity :: proc(entity: entity_t) -> bool {
+entity_is_valid :: proc(entity: entity_t) -> bool {
     return entity != INVALID
 }
 
 has_component :: #force_inline proc(entity: entity_t, type: typeid) -> bool {
     e := get_entity(entity)
-    if e == 0 || int(e) >= len(core.flags) || core.sets[type].components == nil || core.flags[e] == nil {
+    if e == 0 || int(e) >= len(core.flags) || core.sets[type].components == nil || &core.flags[e] == nil {
         return false
     }
-    return bit_array.get(core.flags[e], core.sets[type].id)
+    return bit_array.get(&core.flags[e], core.sets[type].id)
 }
 
 @(require_results)
@@ -159,18 +165,21 @@ get_ref :: proc(entity: entity_t, $type: typeid) -> (^type, bool) #optional_ok {
     return ref, ref != nil
 }
 
-add_to_world :: #force_inline proc(component: $type) -> type { return add_to_entity(WORLD, component) }
-add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> type {
-    if type == typeid_of(none) do return {}
+add_to_world :: #force_inline proc(component: $type) -> (type, int) { return add_to_entity(WORLD, component) }
+add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> (type, int) {
+    if type == typeid_of(none) do return {}, 0
     e := get_entity(to)
-    if e == 0 do return {}
+    if e == 0 do return {}, 0
 
     set := core.sets[type]
     if exists := &set.components; exists == nil || set.count == 0 {
         set.components = new([dynamic]type)
         append((^[dynamic]type)(set.components), type{}) // dummy for invalid
+        //fmt.printfln("%v %v", typeid_of(type), (^[dynamic]type)(set.components))
         set.id = len(core.sets)
+        core.set_lookup[set.id] = type
         set.type = type
+        set.t_size = size_of(type)
     }
 
     data := cast(^[dynamic]type)(set.components)
@@ -186,32 +195,76 @@ add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> type {
     core.sets[type] = set
 
     if len(core.flags) <= int(e) do resize(&core.flags, len(core.entities) + 1)
-    if core.flags[e] == nil do core.flags[e] = bit_array.create(len(core.entities))
-    bit_array.set(core.flags[e], set.id)
+    if &core.flags[e] == nil do core.flags[e] = bit_array.create(len(core.entities))^
+    bit_array.set(&core.flags[e], set.id)
 
     //fmt.printfln("adding %v to %v", typeid_of(type), e)
-
-    for hash, &group in &core.groups {
-        if bit_array.get(group.components, core.sets[type].id) && has_all_components(e, group.components) {
-            if !slice.contains(group.entities[:], e) {
-                append(&group.entities, e)
-            }
-        }
-    }
-    return component
+    //fmt.printfln("/// %v %#v", typeid_of(type), (^[dynamic]type)(set.components))
+    return component, set.indices[e]
 }
 add :: proc { add_to_world, add_to_entity }
 
+// todo: does not remove the correct entry I'm pretty sure
+//       also not properly implemented
 remove_component :: proc(entity: entity_t, $type: typeid) {
+    //fmt.println("========================================")
+    //fmt.println(has_component(entity, type))
     if !has_component(entity, type) do return
+
     set := core.sets[type]
-    data := cast(^[dynamic]type)(set.components)
-    idx := set.indices[entity]
-    data[idx] = nil
-    set.indices[entity] = 0
-    set.count -= 1
-    if idx < set.first_free do set.first_free = idx
-    bit_array.clear(core.flags[entity], set.id)
+    if set.indices[entity] == 0 {
+        //fmt.println("zero")
+        return
+    }
+    data := cast(^[dynamic]type)(&set.components)
+    //delete: u64
+    for id, &group in core.groups {
+        if !bit_array.get(group.components, core.sets[type].id) do continue
+
+        range := &group.range[type]
+        last := range.offset + range.count
+        if last >= len(data) || set.indices[entity] >= len(data) {
+            //fmt.printfln("len fail -- last: %v idx[e]: %v len: %v", last, set.indices[entity], len(data))
+            continue
+        }
+        for _, &r in &group.range do r.count -= 1
+        if range.count == 0 {
+            fmt.println("delete")
+            //delete = id
+            break
+        }
+        if data[last] == {} do fmt.println("last")
+        //fmt.printfln("idx: %v", set.indices[entity])
+        if data[set.indices[entity]] == {} do fmt.println("last")
+
+        // this for sure is broken as long as you don't remove in order lol
+        //it := bit_array.make_iterator(group.components)
+        //for id in bit_array.iterate_by_set(&it) {
+        //    _set := &core.sets[core.set_lookup[id]]
+        //    fmt.printfln("swap %v to %v", _set.type, last)
+        //    //_set.indices[entity], _set.indices[last] = _set.indices[last], _set.indices[entity]
+        //    _set.indices[entity] = 0
+
+        //    p1 := uintptr(_set.components) + uintptr(set.indices[entity] * _set.t_size)
+        //    p2 := uintptr(_set.components) + uintptr(last * _set.t_size)
+        //    
+        //    mem.copy(_set.components, rawptr(p1), _set.t_size)
+        //    mem.copy(rawptr(p1), rawptr(p2), _set.t_size)
+        //    mem.copy(rawptr(p2), _set.components, _set.t_size) 
+        //}
+        end := set.count
+        if last != end {
+            //fmt.println("swap to end")
+            data[end], data[last] = data[last], data[end]
+            //set.indices[last], set.indices[end] = set.indices[end], set.indices[last]
+        }
+        //set.indices[end] = 0
+        set.count -= 1
+        //fmt.printfln("data: %#v", data[range.offset:last])
+    }
+    //fmt.println(delete)
+    //if delete > 0 do delete_key(&core.groups, delete)
+    //fmt.println("eop")
 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -250,7 +303,6 @@ query_3 :: #force_inline proc(
     slice1 := get_component_slice(g, type1)
     slice2 := get_component_slice(g, type2)
     slice3 := get_component_slice(g, type3)
-    //fmt.printfln("soa %v %v %v \n %#v", typeid_of(type1), typeid_of(type2), typeid_of(type3), soa_zip(slice1, slice2, slice3))
     return soa_zip(slice1, slice2, slice3)
 }
 
@@ -276,11 +328,34 @@ query_4 :: #force_inline proc(
 
 query :: proc { query_1, query_2, query_3, query_4 }
 
+get_component_slice :: proc(g: ^group_t, $t: typeid) -> []t {
+    set := core.sets[t]
+    if info, exists := g.range[t]; exists {
+        data := cast(^[dynamic]t)(set.components)
+        start := info.offset
+        end := start + info.count
+        if end > len(data^) do return nil
+        return data[start:end]
+    }
+    return nil
+}
+
+has_all_components :: proc(entity: entity_t, mask: ^bit_array.Bit_Array) -> bool {
+    if entity <= 0 || int(entity) >= len(core.flags) || &core.flags[entity] == nil do return false
+    if entity <= 0 || int(entity) >= len(core.flags) do return false
+    if &core.flags[entity] == nil do return false
+    
+    for i in 0..<len(mask.bits) {
+        if mask.bits[i] == 0 do continue
+        if (core.flags[entity].bits[i] & mask.bits[i]) != mask.bits[i] do return false
+    }
+    return true
+}
+
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 types_hash :: proc(types: ..typeid) -> (h: u64) { for t in types do h ~= (^u64)(raw_data(mem.any_to_bytes(t)))^; return }
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 get_or_declare_group_2 :: proc($type1, $type2: typeid) -> ^group_t {
     if _, ok := core.sets[type1]; !ok do return {}
@@ -327,14 +402,13 @@ get_or_declare_group :: proc { get_or_declare_group_2, get_or_declare_group_3, g
 
 declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
     new_group.components = bit_array.create(len(core.sets))
-    for set in sets {
-        bit_array.set(new_group.components, set.id)
-    }
-    
+    for set in sets do bit_array.set(new_group.components, set.id)
+
     count := 0
+    group_entities: [dynamic]entity_t
     for e in core.entities {
-        if is_valid_entity(e) && has_all_components(e, new_group.components) {
-            append(&new_group.entities, e)
+        if entity_is_valid(e) && has_all_components(e, new_group.components) {
+            append(&group_entities, e)
             count += 1
         }
     }
@@ -343,10 +417,9 @@ declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
     to_sort := make([dynamic]set_t)
     for set in sets {
         max, min := 1, max(int)
-        for e in new_group.entities {
+        for e in group_entities {
             if set.indices[e] < min && set.indices[e] != 0 do min = set.indices[e]
             if set.indices[e] > max do max = set.indices[e]
-            //fmt.println(max, min)
         }
         if max - count == min { // already in ok order (not thinking about other groups)
             fmt.println(max, count, min, max - count)
@@ -357,80 +430,10 @@ declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
             append(&to_sort, set)
         }
     }
-    // broken as shit
-    //swap :: proc(arr: rawptr, a, b, size: int) {
-    //    if a == b do return
-    //    ptr_a := rawptr(uintptr(arr) + (uintptr(a) * uintptr(size)))
-    //    ptr_b := rawptr(uintptr(arr) + (uintptr(b) * uintptr(size)))
-    //    tmp := make([]byte, size)
-    //    defer delete(tmp)
-    //    mem.copy(raw_data(tmp), ptr_a, size)
-    //    mem.copy(ptr_a, ptr_b, size)
-    //    mem.copy(ptr_b, raw_data(tmp), size)
-    //}
     for set in to_sort {
         min := max(int)
-        for e in new_group.entities {
-            if set.indices[e] == 0 do fmt.println("invalid")
-            if set.indices[e] < min do min = set.indices[e]
-        }
-        //for e, i in new_group.entities {
-        //    if set.indices[e] != i {
-        //        if len(set.indices) < i + 1 do continue
-        //        set.indices[i + 1], set.indices[i] = set.indices[i], set.indices[i + 1]
-        //        swap(set.components, i, i + 1, set.sizeof_type)
-        //        //set.components[i + 1], set.indices[i] = set.indices[i], set.indices[i + 1]
-        //    }
-        //}
+        for e in group_entities do if set.indices[e] < min do min = set.indices[e]
         new_group.range[set.type] = range_t { min, count }
     }
-    //fmt.printfln("%#v", new_group.range)
-
-    //compare_t :: struct {
-    //    group   : group_t,
-    //    type    : typeid,
-    //    overlap : [2]int,
-    //}
-    //overlap := make([dynamic]compare_t)
-    //for hash, group in core.groups do for set in sets {
-    //    if bit_array.get(new_group.components, set.id) {
-    //        range := group.range[set.type]
-    //        append(&overlap, compare_t { group, set.type, { range.offset, range.count } })
-    //        fmt.println(set.type, range.offset, range.count)
-    //    }
-    //}
-    //for group in overlap {
-    //    // figure out how to handle sorting these sections, who should take president
-    //}
-
     return true
 }
-
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-get_component_slice :: proc(g: ^group_t, $t: typeid) -> []t {
-    set := core.sets[t]
-    if info, exists := g.range[t]; exists {
-        data := cast(^[dynamic]t)(set.components)
-        start := info.offset
-        end := start + len(g.entities)
-        if end > len(data^) do return nil
-        return data[start:end]
-    }
-    return nil
-}
-
-has_all_components :: proc(entity: entity_t, mask: ^bit_array.Bit_Array) -> bool {
-    if entity <= 0 || int(entity) >= len(core.flags) || core.flags[entity] == nil do return false
-    if entity <= 0 || int(entity) >= len(core.flags) do return false
-    if core.flags[entity] == nil do return false
-    
-    for i in 0..<len(mask.bits) {
-        if mask.bits[i] == 0 do continue
-        if (core.flags[entity].bits[i] & mask.bits[i]) != mask.bits[i] do return false
-    }
-    return true
-}
-
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-

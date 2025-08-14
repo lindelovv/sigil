@@ -1,4 +1,3 @@
-
 package ism
 
 import vk "vendor:vulkan"
@@ -11,9 +10,8 @@ import sigil "sigil:core"
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 pbr_push_constant_t :: struct #align(16) {
-    model           : glm.mat4,
-    bounds          : glm.vec4,
     vertex_buffer   : vk.DeviceAddress,
+    model           : u32,
     albedo          : u32,
     normal          : u32,
     metal_roughness : u32,
@@ -47,11 +45,13 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
 	    	structureSize = size_of(slang.TargetDesc),
 	    	format        = .SPIRV,
 	    	flags         = { .GENERATE_SPIRV_DIRECTLY },
-	    	profile       = global_session->findProfile("spirv_1_5"),
+	    	profile       = global_session->findProfile("spirv_1_6"),
 	    }
 
 	    compiler_option_entries := [?]slang.CompilerOptionEntry{
 	    	{ name = .VulkanUseEntryPointName, value = { intValue0 = 1 } },
+            //{ name = .DebugInformation, value = { intValue0 = i32(slang.DebugInfoLevel.STANDARD)}},
+            //{ name = .Optimization, value = { intValue0 = i32(slang.OptimizationLevel.NONE)}}, // Disable optimizations for debugging
 	    }
 	    session_desc := slang.SessionDesc {
 	    	structureSize            = size_of(slang.SessionDesc),
@@ -145,7 +145,7 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
     }
     vk_module: vk.ShaderModule
     __ensure(
-        vk.CreateShaderModule(device, &info, nil, &vk_module),
+        vk.CreateShaderModule(device.handle, &info, nil, &vk_module),
         msg = "failed to create shader module"
     )
 
@@ -166,7 +166,7 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
         pBindings    = raw_data(pbr_layout_bindings),
     }
     __ensure(
-        vk.CreateDescriptorSetLayout(device, &pbr_layout_info, nil, &pbr.set_layout),
+        vk.CreateDescriptorSetLayout(device.handle, &pbr_layout_info, nil, &pbr.set_layout),
         msg = "Failed to create descriptor set"
     )
 
@@ -177,7 +177,7 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
         pSetLayouts        = &pbr.set_layout,
     }
     __ensure(
-        vk.AllocateDescriptorSets(device, &pbr_allocate_info, &pbr.set),
+        vk.AllocateDescriptorSets(device.handle, &pbr_allocate_info, &pbr.set),
         msg = "Failed to allocate descriptor set"
     )
 
@@ -199,7 +199,7 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
         pPushConstantRanges    = &pbr_push_const_ranges,
     }
     __ensure(
-        vk.CreatePipelineLayout(device, &pipeline_layout_info, nil, &pbr.pipeline_layout),
+        vk.CreatePipelineLayout(device.handle, &pipeline_layout_info, nil, &pbr.pipeline_layout),
         msg = "Failed to create graphics pipeline layout"
     )
 
@@ -234,7 +234,7 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
     pbr_writes := []vk.WriteDescriptorSet {
         write_descriptor(&desc, 0, .UNIFORM_BUFFER, descriptor_buffer_info_t { pbr_buffer, size_of(pbr_uniform_t), 0 }),
     }
-    vk.UpdateDescriptorSets(device, u32(len(pbr_writes)), raw_data(pbr_writes), 0, nil)
+    vk.UpdateDescriptorSets(device.handle, u32(len(pbr_writes)), raw_data(pbr_writes), 0, nil)
 
     stages := []vk.PipelineShaderStageCreateInfo {
         vk.PipelineShaderStageCreateInfo {
@@ -259,7 +259,7 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
         sType       = .PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
         polygonMode = .FILL,
         lineWidth   = 1,
-        cullMode    = { .BACK },
+        cullMode    = {},
         frontFace   = .COUNTER_CLOCKWISE,
     }
     multisampling := vk.PipelineMultisampleStateCreateInfo {
@@ -329,11 +329,11 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
         pDynamicState       = &dynamic_sate,
         layout              = pbr.pipeline_layout
     }
-    __ensure(vk.CreateGraphicsPipelines(device, 0, 1, &graphics_pipe_info, nil, &pbr.pipeline), "Failed to create PBR Pipeline")
+    __ensure(vk.CreateGraphicsPipelines(device.handle, 0, 1, &graphics_pipe_info, nil, &pbr.pipeline), "Failed to create PBR Pipeline")
 
-    pbr.update_delegate = #force_inline proc(cmd: vk.CommandBuffer, data: gpu_object_data_t, address: vk.DeviceAddress) {
-        pbr_push_const.model = data.model
-        pbr_push_const.vertex_buffer = address
+    pbr.update_delegate = #force_inline proc(cmd: vk.CommandBuffer, data: ^render_data_t) {
+        pbr_push_const.model = data.transform
+        pbr_push_const.vertex_buffer = data.address
         vk.CmdPushConstants(cmd, pbr.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(pbr_push_constant_t), &pbr_push_const)
     }
 }

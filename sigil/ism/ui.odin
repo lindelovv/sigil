@@ -1,4 +1,3 @@
-
 package ism
 
 import vk "vendor:vulkan"
@@ -15,7 +14,7 @@ ui_declare :: proc() {
         bindingCount = u32(len(ui_layout_bindings)),
         pBindings    = raw_data(ui_layout_bindings),
     }
-    __ensure(vk.CreateDescriptorSetLayout(device, &ui_layout_info, nil, &ui.set_layout), "Failed to create descriptor set")
+    __ensure(vk.CreateDescriptorSetLayout(device.handle, &ui_layout_info, nil, &ui.set_layout), "Failed to create descriptor set")
 
     ui_allocate_info := vk.DescriptorSetAllocateInfo {
         sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -23,7 +22,7 @@ ui_declare :: proc() {
         descriptorSetCount = 1,
         pSetLayouts        = &ui.set_layout,
     }
-    __ensure(vk.AllocateDescriptorSets(device, &ui_allocate_info, &ui.set), "Failed to allocate descriptor set")
+    __ensure(vk.AllocateDescriptorSets(device.handle, &ui_allocate_info, &ui.set), "Failed to allocate descriptor set")
 
     ui_push_const := vk.PushConstantRange {
         stageFlags = { .VERTEX, .FRAGMENT },
@@ -41,17 +40,17 @@ ui_declare :: proc() {
         pushConstantRangeCount = 1,
         pPushConstantRanges    = &ui_push_const,
     }
-    __ensure(vk.CreatePipelineLayout(device, &pipeline_layout_info, nil, &ui.pipeline_layout), "Failed to create graphics pipeline layout")
+    __ensure(vk.CreatePipelineLayout(device.handle, &pipeline_layout_info, nil, &ui.pipeline_layout), "Failed to create graphics pipeline layout")
     
     desc := descriptor_data_t { set = ui.set }
     ui_writes := []vk.WriteDescriptorSet {}
-    vk.UpdateDescriptorSets(device, u32(len(ui_writes)), raw_data(ui_writes), 0, nil)
+    vk.UpdateDescriptorSets(device.handle, u32(len(ui_writes)), raw_data(ui_writes), 0, nil)
 
     vertex_shader := create_shader_module("res/shaders/ui.vert.spv")
-    defer vk.DestroyShaderModule(device, vertex_shader, nil)
+    defer vk.DestroyShaderModule(device.handle, vertex_shader, nil)
 
     fragment_shader := create_shader_module("res/shaders/ui.frag.spv")
-    defer vk.DestroyShaderModule(device, fragment_shader, nil)
+    defer vk.DestroyShaderModule(device.handle, fragment_shader, nil)
 
     stages := []vk.PipelineShaderStageCreateInfo {
         vk.PipelineShaderStageCreateInfo {
@@ -146,6 +145,6 @@ ui_declare :: proc() {
         pDynamicState       = &dynamic_sate,
         layout              = ui.pipeline_layout
     }
-    __ensure(vk.CreateGraphicsPipelines(device, 0, 1, &graphics_pipe_info, nil, &ui.pipeline), "Failed to create PBR Pipeline")
+    __ensure(vk.CreateGraphicsPipelines(device.handle, 0, 1, &graphics_pipe_info, nil, &ui.pipeline), "Failed to create PBR Pipeline")
 }
 

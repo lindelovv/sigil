@@ -1,7 +1,6 @@
-
 package ism
 
-import sigil "../core"
+import sigil "sigil:core"
 import "core:fmt"
 import "lib:imgui"
 import imgui_vk "lib:imgui/imgui_impl_vulkan"
@@ -31,7 +30,7 @@ init_imgui :: proc(swapchain_create_info: ^vk.SwapchainCreateInfoKHR) {
         pPoolSizes    = raw_data(imgui_pool_sizes),
     }
     __ensure(
-        vk.CreateDescriptorPool(device, &imgui_pool_info, nil, &imgui_pool), 
+        vk.CreateDescriptorPool(device.handle, &imgui_pool_info, nil, &imgui_pool), 
         msg = "Failed to create descriptor pool for imgui"
     )
 
@@ -45,9 +44,9 @@ init_imgui :: proc(swapchain_create_info: ^vk.SwapchainCreateInfoKHR) {
     imgui_glfw.InitForVulkan(window, true)
     imgui_init_info := imgui_vk.InitInfo {
         Instance            = instance,
-        PhysicalDevice      = phys_device,
-        Device              = device,
-        Queue               = queue,
+        PhysicalDevice      = device.physical,
+        Device              = device.handle,
+        Queue               = queue.handle,
         DescriptorPool      = imgui_pool,
         MinImageCount       = 4,
         ImageCount          = 4,
@@ -104,6 +103,7 @@ draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
         imgui.TextUnformatted("")
         imgui.TextUnformatted(fmt.caprintf("entities: %v", len(sigil.core.entities) - 1, allocator = context.temp_allocator))
         imgui.TextUnformatted(fmt.caprintf("component types: %v", len(sigil.core.sets), allocator = context.temp_allocator))
+        imgui.TextUnformatted(fmt.caprintf("groups: %v", len(sigil.core.groups), allocator = context.temp_allocator))
         //imgui.PopStyleColor()
     }
     imgui.End()
@@ -111,8 +111,8 @@ draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
     imgui.Begin("sigil", nil, { .NoTitleBar, .NoBackground, .NoResize, .NoMove, .NoCollapse, .NoMouseInputs })
     {
         imgui.SetWindowPos(imgui.Vec2 { 0, f32(draw_extent.height - 48) })
-        imgui.TextUnformatted(fmt.caprintf("GPU: %s", cstring(&physdevice_props.deviceName[0])))
-        imgui.TextUnformatted(fmt.caprintf("sigil %v.%v.%v", sigil.MAJOR_V, sigil.MINOR_V, sigil.PATCH_V))
+        imgui.TextUnformatted(fmt.caprintf("GPU: %s", cstring(&device.properties.deviceName[0]), allocator = context.temp_allocator))
+        imgui.TextUnformatted(fmt.caprintf("sigil %v.%v.%v", sigil.MAJOR_V, sigil.MINOR_V, sigil.PATCH_V, allocator = context.temp_allocator))
     }
     imgui.End()
     imgui.Render()
@@ -122,7 +122,7 @@ draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
 }
 
 free_imgui :: proc() {
-    vk.DestroyDescriptorPool(device, imgui_pool, nil)
+    vk.DestroyDescriptorPool(device.handle, imgui_pool, nil)
     imgui_vk.DestroyFontsTexture()
     imgui_vk.Shutdown()
     imgui_glfw.Shutdown()
