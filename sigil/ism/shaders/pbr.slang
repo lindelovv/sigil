@@ -1,5 +1,5 @@
 
-#include "common.shared.slang"
+#include "common.include"
 
 static const float  PI          = 3.141592;
 static const float  Epsilon     = 0.00001;
@@ -48,7 +48,7 @@ vs_output_t vs_main(uint vi: SV_VertexID) {
 
 [shader("fragment")]
 fs_output_t fs_main(vs_output_t in) {
-    float3 albedo    = sample_texture(pc.albedo, in.uv).xyz;
+    float3 albedo    = sample_texture(pc.albedo, in.uv).xyz * 0.6;
     float  metalness = sample_texture(pc.metal_roughness, in.uv).r;
     float  roughness = sample_texture(pc.metal_roughness, in.uv).g;
     //float3 normal    = normalize(in.normal * normalize(2.0 * sample_texture(normal, in.uv).rgb - 1.0));
@@ -56,126 +56,32 @@ fs_output_t fs_main(vs_output_t in) {
     float  emissive  = sample_texture(pc.emissive, in.uv).r;
     float3 ao        = sample_texture(pc.ao, in.uv).xyz;
 
-    //float3 Lo = normalize(float3(scene_data.proj * scene_data.view) * scene_data.view_pos);
-
-    //float cosLo = max(0.0, dot(normal, Lo));
-    //float3 Lr = 2.0 * cosLo * normal - Lo;
-
-    //float3 F0 = mix(Fdielectric, albedo, metalness);
-
-    //float3 directLighting;
-    //{
-    //    float3 Li = scene_data.sunlight_direction.xyz * scene_data.view_pos;
-    //    float3 Lh = normalize(Li + Lo);
-    //    float cosLi = max(0.0, dot(normal, Li));
-    //    float cosLh = max(0.0, dot(normal, Lh));
-    //
-    //    float3 F = fresnelSchlick(F0, max(0.0, dot(Lh, Lo)));
-    //    float D = ndfGGX(cosLh, roughness);
-    //    float G = gaSchlickGXX(cosLi, cosLo, roughness);
-    //
-    //    float3 kd = mix(float3(1.0) - F, float3(0.0), metalness);
-    //    float3 diffuseBRDF = kd * albedo;
-    //
-    //    float3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
-    //
-    //    directLighting = (diffuseBRDF + specularBRDF) * float3(1.0) * cosLi;
-    //}
-
-    //float3 ambient;
-    //{
-    //    //float3 ambient = albedo * in.color * scene_data.ambient_color.xyz;
-
-    //    float3 irradiance = float3(1.0); // add texture
-    //    float3 F = fresnelSchlick(F0, cosLo);
-    //    float3 kd = mix(float3(1.0) - F, float3(0.0), metalness);
-    //    float3 diffuseIBL = kd * albedo * irradiance;
-
-    //    //int spec_tex_lvls = textureQueryLevels(specular_texture)
-    //    float2 specularBRDF = float2(0.1); //texture(specularBRDF_LUT, float2(cosLo, roughness)).rg;
-
-    //    float3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) + float3(0.1);
-
-    //    ambient = diffuseIBL + specularIBL;
-    //}
-    //_out_frag_color = float4(directLighting + ambient * normal * AO, 1.0f);
-
-    // messy blin, something mb wrong with camera or space calculations
-    float3 light_pos = scene_data.sunlight_direction.xyz;
-    float3 light_color = scene_data.sunlight_color.xyz;
-    float3 ambient = 0.4 * light_color;
-
-    float3 light_dir = normalize(light_pos - in.pos);
-    float diff = max(dot(normal, light_dir), 0.0);
-    float3 diffuse = diff * light_color;
-
-    float3 specular = float3(0);
-    float spec_str = 0.1;
     float3 view_dir = normalize(scene_data.view_pos - in.pos);
-    float3 reflect_dir = reflect(-light_dir, normal);
-    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 8);
-
-    float ndotl = dot(normal, light_dir);
-    if(ndotl > 0) {
-        //float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 8);
-        specular = spec_str * spec * light_color;
-    }
-    // cool buggy effect lol
-    //float3 specular;
-    //float spec_str = 0.1;
-    //float3 view_dir = normalize(scene_data.view_pos - in.pos);
-    //float3 reflect_dir = reflect(-light_dir, normal);
-    //float ndotl = dot(normal, light_dir);
-    //if(ndotl > 0) {
-    //    float spec = pow(max(dot(view_dir, reflect_dir), 0.0), 8);
-    //    specular = spec_str * spec * light_color;
-    //}
-
-    float3 result = (ambient + diffuse + specular /* + emissive*/) * albedo;
+    float3 reflect_dir = reflect(-view_dir, normal);
+    float3 F0 = lerp(Fdielectric, albedo, metalness);
+    float3 light_dir = normalize(scene_data.sunlight_direction.xyz);
+    float3 light_color = scene_data.sunlight_color.xyz;
+    float3 half_dir = normalize(light_dir + view_dir);
+    float cosLo = max(0.0, dot(normal, view_dir));
+    float cosLi = max(0.0, dot(normal, light_dir));
+    float cosLh = max(0.0, dot(normal, half_dir));
+    float cosVh = max(0.0, dot(view_dir, half_dir));
+    float3 F = fresnelSchlick(F0, max(0.0, dot(half_dir, view_dir)));
+    float D = ndfGGX(cosLh, roughness);
+    float G = gaSchlickGXX(cosLi, cosLo, roughness);
+    float3 specular_num = D * G * F;
+    float specular_denom = 4.0 * cosLi * cosLo;
+    float3 specular = specular_num / max(specular_denom, 0.001);
+    float3 kD = (float3(1.0) - F) * (1.0 - metalness);
+    float3 diffuse = kD * albedo / PI;
+    float3 radiance = light_color * cosLi;
+    float3 brdf = (diffuse + specular) * radiance;
+    float3 ambient = scene_data.ambient_color.rgb * albedo * ao;
+    float3 color = ambient + brdf + emissive;
 
     fs_output_t out;
-    out.color = float4(result, 1.0);
-
+    out.color = float4(color, 1.0);
     return out;
-
-    // maybe more correct
-    //float3 n = normalize(in.normal);
-    //float3 t = normalize(cross(n, float3(0, 1, 0)));
-    //float3 b = cross(n, t);
-    //float3x3 tbn = float3x3(t, b, n);
-    //n = normalize(mul(normal, tbn));
-
-    //float3 v = normalize(scene_data.view_pos - in.pos);
-
-    //float3 f0 = lerp(Fdielectric, albedo, metalness);
-
-    //float3 l = -normalize(scene_data.sunlight_direction.xyz);
-    //float3 h = normalize(v + l);
-
-    //float ndf = ndfGGX(max(dot(n, h), 0.0), roughness);
-    //float g = gaSchlickGXX(max(dot(n, v), 0.0), max(dot(n, l), 0.0), roughness);
-    //float3 f = fresnelSchlick(f0, max(dot(h, v), 0.0));
-
-    //float3 ks = f;
-    //float3 kd = (float3(1.0) - ks) * (1.0 - metalness);
-
-    //float3 numerator = ndf * g * f;
-    //float denominator = 4.0 * max(dot(n, v), 0.0) * max(dot(n, l), 0.0) + 0.001;
-    //float3 specular = numerator / denominator;
-
-    //float ndotl = max(dot(n, l), 0.0);
-    //float3 radiance = scene_data.sunlight_color.rgb * scene_data.sunlight_color.a;
-
-    //float3 lo = (kd * albedo / PI + specular) * radiance * ndotl;
-    //float3 ambient = scene_data.ambient_color.rgb * albedo * ao;
-    //float3 color = ambient + lo + emissive;
-
-    //color = color / (color + float3(1.0));
-    //color = pow(color, float3(1.0/2.2));
-
-    //fs_output_t out;
-    //out.color = float4(color, 1.0);
-    //return out;
 }
 
 float ndfGGX(float cosLh, float roughness) {

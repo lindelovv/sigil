@@ -4,9 +4,6 @@
 [submodule "lib/odin-vma"]
 	path = lib/odin-vma
 	url = https://github.com/nice-sprite/odin-vma
-[submodule "lib/odin-vma-3.1"]
-	path = lib/odin-vma-3.1
-	url = https://github.com/lindelovv/odin-vma
 [submodule "lib/imgui"]
 	path = lib/imgui
 	url = https://gitlab.com/L-4/odin-imgui

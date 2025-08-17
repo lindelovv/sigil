@@ -1,9 +1,11 @@
+// common fields
 
 struct vertex_t {
     float3 position;
     float  uv_x;
     float3 normal;
     float  uv_y;
+    float4 tangent;
     float4 color;
 };
 

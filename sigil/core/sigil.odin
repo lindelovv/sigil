@@ -205,17 +205,14 @@ add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> (type, in
 add :: proc { add_to_world, add_to_entity }
 
 // todo: does not remove the correct entry I'm pretty sure
-//       also not properly implemented
+//       also not properly implemented to begin with
 remove_component :: proc(entity: entity_t, $type: typeid) {
     //fmt.println("========================================")
     //fmt.println(has_component(entity, type))
     if !has_component(entity, type) do return
 
     set := core.sets[type]
-    if set.indices[entity] == 0 {
-        //fmt.println("zero")
-        return
-    }
+    if set.indices[entity] == 0 do return
     data := cast(^[dynamic]type)(&set.components)
     //delete: u64
     for id, &group in core.groups {
@@ -354,8 +351,10 @@ has_all_components :: proc(entity: entity_t, mask: ^bit_array.Bit_Array) -> bool
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-types_hash :: proc(types: ..typeid) -> (h: u64) { for t in types do h ~= (^u64)(raw_data(mem.any_to_bytes(t)))^; return }
-
+types_hash :: proc(types: ..typeid) -> (h: u64) {
+    for t in types do h ~= (^u64)(raw_data(mem.any_to_bytes(t)))^
+    return
+}
 
 get_or_declare_group_2 :: proc($type1, $type2: typeid) -> ^group_t {
     if _, ok := core.sets[type1]; !ok do return {}

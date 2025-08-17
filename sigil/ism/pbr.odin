@@ -5,6 +5,7 @@ import glm "core:math/linalg/glsl"
 import "lib:slang"
 import "core:slice"
 import "core:fmt"
+import "core:os"
 import sigil "sigil:core"
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -33,12 +34,111 @@ pbr_uniform := pbr_uniform_t {
 pbr_entity: sigil.entity_t
 pbr: material_t
 pbr_push_const: pbr_push_constant_t
+current_last_write_time: os.File_Time
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
     pbr_entity = sigil.new_entity()
 
+    albedo_img    := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_albedo.jpg")
+    albedo_img.index = register_image(albedo_img.view)
+
+    normal_img    := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_normal.jpg")
+    normal_img.index = register_image(normal_img.view)
+
+    mtl_rough_img := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_metalRoughness.jpg")
+    mtl_rough_img.index = register_image(mtl_rough_img.view)
+
+    emissive_img  := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_emissive.jpg")
+    emissive_img.index = register_image(emissive_img.view)
+
+    ao_img        := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_AO.jpg")
+    ao_img.index = register_image(ao_img.view)
+
+    pbr_layout_bindings := []vk.DescriptorSetLayoutBinding {
+        vk.DescriptorSetLayoutBinding {
+            binding         = 0,
+            descriptorType  = .UNIFORM_BUFFER,
+            descriptorCount = 1,
+            stageFlags      = { .VERTEX, .FRAGMENT },
+        },
+    }
+    pbr_layout_info := vk.DescriptorSetLayoutCreateInfo {
+        sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        flags        = {},
+        bindingCount = u32(len(pbr_layout_bindings)),
+        pBindings    = raw_data(pbr_layout_bindings),
+    }
+    __ensure(
+        vk.CreateDescriptorSetLayout(device.handle, &pbr_layout_info, nil, &pbr.set_layout),
+        msg = "Failed to create descriptor set"
+    )
+
+    pbr_allocate_info := vk.DescriptorSetAllocateInfo {
+        sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
+        descriptorPool     = desc_pool,
+        descriptorSetCount = 1,
+        pSetLayouts        = &pbr.set_layout,
+    }
+    __ensure(
+        vk.AllocateDescriptorSets(device.handle, &pbr_allocate_info, &pbr.set),
+        msg = "Failed to allocate descriptor set"
+    )
+
+    pbr_push_const_ranges := vk.PushConstantRange {
+        stageFlags = { .VERTEX, .FRAGMENT },
+        offset     = 0,
+        size       = size_of(pbr_push_constant_t),
+    }
+    layouts := []vk.DescriptorSetLayout {
+        scene_data.set_layout,
+        pbr.set_layout,
+        bindless.set_layout,
+    }
+    pipeline_layout_info := vk.PipelineLayoutCreateInfo {
+        sType                  = .PIPELINE_LAYOUT_CREATE_INFO,
+        setLayoutCount         = u32(len(layouts)),
+        pSetLayouts            = raw_data(layouts),
+        pushConstantRangeCount = 1,
+        pPushConstantRanges    = &pbr_push_const_ranges,
+    }
+    __ensure(
+        vk.CreatePipelineLayout(device.handle, &pipeline_layout_info, nil, &pbr.pipeline_layout),
+        msg = "Failed to create graphics pipeline layout"
+    )
+
+    pbr_buffer := create_buffer(size_of(pbr_uniform_t), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
+    pbr_buffer_data := cast(^pbr_uniform_t)pbr_buffer.info.pMappedData
+    pbr_buffer_data.color_factors   = { 1, 1, 1, 1 }
+    pbr_buffer_data.metal_roughness = { 0, 0, 0, 0 }
+
+    desc := descriptor_data_t { set = pbr.set }
+    pbr_writes := []vk.WriteDescriptorSet {
+        write_descriptor(&desc, 0, .UNIFORM_BUFFER, descriptor_buffer_info_t { pbr_buffer, size_of(pbr_uniform_t), 0 }),
+    }
+    vk.UpdateDescriptorSets(device.handle, u32(len(pbr_writes)), raw_data(pbr_writes), 0, nil)
+
+    build_pbr_pipeline(global_session)
+    
+    pbr_push_const.albedo          = albedo_img.index
+    pbr_push_const.metal_roughness = mtl_rough_img.index
+    pbr_push_const.normal          = normal_img.index
+    pbr_push_const.emissive        = emissive_img.index
+    pbr_push_const.ao              = ao_img.index
+
+	current_last_write_time, _ := os.last_write_time_by_name("sigil/ism/shaders/pbr.slang")
+}
+
+@(disabled=!ODIN_DEBUG) __rebuild_pbr_pipeline :: proc(gs: ^slang.IGlobalSession) {
+	last_write_time, file_err := os.last_write_time_by_name("sigil/ism/shaders/pbr.slang")
+	if file_err == nil && current_last_write_time != last_write_time {
+	    current_last_write_time = last_write_time
+        build_pbr_pipeline(gs)
+    }
+}
+
+build_pbr_pipeline :: proc(global_session: ^slang.IGlobalSession) {
     when ODIN_DEBUG {
         code, diagnostics: ^slang.IBlob
         target_desc := slang.TargetDesc {
@@ -50,8 +150,6 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
 
 	    compiler_option_entries := [?]slang.CompilerOptionEntry{
 	    	{ name = .VulkanUseEntryPointName, value = { intValue0 = 1 } },
-            //{ name = .DebugInformation, value = { intValue0 = i32(slang.DebugInfoLevel.STANDARD)}},
-            //{ name = .Optimization, value = { intValue0 = i32(slang.OptimizationLevel.NONE)}}, // Disable optimizations for debugging
 	    }
 	    session_desc := slang.SessionDesc {
 	    	structureSize            = size_of(slang.SessionDesc),
@@ -151,91 +249,6 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
 
     fmt.printfln("+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+")
 
-    pbr_layout_bindings := []vk.DescriptorSetLayoutBinding {
-        vk.DescriptorSetLayoutBinding {
-            binding         = 0,
-            descriptorType  = .UNIFORM_BUFFER,
-            descriptorCount = 1,
-            stageFlags      = { .VERTEX, .FRAGMENT },
-        },
-    }
-    pbr_layout_info := vk.DescriptorSetLayoutCreateInfo {
-        sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        flags        = {},
-        bindingCount = u32(len(pbr_layout_bindings)),
-        pBindings    = raw_data(pbr_layout_bindings),
-    }
-    __ensure(
-        vk.CreateDescriptorSetLayout(device.handle, &pbr_layout_info, nil, &pbr.set_layout),
-        msg = "Failed to create descriptor set"
-    )
-
-    pbr_allocate_info := vk.DescriptorSetAllocateInfo {
-        sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
-        descriptorPool     = desc_pool,
-        descriptorSetCount = 1,
-        pSetLayouts        = &pbr.set_layout,
-    }
-    __ensure(
-        vk.AllocateDescriptorSets(device.handle, &pbr_allocate_info, &pbr.set),
-        msg = "Failed to allocate descriptor set"
-    )
-
-    pbr_push_const_ranges := vk.PushConstantRange {
-        stageFlags = { .VERTEX, .FRAGMENT },
-        offset     = 0,
-        size       = size_of(pbr_push_constant_t),
-    }
-    layouts := []vk.DescriptorSetLayout {
-        scene_data.set_layout,
-        pbr.set_layout,
-        bindless.set_layout,
-    }
-    pipeline_layout_info := vk.PipelineLayoutCreateInfo {
-        sType                  = .PIPELINE_LAYOUT_CREATE_INFO,
-        setLayoutCount         = u32(len(layouts)),
-        pSetLayouts            = raw_data(layouts),
-        pushConstantRangeCount = 1,
-        pPushConstantRanges    = &pbr_push_const_ranges,
-    }
-    __ensure(
-        vk.CreatePipelineLayout(device.handle, &pipeline_layout_info, nil, &pbr.pipeline_layout),
-        msg = "Failed to create graphics pipeline layout"
-    )
-
-    pbr_buffer := create_buffer(size_of(pbr_uniform_t), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
-    {
-        pbr_buffer_data := cast(^pbr_uniform_t)pbr_buffer.info.pMappedData
-        pbr_buffer_data.color_factors   = { 1, 1, 1, 1 }
-        pbr_buffer_data.metal_roughness = { 1, 1, 1, 1 }
-    }
-    albedo_img    := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_albedo.jpg")
-    albedo_img.index = register_image(albedo_img.view)
-
-    normal_img    := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_normal.jpg")
-    normal_img.index = register_image(normal_img.view)
-
-    mtl_rough_img := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_metalRoughness.jpg")
-    mtl_rough_img.index = register_image(mtl_rough_img.view)
-
-    emissive_img  := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_emissive.jpg")
-    emissive_img.index = register_image(emissive_img.view)
-
-    ao_img        := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_AO.jpg")
-    ao_img.index = register_image(ao_img.view)
-    
-    pbr_push_const.albedo          = albedo_img.index
-    pbr_push_const.metal_roughness = mtl_rough_img.index
-    pbr_push_const.normal          = normal_img.index
-    pbr_push_const.emissive        = emissive_img.index
-    pbr_push_const.ao              = ao_img.index
-
-    desc := descriptor_data_t { set = pbr.set }
-    pbr_writes := []vk.WriteDescriptorSet {
-        write_descriptor(&desc, 0, .UNIFORM_BUFFER, descriptor_buffer_info_t { pbr_buffer, size_of(pbr_uniform_t), 0 }),
-    }
-    vk.UpdateDescriptorSets(device.handle, u32(len(pbr_writes)), raw_data(pbr_writes), 0, nil)
-
     stages := []vk.PipelineShaderStageCreateInfo {
         vk.PipelineShaderStageCreateInfo {
             sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -330,11 +343,5 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
         layout              = pbr.pipeline_layout
     }
     __ensure(vk.CreateGraphicsPipelines(device.handle, 0, 1, &graphics_pipe_info, nil, &pbr.pipeline), "Failed to create PBR Pipeline")
-
-    pbr.update_delegate = #force_inline proc(cmd: vk.CommandBuffer, data: ^render_data_t) {
-        pbr_push_const.model = data.transform
-        pbr_push_const.vertex_buffer = data.address
-        vk.CmdPushConstants(cmd, pbr.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(pbr_push_constant_t), &pbr_push_const)
-    }
 }
 

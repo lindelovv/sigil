@@ -162,6 +162,7 @@ vertex_t :: struct {
     uv_x     : f32,
     normal   : [3]f32,
     uv_y     : f32,
+    tangent  : [4]f32,
     color    : [4]f32,
 }
 
@@ -1546,6 +1547,10 @@ tick_vulkan :: proc() {
         vk.WaitForFences(device.handle, 1, &frame.fence, true, max(u64)), 
         msg = "WaitForFences failed"
     )
+
+    //
+    __rebuild_pbr_pipeline(global_session)
+    //
 
     img_index: u32
     result := vk.AcquireNextImageKHR(device.handle, swapchain.handle, max(u64), frame.swap_sem, {}, &img_index)
