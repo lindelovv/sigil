@@ -1666,7 +1666,7 @@ tick_vulkan :: proc() {
             //vk.CmdBindDescriptorSets(frame.cmd, .COMPUTE, cull_pipeline_layout, 0, 1, &cull_descriptor.set, 0, nil)
             //fmt.println(sigil.core.groups[sigil.types_hash(render_data_t, transform_t)])
             for &q, i in sigil.query(render_data_t, transform_t) {
-                data, transform := &q.x, glm.mat4(q.y)
+                data, transform := q.x, glm.mat4(q.y)
 
                 offset := u32(i * size_of(glm.mat4))
                 mem.copy(rawptr(uintptr(transform_buffer.info.pMappedData) + uintptr(offset)), &transform, size_of(glm.mat4))

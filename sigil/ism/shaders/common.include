@@ -1,5 +1,3 @@
-// common fields
-
 struct vertex_t {
     float3 position;
     float  uv_x;

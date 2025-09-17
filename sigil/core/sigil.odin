@@ -32,17 +32,18 @@ core: struct {
 }
 
 set_t :: struct {
-    components : rawptr `fmt: "v,count"`,
+    components : rawptr,
     indices    : [dynamic]int,
     count      : int,
     id         : int,
     type       : typeid,
-    t_size     : int,
+    size       : int,
 }
 
 group_t :: struct {
     components : ^bit_array.Bit_Array,
     range      : map[typeid]range_t,
+    id         : u64,
 }
 
 range_t :: struct {
@@ -116,7 +117,6 @@ new_entity :: #force_inline proc() -> entity_t {
     return e
 }
 
-// borked
 delete_entity :: #force_inline proc(entity: entity_t) {
     if !entity_is_valid(entity) do return
     cont := true
@@ -124,9 +124,8 @@ delete_entity :: #force_inline proc(entity: entity_t) {
     for cont {
         id: int
         id, cont = bit_array.iterate_by_set(&it)
-
         _set := core.sets[core.set_lookup[id]]
-        remove_component(entity, type_of(_set.type)) // this is wrong lol, pretty sure type_of(_set.type) just returns typeid
+        _set.indices[entity] = 0 // just unparent it for now
     }
 }
 
@@ -179,7 +178,7 @@ add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> (type, in
         set.id = len(core.sets)
         core.set_lookup[set.id] = type
         set.type = type
-        set.t_size = size_of(type)
+        set.size = size_of(type)
     }
 
     data := cast(^[dynamic]type)(set.components)
@@ -204,130 +203,95 @@ add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> (type, in
 }
 add :: proc { add_to_world, add_to_entity }
 
-// todo: does not remove the correct entry I'm pretty sure
-//       also not properly implemented to begin with
-remove_component :: proc(entity: entity_t, $type: typeid) {
-    //fmt.println("========================================")
-    //fmt.println(has_component(entity, type))
+// todo: ensure this is doing everything correctly
+remove_component :: proc(#any_int entity: entity_t, $type: typeid) {
     if !has_component(entity, type) do return
 
-    set := core.sets[type]
+    set := &core.sets[type]
     if set.indices[entity] == 0 do return
-    data := cast(^[dynamic]type)(&set.components)
-    //delete: u64
-    for id, &group in core.groups {
+    data := cast(^[dynamic]type)(set.components)
+    swap_component_index(set, entity, set.count)
+    set.indices[entity] = 0
+    set.count -= 1
+    pop(data)
+
+    last: int
+    invalidated_groups: [dynamic]u64
+    group_iter: for id, &group in &core.groups {
         if !bit_array.get(group.components, core.sets[type].id) do continue
 
         range := &group.range[type]
-        last := range.offset + range.count
-        if last >= len(data) || set.indices[entity] >= len(data) {
-            //fmt.printfln("len fail -- last: %v idx[e]: %v len: %v", last, set.indices[entity], len(data))
-            continue
-        }
-        for _, &r in &group.range do r.count -= 1
-        if range.count == 0 {
-            fmt.println("delete")
-            //delete = id
-            break
-        }
-        if data[last] == {} do fmt.println("last")
-        //fmt.printfln("idx: %v", set.indices[entity])
-        if data[set.indices[entity]] == {} do fmt.println("last")
+        last = range.offset + range.count// - 1
+        //if last >= len(data) - 1 || set.indices[entity] >= len(data) -1 do continue
 
-        // this for sure is broken as long as you don't remove in order lol
-        //it := bit_array.make_iterator(group.components)
-        //for id in bit_array.iterate_by_set(&it) {
-        //    _set := &core.sets[core.set_lookup[id]]
-        //    fmt.printfln("swap %v to %v", _set.type, last)
-        //    //_set.indices[entity], _set.indices[last] = _set.indices[last], _set.indices[entity]
-        //    _set.indices[entity] = 0
-
-        //    p1 := uintptr(_set.components) + uintptr(set.indices[entity] * _set.t_size)
-        //    p2 := uintptr(_set.components) + uintptr(last * _set.t_size)
-        //    
-        //    mem.copy(_set.components, rawptr(p1), _set.t_size)
-        //    mem.copy(rawptr(p1), rawptr(p2), _set.t_size)
-        //    mem.copy(rawptr(p2), _set.components, _set.t_size) 
-        //}
-        end := set.count
-        if last != end {
-            //fmt.println("swap to end")
-            data[end], data[last] = data[last], data[end]
-            //set.indices[last], set.indices[end] = set.indices[end], set.indices[last]
+        for _, &r in &group.range {
+            r.count -= 1
+            if range.count == 0 {
+                append(&invalidated_groups, group.id)
+                break group_iter
+            }
         }
-        //set.indices[end] = 0
-        set.count -= 1
-        //fmt.printfln("data: %#v", data[range.offset:last])
+        //fmt.printfln("range: %v", range.count)
+
+        it := bit_array.make_iterator(group.components)
+        for id in bit_array.iterate_by_set(&it) {
+            _set := &core.sets[core.set_lookup[id]]
+            if _set.type == type do continue
+            swap_component_index(_set, entity, last)
+        }
+        // combined groups of all overlapping would posibly enable max 2 swaps ? probably false ?
     }
-    //fmt.println(delete)
-    //if delete > 0 do delete_key(&core.groups, delete)
-    //fmt.println("eop")
+    for id in invalidated_groups {
+        fmt.println("invalidated")
+        delete_key(&core.groups, id)
+    }
+    core.sets[type] = set^
+
+    swap_component_index :: proc(set: ^set_t, #any_int a, b: entity_t) {
+        fmt.println(set.type)
+        _a := rawptr(uintptr(set.components) + uintptr(int(set.indices[a]) * set.size))
+        _b := rawptr(uintptr(set.components) + uintptr(int(b) * set.size))
+        _a, _b = _b, _a
+        set.indices[a], set.indices[b] = set.indices[b], set.indices[a]
+    }
 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 query_1 :: #force_inline proc($type: typeid) -> []type {
     if core.sets[type].components == nil do return nil
+        //if type != tick do fmt.println(typeid_of(type), core.sets[type].count)
     data := (cast(^[dynamic]type)(core.sets[type].components))[1:][:core.sets[type].count]
     return data
 }
 
-query_2 :: #force_inline proc(
-    $type1: typeid,
-    $type2: typeid
-) -> #soa[]struct {
-    x: type1,
-    y: type2
-} {
+query_2 :: #force_inline proc($type1: typeid, $type2: typeid) -> #soa[]struct { x: type1, y: type2 } {
     g := get_or_declare_group(type1, type2)
     if g == nil do return {}
-    slice1 := get_component_slice(g, type1)
-    slice2 := get_component_slice(g, type2)
-    return soa_zip(slice1, slice2)
+    get :: proc(g: ^group_t, $t: typeid) -> []t { return get_component_slice(g, t) }
+    return soa_zip(get(g, type1), get(g, type2))
 }
 
-query_3 :: #force_inline proc(
-    $type1: typeid,
-    $type2: typeid,
-    $type3: typeid
-) -> #soa[]struct {
-    x: type1,
-    y: type2,
-    z: type3
-} {
+query_3 :: #force_inline proc($type1: typeid, $type2: typeid, $type3: typeid) -> #soa[]struct { x: type1, y: type2, z: type3 } {
+    fmt.println("q3")
     g := get_or_declare_group(type1, type2, type3)
     if g == nil do return {}
-    slice1 := get_component_slice(g, type1)
-    slice2 := get_component_slice(g, type2)
-    slice3 := get_component_slice(g, type3)
-    return soa_zip(slice1, slice2, slice3)
+    get :: proc(g: ^group_t, $t: typeid) -> []t { return get_component_slice(g, t) }
+    return soa_zip(get(g, type1), get(g, type2), get(g, type3))
 }
 
-query_4 :: #force_inline proc(
-    $type1: typeid,
-    $type2: typeid,
-    $type3: typeid,
-    $type4: typeid
-) -> #soa[]struct {
-    x: type1,
-    y: type2,
-    z: type3,
-    w: type4
-} {
+query_4 :: #force_inline proc($type1: typeid, $type2: typeid, $type3: typeid, $type4: typeid) -> #soa[]struct { x: type1, y: type2, z: type3, w: type4 } {
     g := get_or_declare_group(type1, type2, type3, type4)
     if g == nil do return {}
-    slice1 := get_component_slice(g, type1)
-    slice2 := get_component_slice(g, type2)
-    slice3 := get_component_slice(g, type3)
-    slice4 := get_component_slice(g, type4)
-    return soa_zip(slice1, slice2, slice3, slice4)
+    get :: proc(g: ^group_t, $t: typeid) -> []t { return get_component_slice(g, t) }
+    return soa_zip(get(g, type1), get(g, type2), get(g, type3), get(g, type4))
 }
-
 query :: proc { query_1, query_2, query_3, query_4 }
 
 get_component_slice :: proc(g: ^group_t, $t: typeid) -> []t {
     set := core.sets[t]
     if info, exists := g.range[t]; exists {
+        //fmt.printfln("%v info: %v", typeid_of(t), info.count)
         data := cast(^[dynamic]t)(set.components)
         start := info.offset
         end := start + info.count
@@ -365,6 +329,7 @@ get_or_declare_group_2 :: proc($type1, $type2: typeid) -> ^group_t {
     group := new(group_t)
     sets : []set_t = { core.sets[type1], core.sets[type2] }
     if !declare_group(group, sets[:]) { free(group); return nil }
+    group.id = hash
     core.groups[hash] = group^
     return group
 }
@@ -379,6 +344,7 @@ get_or_declare_group_3 :: proc($type1, $type2, $type3: typeid) -> ^group_t {
     group := new(group_t)
     sets : []set_t = { core.sets[type1], core.sets[type2], core.sets[type3] }
     if !declare_group(group, sets[:]) { free(group); return nil }
+    group.id = hash
     core.groups[hash] = group^
     return group
 }
@@ -394,12 +360,18 @@ get_or_declare_group_4 :: proc($type1, $type2, $type3, $type4: typeid) -> ^group
     group := new(group_t)
     sets : []set_t = { core.sets[type1], core.sets[type2], core.sets[type3], core.sets[type4] }
     if !declare_group(group, sets[:]) { free(group); return nil }
+    group.id = hash
     core.groups[hash] = group^
     return group
 }
 get_or_declare_group :: proc { get_or_declare_group_2, get_or_declare_group_3, get_or_declare_group_4 }
 
 declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
+    //fmt.println("declare group")
+    //for s in sets {
+    //    fmt.println(s.type)
+    //}
+    //fmt.println("")
     new_group.components = bit_array.create(len(core.sets))
     for set in sets do bit_array.set(new_group.components, set.id)
 
@@ -421,10 +393,10 @@ declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
             if set.indices[e] > max do max = set.indices[e]
         }
         if max - count == min { // already in ok order (not thinking about other groups)
-            fmt.println(max, count, min, max - count)
+            //fmt.println(max, count, min, max - count)
             new_group.range[set.type] = range_t { min, count }
-            fmt.println(min, max, set.type, new_group.range[set.type])
-            fmt.println(set.indices)
+            //fmt.println(min, max, set.type, new_group.range[set.type])
+            //fmt.println(set.indices)
         } else {
             append(&to_sort, set)
         }

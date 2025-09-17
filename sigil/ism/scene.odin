@@ -176,21 +176,14 @@ setup_keybinds :: proc() {
 
     bind_input(glfw.KEY_B,
         press   = proc() {
-            //fmt.println(sigil.get_component_slice(&sigil.core.groups[sigil.types_hash(render_data_t, transform_t)], transform_t))
-            //fmt.println(sigil.core.groups[sigil.types_hash(render_data_t, transform_t)])
-            sigil.remove_component(auto_cast n, render_data_t)
+            sigil.remove_component(n, render_data_t)
             n += 1
-            //fmt.println()
-            //g := &sigil.core.groups[sigil.types_hash(render_data_t, transform_t)]
-            //fmt.println(g)
-            //fmt.println()
-            //fmt.println(sigil.get_component_slice(&sigil.core.groups[sigil.types_hash(render_data_t, transform_t)], transform_t))
-            //fmt.println()
-            //slice1 := sigil.get_component_slice(g, render_data_t)
-            //slice2 := sigil.get_component_slice(g, transform_t)
-            //fmt.printfln("=-== %#v", slice1)
-            //fmt.printfln("mmmmmm %#v", slice2)
         },
+    )
+    bind_input(glfw.KEY_V,
+        press   = proc() {
+            sigil.delete_entity(10)
+        }
     )
 }
 n := 9

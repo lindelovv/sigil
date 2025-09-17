@@ -48,11 +48,11 @@ vs_output_t vs_main(uint vi: SV_VertexID) {
 
 [shader("fragment")]
 fs_output_t fs_main(vs_output_t in) {
-    float3 albedo    = sample_texture(pc.albedo, in.uv).xyz * 0.6;
+    float3 albedo    = sample_texture(pc.albedo, in.uv).xyz * 0.8;
     float  metalness = sample_texture(pc.metal_roughness, in.uv).r;
     float  roughness = sample_texture(pc.metal_roughness, in.uv).g;
-    //float3 normal    = normalize(in.normal * normalize(2.0 * sample_texture(normal, in.uv).rgb - 1.0));
-    float3 normal    = sample_texture(pc.normal, in.uv).rgb; // TODO: normal matrix on cpu
+    float3 normal    = normalize(in.normal * normalize(2.0 * sample_texture(pc.normal, in.uv).rgb - 1.0));
+    //float3 normal    = sample_texture(pc.normal, in.uv).rgb; // TODO: normal matrix on cpu
     float  emissive  = sample_texture(pc.emissive, in.uv).r;
     float3 ao        = sample_texture(pc.ao, in.uv).xyz;
 
@@ -74,9 +74,9 @@ fs_output_t fs_main(vs_output_t in) {
     float3 specular = specular_num / max(specular_denom, 0.001);
     float3 kD = (float3(1.0) - F) * (1.0 - metalness);
     float3 diffuse = kD * albedo / PI;
-    float3 radiance = light_color * cosLi;
+    float3 radiance = light_color * cosLi * 4.0;
     float3 brdf = (diffuse + specular) * radiance;
-    float3 ambient = scene_data.ambient_color.rgb * albedo * ao;
+    float3 ambient = scene_data.ambient_color.rgb * albedo * ao * 0.4;
     float3 color = ambient + brdf + emissive;
 
     fs_output_t out;

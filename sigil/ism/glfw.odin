@@ -78,9 +78,9 @@ tick_glfw :: proc() {
 
 //_____________________________
 exit_glfw :: proc() {
-    for i in sigil.query(type_of(vulkan)) {
-        fmt.printf("%v", i)
-    }
+    //for i in sigil.query(type_of(vulkan)) {
+    //    fmt.printf("%v", i)
+    //}
     glfw.DestroyWindow(window)
     glfw.Terminate()
 }
