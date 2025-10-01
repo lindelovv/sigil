@@ -137,6 +137,11 @@ update_camera_vectors :: proc(cam: ^camera_t) {
     cam.forward = glm.normalize(cam.forward)
     cam.right = glm.normalize(glm.cross(cam.forward, WORLD_UP))
     cam.up = glm.normalize(glm.cross(cam.right, cam.forward))
+    //t := sigil.get_ref(cam_entity, transform_t)
+    //pos := get_camera_pos()
+    //t[0].x = pos.x
+    //t[1].y = pos.y
+    //t[2].z = pos.z
 }
 
 get_camera_view :: #force_inline proc() -> glm.mat4 {

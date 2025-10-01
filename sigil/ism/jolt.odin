@@ -4,7 +4,6 @@ import sigil "sigil:core"
 import "lib:jolt"
 import "core:math"
 import "core:math/rand"
-import "core:fmt"
 import glm "core:math/linalg/glsl"
 
 jolt :: proc(e: sigil.entity_t) -> typeid {
@@ -20,6 +19,7 @@ jolt :: proc(e: sigil.entity_t) -> typeid {
 
 OBJECT_LAYER_NON_MOVING: jolt.ObjectLayer = 0
 OBJECT_LAYER_MOVING: jolt.ObjectLayer = 1
+//OBJECT_LAYER_PLAYER: jolt.ObjectLayer = 2
 OBJECT_LAYER_NUM :: 2
 
 BROAD_PHASE_LAYER_NON_MOVING: jolt.BroadPhaseLayer = 0
@@ -46,7 +46,7 @@ init_jolt :: proc() {
     object_layer_pair_filter := jolt.ObjectLayerPairFilterTable_Create(OBJECT_LAYER_NUM)
 	jolt.ObjectLayerPairFilterTable_EnableCollision(
 		object_layer_pair_filter,
-		OBJECT_LAYER_MOVING,
+		OBJECT_LAYER_NON_MOVING,
 		OBJECT_LAYER_MOVING,
 	)
 	jolt.ObjectLayerPairFilterTable_EnableCollision(
@@ -54,6 +54,16 @@ init_jolt :: proc() {
 		OBJECT_LAYER_MOVING,
 		OBJECT_LAYER_NON_MOVING,
 	)
+	//jolt.ObjectLayerPairFilterTable_EnableCollision(
+	//	object_layer_pair_filter,
+	//	OBJECT_LAYER_NON_MOVING,
+    //    OBJECT_LAYER_PLAYER,
+	//)
+	//jolt.ObjectLayerPairFilterTable_EnableCollision(
+	//	object_layer_pair_filter,
+	//	OBJECT_LAYER_MOVING,
+    //    OBJECT_LAYER_PLAYER,
+	//)
 	broad_phase_layer_interface_table := jolt.BroadPhaseLayerInterfaceTable_Create(
 		OBJECT_LAYER_NUM,
 		BROAD_PHASE_LAYER_NUM,
@@ -105,7 +115,13 @@ tick_jolt :: proc() {
 	}
 }
 
-add_physics_shape :: proc(e: sigil.entity_t, pos: ^glm.vec3, rot: ^glm.quat, scl: ^glm.vec3, motion_type: jolt.MotionType = .JPH_MotionType_Dynamic) {
+add_physics_shape :: proc(
+    entity      : sigil.entity_t,
+    pos         : ^glm.vec3,
+    rot         : ^glm.quat,
+    scl         : ^glm.vec3, 
+    motion_type : jolt.MotionType = .JPH_MotionType_Dynamic
+) {
     settings: ^jolt.BodyCreationSettings
     if motion_type == .JPH_MotionType_Static {
         shape := jolt.BoxShape_Create(&{1 * scl.x, 1 * scl.y, 0.1}, jolt.DEFAULT_CONVEX_RADIUS)
@@ -117,7 +133,7 @@ add_physics_shape :: proc(e: sigil.entity_t, pos: ^glm.vec3, rot: ^glm.quat, scl
     }
     defer jolt.BodyCreationSettings_Destroy(settings)
     id := jolt.BodyInterface_CreateAndAddBody(body_interface, settings, .JPH_Activation_Activate)
-    sigil.add(e, physics_id_t(id))
+    sigil.add(entity, physics_id_t(id))
 }
 
 exit_jolt :: proc() {

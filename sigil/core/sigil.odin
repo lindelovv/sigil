@@ -1,6 +1,5 @@
 package __sigil
 
-import "core:fmt"
 import "core:mem"
 import "core:slice"
 import "core:math"
@@ -120,16 +119,22 @@ new_entity :: #force_inline proc() -> entity_t {
 delete_entity :: #force_inline proc(entity: entity_t) {
     if !entity_is_valid(entity) do return
     cont := true
+    if len(core.flags) <= auto_cast entity do return
     it := bit_array.make_iterator(&core.flags[entity])
     for cont {
         id: int
         id, cont = bit_array.iterate_by_set(&it)
-        _set := core.sets[core.set_lookup[id]]
-        _set.indices[entity] = 0 // just unparent it for now
+        _set := &core.sets[core.set_lookup[id]]
+        remove_component(entity, _set)
     }
 }
 
 get_entity :: #force_inline proc(entity: entity_t) -> entity_t {
+    for e in core.entities { if e == entity do return e }
+    return INVALID
+}
+
+_get_array_index :: #force_inline proc(arr: ^[]$type, index: int) -> entity_t {
     for e in core.entities { if e == entity do return e }
     return INVALID
 }
@@ -174,7 +179,6 @@ add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> (type, in
     if exists := &set.components; exists == nil || set.count == 0 {
         set.components = new([dynamic]type)
         append((^[dynamic]type)(set.components), type{}) // dummy for invalid
-        //fmt.printfln("%v %v", typeid_of(type), (^[dynamic]type)(set.components))
         set.id = len(core.sets)
         core.set_lookup[set.id] = type
         set.type = type
@@ -197,30 +201,30 @@ add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> (type, in
     if &core.flags[e] == nil do core.flags[e] = bit_array.create(len(core.entities))^
     bit_array.set(&core.flags[e], set.id)
 
-    //fmt.printfln("adding %v to %v", typeid_of(type), e)
-    //fmt.printfln("/// %v %#v", typeid_of(type), (^[dynamic]type)(set.components))
     return component, set.indices[e]
 }
 add :: proc { add_to_world, add_to_entity }
 
 // todo: ensure this is doing everything correctly
-remove_component :: proc(#any_int entity: entity_t, $type: typeid) {
+remove_component :: proc { _remove_component_set, _remove_component_type }
+_remove_component_type :: proc(#any_int entity: entity_t, $type: typeid) {
     if !has_component(entity, type) do return
-
     set := &core.sets[type]
+    _remove_component_set(entity, set)
+}
+_remove_component_set :: proc(#any_int entity: entity_t, set: ^set_t) {
     if set.indices[entity] == 0 do return
-    data := cast(^[dynamic]type)(set.components)
-    swap_component_index(set, entity, set.count)
-    set.indices[entity] = 0
-    set.count -= 1
-    pop(data)
+
+    _swap_component_index(set, entity, set.count)
+    _remove_component_index(set, set.count)
 
     last: int
     invalidated_groups: [dynamic]u64
+    already_swapped: [dynamic]^set_t
     group_iter: for id, &group in &core.groups {
-        if !bit_array.get(group.components, core.sets[type].id) do continue
+        if !bit_array.get(group.components, core.sets[set.type].id) do continue
 
-        range := &group.range[type]
+        range := &group.range[set.type]
         last = range.offset + range.count// - 1
         //if last >= len(data) - 1 || set.indices[entity] >= len(data) -1 do continue
 
@@ -228,40 +232,44 @@ remove_component :: proc(#any_int entity: entity_t, $type: typeid) {
             r.count -= 1
             if range.count == 0 {
                 append(&invalidated_groups, group.id)
-                break group_iter
+                continue group_iter
             }
         }
-        //fmt.printfln("range: %v", range.count)
 
+        // todo: this is potentially swapping more than once per set -- tried fixing
         it := bit_array.make_iterator(group.components)
-        for id in bit_array.iterate_by_set(&it) {
+        sets: for id in bit_array.iterate_by_set(&it) {
             _set := &core.sets[core.set_lookup[id]]
-            if _set.type == type do continue
-            swap_component_index(_set, entity, last)
+            if _set.type == set.type do continue
+            for s in already_swapped do if s == _set {
+                continue sets
+            }
+            _swap_component_index(_set, entity, last)
         }
         // combined groups of all overlapping would posibly enable max 2 swaps ? probably false ?
     }
-    for id in invalidated_groups {
-        fmt.println("invalidated")
-        delete_key(&core.groups, id)
-    }
-    core.sets[type] = set^
+    for id in invalidated_groups do delete_key(&core.groups, id)
+}
 
-    swap_component_index :: proc(set: ^set_t, #any_int a, b: entity_t) {
-        fmt.println(set.type)
-        _a := rawptr(uintptr(set.components) + uintptr(int(set.indices[a]) * set.size))
-        _b := rawptr(uintptr(set.components) + uintptr(int(b) * set.size))
-        _a, _b = _b, _a
-        set.indices[a], set.indices[b] = set.indices[b], set.indices[a]
-    }
+_remove_component_index :: proc(set: ^set_t, #any_int idx: entity_t) {
+    data := (^runtime.Raw_Dynamic_Array)(set.components)
+    intrinsics.mem_zero(([^]byte)(data)[data.len*set.size:], set.size)
+    data.len -= 1; set.count -= 1
+    set.components = data
+}
+
+_swap_component_index :: proc(set: ^set_t, #any_int a, b: entity_t) {
+    _a := rawptr(uintptr(set.components) + uintptr(int(set.indices[a]) * set.size))
+    _b := rawptr(uintptr(set.components) + uintptr(int(b) * set.size))
+    _a, _b = _b, _a; set.indices[a], set.indices[b] = set.indices[b], 0
 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 query_1 :: #force_inline proc($type: typeid) -> []type {
-    if core.sets[type].components == nil do return nil
-        //if type != tick do fmt.println(typeid_of(type), core.sets[type].count)
-    data := (cast(^[dynamic]type)(core.sets[type].components))[1:][:core.sets[type].count]
+    set := core.sets[type]
+    if set.components == nil do return nil
+    data := (cast(^[dynamic]type)(set.components))[1:][:set.count]
     return data
 }
 
@@ -273,7 +281,6 @@ query_2 :: #force_inline proc($type1: typeid, $type2: typeid) -> #soa[]struct { 
 }
 
 query_3 :: #force_inline proc($type1: typeid, $type2: typeid, $type3: typeid) -> #soa[]struct { x: type1, y: type2, z: type3 } {
-    fmt.println("q3")
     g := get_or_declare_group(type1, type2, type3)
     if g == nil do return {}
     get :: proc(g: ^group_t, $t: typeid) -> []t { return get_component_slice(g, t) }
@@ -291,7 +298,6 @@ query :: proc { query_1, query_2, query_3, query_4 }
 get_component_slice :: proc(g: ^group_t, $t: typeid) -> []t {
     set := core.sets[t]
     if info, exists := g.range[t]; exists {
-        //fmt.printfln("%v info: %v", typeid_of(t), info.count)
         data := cast(^[dynamic]t)(set.components)
         start := info.offset
         end := start + info.count
@@ -367,11 +373,6 @@ get_or_declare_group_4 :: proc($type1, $type2, $type3, $type4: typeid) -> ^group
 get_or_declare_group :: proc { get_or_declare_group_2, get_or_declare_group_3, get_or_declare_group_4 }
 
 declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
-    //fmt.println("declare group")
-    //for s in sets {
-    //    fmt.println(s.type)
-    //}
-    //fmt.println("")
     new_group.components = bit_array.create(len(core.sets))
     for set in sets do bit_array.set(new_group.components, set.id)
 
@@ -393,10 +394,7 @@ declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
             if set.indices[e] > max do max = set.indices[e]
         }
         if max - count == min { // already in ok order (not thinking about other groups)
-            //fmt.println(max, count, min, max - count)
             new_group.range[set.type] = range_t { min, count }
-            //fmt.println(min, max, set.type, new_group.range[set.type])
-            //fmt.println(set.indices)
         } else {
             append(&to_sort, set)
         }

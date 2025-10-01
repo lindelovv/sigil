@@ -89,6 +89,7 @@ init_scene :: proc() {
     //    e += 1
     //}
 	id := jolt.BodyInterface_CreateAndAddBody(body_interface, box_settings, .JPH_Activation_Activate)
+    jolt.BodyInterface_SetObjectLayer(body_interface, id, OBJECT_LAYER_MOVING)
     jolt.BodyInterface_SetPosition(body_interface, id, cast(^[3]f32)sigil.get_ref(cam_entity, position_t), .JPH_Activation_Activate)
 	//sigil.add(cam_entity, rotation_t(0))
 	sigil.add(cam_entity, physics_id_t(id))
@@ -164,29 +165,61 @@ setup_keybinds :: proc() {
             get_ctrl().follow_mouse = false
         }
     )
+    bind_input(glfw.KEY_V,//glfw.MOUSE_BUTTON_LEFT,
+        press = proc() {
+            npq := jolt.PhysicsSystem_GetNarrowPhaseQuery(physics_system)
+            cam := sigil.get_value(cam_entity, camera_t)
+            forward := -cam.forward * 100
+            origin := get_camera_pos() + (-cam.forward)
+            fmt.println(origin)
+            hit: jolt.RayCastResult
+            filter := jolt.ObjectLayerFilter_Create(nil)
+            if collided := jolt.NarrowPhaseQuery_CastRay(npq, &origin, &forward, &hit, nil, filter, nil); collided {
+                fmt.println("cast hit")
+                set := sigil.core.sets[physics_id_t]
+                fmt.printfln("%#v", set)
+                owner: sigil.entity_t
+                fmt.printfln("bodyID: %v", hit.bodyID)
+                for id, i in sigil.query(physics_id_t) {
+                    fmt.printfln("q id: %v", id)
+                    fmt.printfln("q i: %v", i)
+                    fmt.printfln("q idc: %v", set.indices[i+1])
+                    if u32(id) == hit.bodyID {
+                        for idx, e in set.indices {
+                            if idx == i do owner = auto_cast e // todo: reverse lookup, feel like I did this sometime
+                        }
+                    }
+                }
+                fmt.printfln("owner: %v", owner)
+                sigil.delete_entity(owner)
+            }
+            else { fmt.println("cast miss") }
+            fmt.printfln("cam: %v", cam_entity)
+        },
+    )
     bind_input(glfw.KEY_M,
         press   = proc() { 
             fmt.printfln("%#v", sigil.query(position_t, render_data_t))
         },
     )
-
     bind_input(glfw.KEY_F,
         press   = proc() { follow = !follow  },
     )
-
     bind_input(glfw.KEY_B,
         press   = proc() {
             sigil.remove_component(n, render_data_t)
             n += 1
         },
     )
-    bind_input(glfw.KEY_V,
-        press   = proc() {
-            sigil.delete_entity(10)
-        }
-    )
+    //bind_input(glfw.KEY_V,
+    //    press   = proc() {
+    //        sigil.delete_entity(auto_cast m)
+    //        m += 1
+    //    }
+    //)
 }
 n := 9
+m := 9
 
 tick_scene :: proc() {
     update_camera(delta_time)
