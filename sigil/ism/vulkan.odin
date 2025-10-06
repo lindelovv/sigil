@@ -1086,7 +1086,7 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
                 if node.has_translation {
                     pos = glm.mat4Translate(p)
                 }
-                rot := glm.quat(0)
+                rot := glm.quat(1)
                 if node.has_rotation {
                     gltf_rot := transmute(quaternion128)node.rotation
                     rot = glm.quatAxisAngle(glm.vec3 { 1, 0, 0 }, math.PI) * gltf_rot
