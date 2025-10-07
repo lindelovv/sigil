@@ -52,7 +52,7 @@ init_jolt :: proc() {
 	jolt.ObjectLayerPairFilterTable_EnableCollision(
 		object_layer_pair_filter,
 		OBJECT_LAYER_MOVING,
-		OBJECT_LAYER_NON_MOVING,
+		OBJECT_LAYER_MOVING,
 	)
 	//jolt.ObjectLayerPairFilterTable_EnableCollision(
 	//	object_layer_pair_filter,
@@ -113,6 +113,7 @@ tick_jolt :: proc() {
         transform[1].xyz = glm.normalize(transform[1].xyz) * scale.y
         transform[2].xyz = glm.normalize(transform[2].xyz) * scale.z
 	}
+    sigil.release_query(physics_id_t, transform_t)
 }
 
 add_physics_shape :: proc(

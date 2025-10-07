@@ -103,7 +103,7 @@ draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
         imgui.TextUnformatted("")
         imgui.TextUnformatted(fmt.caprintf("entities: %v", len(sigil.core.entities) - 1, allocator = context.temp_allocator))
         imgui.TextUnformatted(fmt.caprintf("component types: %v", len(sigil.core.sets), allocator = context.temp_allocator))
-        imgui.TextUnformatted(fmt.caprintf("groups: %v", len(sigil.core.groups), allocator = context.temp_allocator))
+        //imgui.TextUnformatted(fmt.caprintf("groups: %v", len(sigil.core.groups), allocator = context.temp_allocator))
         //imgui.PopStyleColor()
     }
     imgui.End()

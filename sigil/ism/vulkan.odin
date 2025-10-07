@@ -26,13 +26,8 @@ vulkan :: proc(e: sigil.entity_t) -> typeid {
     schedule(e, init(init_vulkan))
     schedule(e, tick(tick_vulkan))
     schedule(e, exit(terminate_vulkan))
-    
-    //r := before { tick_vulkan }
-    //fmt.println(r)
-
     return none
 }
-
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 engine_info := vk.ApplicationInfo {
     sType               = .APPLICATION_INFO,
@@ -43,18 +38,15 @@ engine_info := vk.ApplicationInfo {
     apiVersion          = vk.API_VERSION_1_3,
 }
 VK_VERSION := vk.MAKE_VERSION(sigil.MAJOR_V, sigil.MINOR_V, sigil.PATCH_V)
-
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 validation_layers := []cstring {
     "VK_LAYER_KHRONOS_validation",
 }
-
 device_extensions := []cstring {
     vk.KHR_SWAPCHAIN_EXTENSION_NAME,
     vk.KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
     vk.KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
 }
-
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 instance         : vk.Instance
 device           : device_t
@@ -1086,7 +1078,7 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
                 if node.has_translation {
                     pos = glm.mat4Translate(p)
                 }
-                rot := glm.quat(0)
+                rot := glm.quat(1)
                 if node.has_rotation {
                     gltf_rot := transmute(quaternion128)node.rotation
                     rot = glm.quatAxisAngle(glm.vec3 { 1, 0, 0 }, math.PI) * gltf_rot
@@ -1684,6 +1676,7 @@ tick_vulkan :: proc() {
 
                 vk.CmdDrawIndexed(frame.cmd, data.count, 1, data.first, 0, 0)
             }
+            sigil.release_query(render_data_t, transform_t)
             draw_ui(frame.cmd, swapchain.views[current_frame])
 
             vk.CmdEndDebugUtilsLabelEXT(frame.cmd)

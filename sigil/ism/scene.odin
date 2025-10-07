@@ -185,9 +185,7 @@ setup_keybinds :: proc() {
                     fmt.printfln("q i: %v", i)
                     fmt.printfln("q idc: %v", set.indices[i+1])
                     if u32(id) == hit.bodyID {
-                        for idx, e in set.indices {
-                            if idx == i do owner = auto_cast e // todo: reverse lookup, feel like I did this sometime
-                        }
+                        for idx, e in set.indices do if idx == i do owner = auto_cast e // todo: reverse lookup, feel like I did this sometime
                     }
                 }
                 fmt.printfln("owner: %v", owner)
@@ -200,6 +198,7 @@ setup_keybinds :: proc() {
     bind_input(glfw.KEY_M,
         press   = proc() { 
             fmt.printfln("%#v", sigil.query(position_t, render_data_t))
+            sigil.release_query(position_t, render_data_t)
         },
     )
     bind_input(glfw.KEY_F,
@@ -207,7 +206,16 @@ setup_keybinds :: proc() {
     )
     bind_input(glfw.KEY_B,
         press   = proc() {
+            q1 := sigil.query(render_data_t)
+            fmt.println(q1)
+            sigil.release_query(render_data_t)
+
             sigil.remove_component(n, render_data_t)
+
+            q2 := sigil.query(render_data_t)
+            fmt.println(q2)
+            sigil.release_query(render_data_t)
+
             n += 1
         },
     )
@@ -251,6 +259,7 @@ tick_scene :: proc() {
 
 	    	//jolt.BodyInterface_SetLinearAndAngularVelocity(body_interface, id, &target_dir, &target_dir)
         }
+        sigil.release_query(transform_t, physics_id_t)
     }
 }
 
