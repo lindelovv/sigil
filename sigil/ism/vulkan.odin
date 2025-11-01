@@ -1083,8 +1083,7 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
                 }
                 rot := glm.quat(0)
                 if node.has_rotation {
-                    gltf_rot := transmute(quaternion128)node.rotation
-                    rot = glm.quatAxisAngle(glm.vec3 { 1, 0, 0 }, math.PI) * gltf_rot
+                    rot = transmute(quaternion128)node.rotation
                 }
 
                 scl := glm.mat4Translate(glm.vec3(0))
@@ -1196,7 +1195,7 @@ parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a s
             pos_src := mem.slice_ptr(cast([^][3]f32)(&pos_buffer[pos_offset]), int(vertex_count))
 
             for i in 0 ..< vertex_count {
-                vertex_buffer[old_len + i].position = -pos_src[i]
+                vertex_buffer[old_len + i].position = pos_src[i]
             }
         }
 
@@ -1285,11 +1284,9 @@ set_t_space_basic :: proc(pContext: ^mikktspace.Context, fvTangent: [3]f32, fSig
     idx := ctx.indices[iFace * 3 + iVert]
     vertex := &ctx.vertices[idx]
     
-    // Store tangent with handedness in w component
     vertex.tangent = {fvTangent.x, fvTangent.y, fvTangent.z, fSign}
 }
 
-// Main function to generate tangents for a mesh
 generate_tangents_for_mesh :: proc(vertices: []vertex_t, indices: []u32) -> bool {
     if len(vertices) == 0 || len(indices) == 0 || len(indices) % 3 != 0 {
         return false

@@ -40,13 +40,9 @@ vs_output_t vs_main(uint vi: SV_VertexID) {
     float4 view_pos = mul(world_pos, scene_data.view);
     float4 clip_pos = mul(view_pos, scene_data.proj);
 
-    float3x3 model_3x3 = float3x3(model);
-    float3x3 normal_matrix;
-    normal_matrix[0] = normalize(model_3x3[0]);
-    normal_matrix[1] = normalize(model_3x3[1]);
-    normal_matrix[2] = normalize(model_3x3[2]);
-    float3 world_normal = mul(normal_matrix, v.normal);
-    float3 world_tanget = mul(normal_matrix, v.tangent.xyz);
+    float3x3 model3x3 = float3x3(model[0].xyz, model[1].xyz, model[2].xyz);
+    float3 world_normal = normalize(mul(v.normal, model3x3));
+    float3 world_tanget = normalize(mul(v.tangent.xyz, model3x3));
     float3 world_bitangent = cross(world_normal, world_tanget) * v.tangent.w;
     float3x3 TBN = float3x3(world_tanget, world_bitangent, world_normal);
 
@@ -64,7 +60,7 @@ vs_output_t vs_main(uint vi: SV_VertexID) {
 
 [shader("fragment")]
 fs_output_t fs_main(vs_output_t in) {
-    float3 albedo    = sample_texture(pc.albedo, in.uv).xyz * 0.8;
+    float3 albedo    = sample_texture(pc.albedo, in.uv).xyz;
     float  metalness = sample_texture(pc.metal_roughness, in.uv).r;
     float  roughness = sample_texture(pc.metal_roughness, in.uv).g;
     float3 tangent   = normalize(2.0 * sample_texture(pc.normal, in.uv).rgb - 1.0);
@@ -92,7 +88,7 @@ fs_output_t fs_main(vs_output_t in) {
     float3 diffuse = kD * albedo / PI;
     float3 radiance = light_color * cosLi * 4.0;
     float3 brdf = (diffuse + specular) * radiance;
-    float3 ambient = scene_data.ambient_color.rgb * albedo * ao * 0.4;
+    float3 ambient = scene_data.ambient_color.rgb * albedo * ao * 0.2;
     float3 color = ambient + brdf + emissive;
 
     fs_output_t out;
