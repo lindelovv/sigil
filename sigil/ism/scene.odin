@@ -10,8 +10,8 @@ import "lib:jolt"
 scene :: proc(e: sigil.entity_t) -> typeid {
     using sigil
     add(e, name_t("scene_module"))
-    schedule(e, init(init_scene))
-    schedule(e, tick(tick_scene))
+    add(e, init(init_scene))
+    add(e, tick(tick_scene))
     return none
 }
 
@@ -169,15 +169,28 @@ setup_keybinds :: proc() {
         press = proc() {
             npq := jolt.PhysicsSystem_GetNarrowPhaseQuery(physics_system)
             cam := sigil.get_value(cam_entity, camera_t)
-            forward := -cam.forward * 100
-            origin := get_camera_pos() + (-cam.forward)
-            fmt.println(origin)
+            // this is fucked, tried fucking it more to fix it but no luck it seems
+            forward := glm.normalize(cam.forward)
+            origin := get_camera_pos()
+            // todo: figure out why cam is being weird, likely mistake in calculations
+            //es := parse_gltf_scene("res/models/DamagedHelmet.glb")
+            ////model := glm.quatMulVec3(glm.dot_quat(glm.quat(1), forward), origin)
+            //fmt.printfln("new e: %v", es)
+            //for e in es {
+            //    //sigil.remove_component(e, physics_id_t)
+            //    fmt.printfln("point: %v", origin - forward)
+            //    t, _ := sigil.add(e, transform_t(glm.mat4Translate(auto_cast (origin - forward) * glm.vec3(10))))
+            //    // this scaling down at higher numbers would indicate that everything is in reverse lol hmmm
+            //    fmt.printfln("spawn at: %v", t)
+            //}
+            //fmt.printfln("full list: %#v", sigil.query(render_data_t, transform_t))
             hit: jolt.RayCastResult
             filter := jolt.ObjectLayerFilter_Create(nil)
-            if collided := jolt.NarrowPhaseQuery_CastRay(npq, &origin, &forward, &hit, nil, filter, nil); collided {
+            dir := origin - forward
+            if collided := jolt.NarrowPhaseQuery_CastRay(npq, &origin, &dir, &hit, nil, filter, nil); collided {
                 fmt.println("cast hit")
                 set := sigil.core.sets[physics_id_t]
-                fmt.printfln("%#v", set)
+                fmt.printfln("%v", set)
                 owner: sigil.entity_t
                 fmt.printfln("bodyID: %v", hit.bodyID)
                 for id, i in sigil.query(physics_id_t) {
@@ -192,9 +205,12 @@ setup_keybinds :: proc() {
                 }
                 fmt.printfln("owner: %v", owner)
                 sigil.delete_entity(owner)
+                //sigil.remove_component(owner, render_data_t)
+                //sigil.remove_component(owner, transform_t)
+                //sigil.remove_component(owner, physics_id_t)
             }
             else { fmt.println("cast miss") }
-            fmt.printfln("cam: %v", cam_entity)
+            //fmt.printfln("cam: %v", cam_entity)
         },
     )
     bind_input(glfw.KEY_M,
@@ -207,7 +223,19 @@ setup_keybinds :: proc() {
     )
     bind_input(glfw.KEY_B,
         press   = proc() {
-            sigil.remove_component(n, render_data_t)
+            q1 := sigil.query(render_data_t)
+            fmt.println("before remove: ")
+            fmt.println(q1)
+
+            //sigil.remove_component(n, render_data_t)
+            sigil.delete_entity(n)
+
+            q2 := sigil.query(render_data_t)
+            fmt.println("after remove: ")
+            fmt.println(q2)
+
+            fmt.println()
+
             n += 1
         },
     )

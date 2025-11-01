@@ -342,6 +342,9 @@ build_pbr_pipeline :: proc(global_session: ^slang.IGlobalSession) {
         pDynamicState       = &dynamic_sate,
         layout              = pbr.pipeline_layout
     }
-    __ensure(vk.CreateGraphicsPipelines(device.handle, 0, 1, &graphics_pipe_info, nil, &pbr.pipeline), "Failed to create PBR Pipeline")
+    __ensure(
+        vk.CreateGraphicsPipelines(device.handle, 0, 1, &graphics_pipe_info, nil, &pbr.pipeline),
+        msg = "Failed to create PBR Pipeline"
+    )
 }
 

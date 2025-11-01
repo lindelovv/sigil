@@ -20,17 +20,14 @@ import "lib:slang"
 import "core:encoding/json"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-vulkan :: proc(e: sigil.entity_t) -> typeid {
-    using sigil
-    add(e, name_t("vulkan_module"))
-    schedule(e, init(init_vulkan))
-    schedule(e, tick(tick_vulkan))
-    schedule(e, exit(terminate_vulkan))
-    
-    //r := before { tick_vulkan }
-    //fmt.println(r)
-
-    return none
+vulkan := sigil.module_create_info_t {
+    name  = "vulkan_module",
+    setup = proc(e: sigil.entity_t) {
+        using sigil
+        add(e, init(init_vulkan))
+        add(e, tick(tick_vulkan))
+        add(e, exit(terminate_vulkan))
+    },
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -171,7 +168,6 @@ render_data_t :: struct {
     count           : u32,
     first           : u32,
     idx_buffer      : vk.Buffer,
-    transform       : u32,
     //material        : ^material_t,
     address         : vk.DeviceAddress,
     indirect_offset : vk.DeviceSize,
@@ -1074,12 +1070,10 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
         for node in scene.nodes {
             //fmt.println(node.name)
             e := sigil.new_entity()
+            append(&created, e)
+            //fmt.println(created)
             if node.mesh != nil {
                 sigil.add(e, sigil.name_t(node.name))
-
-                d := parse_gltf_mesh(node.mesh^)
-                r_data := upload_mesh(d.vertices, d.indices)
-                sigil.add(e, r_data)
 
                 p := glm.vec3 { node.translation.x, node.translation.y, node.translation.z }
                 pos := glm.mat4Translate(glm.vec3(0))
@@ -1098,6 +1092,10 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
                 }
                 model := pos * glm.mat4FromQuat(rot) * scl
                 sigil.add(e, transform_t(model))
+
+                d := parse_gltf_mesh(node.mesh^)
+                r_data := upload_mesh(d.vertices, d.indices)
+                sigil.add(e, r_data)
 
                 json_get_obj :: proc(value: json.Value, key: string) -> json.Value {
                     if obj, valid := value.(json.Object); valid do if ret, valid := obj[key]; valid do return ret; return nil
@@ -1146,7 +1144,7 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
             }
         }
     }
-    return {}
+    return
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -1606,6 +1604,7 @@ tick_vulkan :: proc() {
             imageLayout = .DEPTH_ATTACHMENT_OPTIMAL,
             loadOp      = .CLEAR,
             storeOp     = .STORE,
+            clearValue  = vk.ClearValue { depthStencil = { depth = 0.0 } },
         }
         render_info := vk.RenderingInfo {
             sType                = .RENDERING_INFO,
@@ -1670,14 +1669,13 @@ tick_vulkan :: proc() {
 
                 offset := u32(i * size_of(glm.mat4))
                 mem.copy(rawptr(uintptr(transform_buffer.info.pMappedData) + uintptr(offset)), &transform, size_of(glm.mat4))
-                data.transform = u32(i)
 
                 // todo: need to set up material system to enable dynamic texturing for different meshes
                 vk.CmdBindPipeline(frame.cmd, .GRAPHICS, pbr.pipeline)
                 sets := []vk.DescriptorSet { frame.descriptor.set, pbr.set, bindless.set }
                 vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, pbr.pipeline_layout, 0, u32(len(sets)), raw_data(sets), 0, nil)
                 //data.material.update_delegate(frame.cmd, data)
-                pbr_push_const.model = data.transform
+                pbr_push_const.model = u32(i) // transform idx
                 pbr_push_const.vertex_buffer = data.address
                 vk.CmdPushConstants(frame.cmd, pbr.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(pbr_push_constant_t), &pbr_push_const)
                 vk.CmdBindIndexBuffer(frame.cmd, data.idx_buffer, 0, .UINT32)

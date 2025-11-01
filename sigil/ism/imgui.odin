@@ -1,3 +1,4 @@
+#+build !js
 package ism
 
 import sigil "sigil:core"
@@ -37,9 +38,12 @@ init_imgui :: proc(swapchain_create_info: ^vk.SwapchainCreateInfoKHR) {
     imgui.CHECKVERSION()
     imgui.CreateContext()
 
-    imgui_vk.LoadFunctions(proc "c" (function_name: cstring, user_data: rawptr) -> vk.ProcVoidFunction {
-		return vk.GetInstanceProcAddr(auto_cast user_data, function_name)
-	}, auto_cast instance)
+    imgui_vk.LoadFunctions(
+        proc "c" (function_name: cstring, user_data: rawptr) -> vk.ProcVoidFunction {
+		    return vk.GetInstanceProcAddr(auto_cast user_data, function_name)
+	    },
+        auto_cast instance
+    )
 
     imgui_glfw.InitForVulkan(window, true)
     imgui_init_info := imgui_vk.InitInfo {
