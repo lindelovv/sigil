@@ -9,7 +9,7 @@
 	url = https://gitlab.com/L-4/odin-imgui
 [submodule "lib/jolt"]
 	path = lib/jolt
-	url = https://github.com/jrdurandt/jolt-odin
+	url = https://github.com/lindelovv/jolt-odin
 [submodule "lib/slang"]
 	path = lib/slang
 	url = https://github.com/DragosPopse/odin-slang
