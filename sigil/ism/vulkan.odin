@@ -18,6 +18,7 @@ import "vendor:stb/image"
 import "vendor:cgltf"
 import "lib:slang"
 import "core:encoding/json"
+import "lib:mikktspace"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 vulkan := sigil.module_create_info_t {
@@ -1232,7 +1233,100 @@ parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a s
 
         //prim.material.pbr_metallic_roughness.base_color_texture
     }
+    if len(vertex_buffer) > 0 && len(index_buffer) > 0 {
+        success := generate_tangents_for_mesh(vertex_buffer[:], index_buffer[:])
+        if !success {
+            ensure_default_tangents(vertex_buffer[:])
+            fmt.println("Failed to generate tangets for mesh")
+        }
+    }
     return { vertex_buffer[:], index_buffer[:] }
+}
+
+MikkContext :: struct {
+    vertices: []vertex_t,
+    indices: []u32,
+    face_count: int,
+}
+
+// MikkTSpace interface implementations
+get_num_faces :: proc(pContext: ^mikktspace.Context) -> int {
+    ctx := cast(^MikkContext)pContext.user_data
+    return ctx.face_count
+}
+
+get_num_vertices_of_face :: proc(pContext: ^mikktspace.Context, iFace: int) -> int {
+    return 3 // We only handle triangles
+}
+
+get_position :: proc(pContext: ^mikktspace.Context, iFace: int, iVert: int) -> [3]f32 {
+    ctx := cast(^MikkContext)pContext.user_data
+    idx := ctx.indices[iFace * 3 + iVert]
+    vertex := &ctx.vertices[idx]
+    return vertex.position
+}
+
+get_normal :: proc(pContext: ^mikktspace.Context, iFace: int, iVert: int) -> [3]f32 {
+    ctx := cast(^MikkContext)pContext.user_data
+    idx := ctx.indices[iFace * 3 + iVert]
+    vertex := &ctx.vertices[idx]
+    return vertex.normal
+}
+
+get_tex_coord :: proc(pContext: ^mikktspace.Context, iFace: int, iVert: int) -> [2]f32 {
+    ctx := cast(^MikkContext)pContext.user_data
+    idx := ctx.indices[iFace * 3 + iVert]
+    vertex := &ctx.vertices[idx]
+    return {vertex.uv_x, vertex.uv_y}
+}
+
+set_t_space_basic :: proc(pContext: ^mikktspace.Context, fvTangent: [3]f32, fSign: f32, iFace: int, iVert: int) {
+    ctx := cast(^MikkContext)pContext.user_data
+    idx := ctx.indices[iFace * 3 + iVert]
+    vertex := &ctx.vertices[idx]
+    
+    // Store tangent with handedness in w component
+    vertex.tangent = {fvTangent.x, fvTangent.y, fvTangent.z, fSign}
+}
+
+// Main function to generate tangents for a mesh
+generate_tangents_for_mesh :: proc(vertices: []vertex_t, indices: []u32) -> bool {
+    if len(vertices) == 0 || len(indices) == 0 || len(indices) % 3 != 0 {
+        return false
+    }
+
+    context_data := MikkContext{
+        vertices = vertices,
+        indices = indices,
+        face_count = len(indices) / 3,
+    }
+
+    interface := mikktspace.Interface{
+        get_num_faces = get_num_faces,
+        get_num_vertices_of_face = get_num_vertices_of_face,
+        get_position = get_position,
+        get_normal = get_normal,
+        get_tex_coord = get_tex_coord,
+        set_t_space_basic = set_t_space_basic,
+        set_t_space = nil, // We're using basic tangent space
+    }
+
+    mikk_context := mikktspace.Context{
+        interface = &interface,
+        user_data = &context_data,
+    }
+
+    return mikktspace.generate_tangents(&mikk_context)
+}
+
+// Helper to ensure all vertices have valid tangents (fallback for failed generation)
+ensure_default_tangents :: proc(vertices: []vertex_t) {
+    for i in 0..<len(vertices) {
+        if vertices[i].tangent == {0, 0, 0, 0} {
+            // Default tangent (1, 0, 0) with positive handedness
+            vertices[i].tangent = {1, 0, 0, 1}
+        }
+    }
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
