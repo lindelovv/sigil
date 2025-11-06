@@ -62,7 +62,6 @@ range_t :: struct {
 }
 
 run :: #force_inline proc() {
-    fmt.println(size_of(typeid))
     for fn in query(init) { fn() }
     main_loop: for !core.request_exit { for fn in query(tick) { fn() } free_all(context.temp_allocator) }
     for fn in query(exit) { fn() }
@@ -377,6 +376,7 @@ declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
 
     count := 0
     group_entities: [dynamic]entity_t
+    defer delete(group_entities)
     for e in core.entities {
         if entity_is_valid(e) && has_all_components(e, &new_group.components) {
             append(&group_entities, e)

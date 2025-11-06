@@ -1714,7 +1714,7 @@ tick_vulkan :: proc() {
         {
             debug_label := vk.DebugUtilsLabelEXT {
                 sType = .DEBUG_UTILS_LABEL_EXT,
-                pLabelName = fmt.caprintf("Frame %d", current_frame),
+                pLabelName = fmt.caprintf("Frame %d", current_frame, allocator = context.temp_allocator),
                 color = { 0, 255, 0, 255 },
             }
             vk.CmdBeginDebugUtilsLabelEXT(frame.cmd, &debug_label)
