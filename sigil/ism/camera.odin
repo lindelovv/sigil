@@ -4,7 +4,6 @@ import sigil "../core"
 import glm "core:math/linalg/glsl"
 import "core:math/linalg"
 import "core:math"
-import "core:fmt"
 import "lib:jolt"
 
 WORLD_UP :: glm.vec3 { 0, 0, 1 }
@@ -47,10 +46,10 @@ camera_t :: struct {
 cam_entity: sigil.entity_t
 cam_cube_e: sigil.entity_t
 
-init_camera :: proc() {
-    cam_entity = sigil.new_entity()
+init_camera :: proc(world: ^sigil.world_t) {
+    cam_entity = sigil.new_entity(world)
 
-    cam, _ := sigil.add(cam_entity, camera_t {
+    cam, _ := sigil.add(world, cam_entity, camera_t {
         fov     = 70.0,
         up      = WORLD_UP,
         near    = 0.1,
@@ -59,12 +58,12 @@ init_camera :: proc() {
         yaw     = 225,
         roll    = 0,
     })
-    sigil.add(cam_entity, position_t(glm.vec3{ -11, -11, 13 }))
-    sigil.add(cam_entity, rotation_t(0))
-    sigil.add(cam_entity, velocity_t(0))
-    sigil.add(cam_entity, sigil.name_t("cam"))
+    sigil.add(world, cam_entity, position_t(glm.vec3{ -11, -11, 13 }))
+    sigil.add(world, cam_entity, rotation_t(0))
+    sigil.add(world, cam_entity, velocity_t(0))
+    sigil.add(world, cam_entity, sigil.name_t("cam"))
     //sigil.add(cam_entity, glm.vec3{ -2.5, 2.5, 1.5 })
-    sigil.add(cam_entity, camera_controller_t {
+    sigil.add(world, cam_entity, camera_controller_t {
         movement_speed    = 1,
         mouse_sensitivity = 28,
     })
@@ -85,8 +84,8 @@ init_camera :: proc() {
     update_camera_vectors(&cam)
 }
 
-update_camera :: proc(delta_time: f32) {
-    for &q in sigil.query(camera_t, position_t, camera_controller_t, physics_id_t) {
+update_camera :: proc(world: ^sigil.world_t, delta_time: f32) {
+    for &q in sigil.query(world, camera_t, position_t, camera_controller_t, physics_id_t) {
         cam, pos, ctrl, id := &q.x, &q.y, &q.z, u32(q.w)
 
         velocity := glm.vec3 { 0, 0, 0 }
@@ -139,10 +138,9 @@ update_camera_vectors :: proc(cam: ^camera_t) {
     cam.up = glm.normalize(glm.cross(cam.right, cam.forward))
 }
 
-get_camera_view :: #force_inline proc() -> glm.mat4 {
-    cam      := sigil.get_ref(cam_entity, camera_t)^
-    position := sigil.get_ref(cam_entity, position_t)^
-    //fmt.println(position)
+get_camera_view :: #force_inline proc(world: ^sigil.world_t) -> glm.mat4 {
+    cam      := sigil.get_ref(world, cam_entity, camera_t)^
+    position := sigil.get_ref(world, cam_entity, position_t)^
 
     eye    := glm.vec3(position)
     centre := (glm.vec3(position) + cam.forward)
@@ -158,8 +156,22 @@ get_camera_view :: #force_inline proc() -> glm.mat4 {
     }
 }
 
-get_camera_projection :: #force_inline proc() -> glm.mat4 {
-    cam := sigil.get_ref(cam_entity, camera_t)
+tmp_view :: #force_inline proc(eye, forward, up: glm.vec3) -> glm.mat4 {
+    centre := (glm.vec3(eye) + forward)
+    f := glm.normalize(centre - eye)
+    r := glm.normalize(glm.cross(f, up))
+    u := glm.normalize(glm.cross(r, f))
+
+    return glm.mat4 {
+         r.x,  r.y,  r.z, -glm.dot(r, eye),
+         u.x,  u.y,  u.z, -glm.dot(u, eye),
+        -f.x, -f.y, -f.z,  glm.dot(f, eye),
+         0,    0,    0,    1,
+    }
+}
+
+get_camera_projection :: #force_inline proc(world: ^sigil.world_t) -> glm.mat4 {
+    cam := sigil.get_ref(world, cam_entity, camera_t)
 
     a := f32(swapchain.extent.width) / f32(swapchain.extent.height)
     h := glm.tan(glm.radians(cam.fov) * 0.5)
@@ -174,7 +186,7 @@ get_camera_projection :: #force_inline proc() -> glm.mat4 {
     }
 }
 
-get_camera_pos :: #force_inline proc() -> glm.vec3 {
-    return (glm.vec3)(sigil.get_value(cam_entity, position_t))
+get_camera_pos :: #force_inline proc(world: ^sigil.world_t) -> glm.vec3 {
+    return (glm.vec3)(sigil.get_value(world, cam_entity, position_t))
 }
 

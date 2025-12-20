@@ -23,13 +23,16 @@ import "lib:mikktspace"
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 vulkan := sigil.module_create_info_t {
     name  = "vulkan_module",
-    setup = proc(e: sigil.entity_t) {
+    setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
         using sigil
-        add(e, init(init_vulkan))
-        add(e, tick(tick_vulkan))
-        add(e, exit(terminate_vulkan))
+        add(world, e, init(init_vulkan))
+        add(world, e, tick(tick_vulkan))
+        add(world, e, exit(terminate_vulkan))
     },
 }
+
+SHADOW_MAP_SIZE :: 2048
+MAX_OBJECTS :: 102_400
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 engine_info := vk.ApplicationInfo {
@@ -43,8 +46,12 @@ engine_info := vk.ApplicationInfo {
 VK_VERSION := vk.MAKE_VERSION(sigil.MAJOR_V, sigil.MINOR_V, sigil.PATCH_V)
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-validation_layers := []cstring {
-    "VK_LAYER_KHRONOS_validation",
+when ODIN_DEBUG {
+    validation_layers := []cstring {
+        "VK_LAYER_KHRONOS_validation",
+    }
+} else {
+    validation_layers := []cstring {}
 }
 
 device_extensions := []cstring {
@@ -91,7 +98,6 @@ depth_img        : allocated_image_t
 immediate        : immediate_submit_t
 sampler          : vk.Sampler
 
-MAX_OBJECTS :: 100_000
 
 transform_buffer : allocated_buffer_t
 scene_ubo        : allocated_buffer_t
@@ -102,6 +108,8 @@ textures         : [dynamic]vk.ImageView
 texture_indices  : map[vk.ImageView]u32
 buffers          : [dynamic]vk.Buffer
 buffer_indices   : map[vk.Buffer]u32
+
+shadow_data : shadow_data_t // todo: tmp, make entity with light and shadow data and store there
 
 materials        : [4096]material_t
 material_count   : u32
@@ -175,6 +183,14 @@ render_data_t :: struct {
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+shadow_data_t :: struct {
+    smap : allocated_image_t,
+    fbo  : vk.Framebuffer,
+    view : glm.mat4,
+    proj : glm.mat4,
+}
+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 material_t :: struct {
     sampler         : vk.Sampler,
     data            : vk.Buffer,
@@ -221,12 +237,15 @@ scene_data_t :: struct {
 gpu_scene_data_t :: struct #align(16) {
     view          : glm.mat4,
     proj          : glm.mat4,
+    light_view    : glm.mat4,
+    light_proj    : glm.mat4,
     ambient_color : glm.vec4,
     sun_color     : glm.vec4,
     sun_direction : glm.vec3,
     time          : f32,
     view_pos      : glm.vec3,
     frame_index   : u32,
+    smap_size     : u32,
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -260,7 +279,7 @@ dbg_callback /* +-+-+-+-+-+ */ :: proc "system" (
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-init_vulkan :: proc() {
+init_vulkan :: proc(world: ^sigil.world_t) {
     vk.load_proc_addresses_global(rawptr(glfw.GetInstanceProcAddress))
     extensions := slice.clone_to_dynamic(glfw.GetRequiredInstanceExtensions(), context.temp_allocator)
 
@@ -361,6 +380,7 @@ init_vulkan :: proc() {
         msg = "VK: EnumeratePhysicalDevices Error"
     )
     phys_device_list := make([dynamic]vk.PhysicalDevice, phys_count)
+    defer delete(phys_device_list)
     __ensure(
         vk.EnumeratePhysicalDevices(instance, &phys_count, raw_data(phys_device_list)), 
         msg = "VK: EnumeratePhysicalDevices Error"
@@ -480,6 +500,7 @@ init_vulkan :: proc() {
         { type = .STORAGE_BUFFER, descriptorCount = 1 },
         { type = .SAMPLED_IMAGE,  descriptorCount = MAX_OBJECTS },
         { type = .SAMPLER,        descriptorCount = 100, },
+        { type = .SAMPLED_IMAGE,  descriptorCount = 1, },
     }
     bindless_desc_pool_info := vk.DescriptorPoolCreateInfo {
         sType         = .DESCRIPTOR_POOL_CREATE_INFO,
@@ -514,6 +535,12 @@ init_vulkan :: proc() {
             descriptorCount = 1,
             stageFlags      = vk.ShaderStageFlags_ALL,
         },
+        {
+            binding         = 3,
+            descriptorType  = .SAMPLED_IMAGE,
+            descriptorCount = 1,
+            stageFlags      = { .FRAGMENT },
+        },
     }
     bindless_set_layout_info := vk.DescriptorSetLayoutCreateInfo {
         sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -540,7 +567,7 @@ init_vulkan :: proc() {
     )
 
     transform_size : vk.DeviceSize = size_of(glm.mat4) * MAX_OBJECTS
-    transform_buffer = create_buffer(transform_size, { .STORAGE_BUFFER, .TRANSFER_DST }, .CPU_TO_GPU)
+    transform_buffer = create_buffer(transform_size, { .STORAGE_BUFFER, .TRANSFER_DST, .SHADER_DEVICE_ADDRESS }, .CPU_TO_GPU)
     transform_buffer.index = register_buffer(transform_buffer.handle, transform_size)
 
     //_____________________________
@@ -649,7 +676,7 @@ init_vulkan :: proc() {
             sun_color     = { .4, .4, .6, 1  },
             ambient_color = {  1,  1,  1, 1  },
             sun_direction = {  0,  3,  5  },
-            view_pos      = get_camera_pos(),
+            view_pos      = get_camera_pos(world),
         }
         scene_allocation = create_buffer(size_of(gpu_scene_data_t), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
         scene_unifrom_data := cast(^gpu_scene_data_t)scene_allocation.info.pMappedData
@@ -825,11 +852,12 @@ init_vulkan :: proc() {
         msg = "Failed to create global slang session"
     )
 
-    init_camera()
+    init_camera(world)
 
     //_____________________________
     // Shaders
     pbr_declare(global_session) // TODO: make switching easier
+    shadow_declare(global_session)
     //ui_declare()
     //rect_declare(global_session)
 
@@ -1053,7 +1081,7 @@ upload_mesh /* +-+-+-+-+-+-+-+ */ :: proc(
     return
 }
 
-parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
+parse_gltf_scene :: proc(world: ^sigil.world_t, path: cstring) -> (created: [dynamic]sigil.entity_t) {
     //if !os.is_file_path(string(path)) {
     //    fmt.printfln("path %s is not a file path", path)
     //    return {}, {}
@@ -1065,16 +1093,12 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
         cgltf.load_buffers({}, file_data, path),
         msg = fmt.aprintf("Failed to load buffers from path '%s'", path, allocator = context.temp_allocator)
     )
-    //fmt.println(file_data.json)
     for scene in file_data.scenes {
-        //fmt.println(scene.name)
         for node in scene.nodes {
-            //fmt.println(node.name)
-            e := sigil.new_entity()
+            e := sigil.new_entity(world)
             append(&created, e)
-            //fmt.println(created)
             if node.mesh != nil {
-                sigil.add(e, sigil.name_t(node.name))
+                sigil.add(world, e, sigil.name_t(node.name))
 
                 p := glm.vec3 { node.translation.x, node.translation.y, node.translation.z }
                 pos := glm.mat4Translate(glm.vec3(0))
@@ -1085,17 +1109,16 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
                 if node.has_rotation {
                     rot = transmute(quaternion128)node.rotation
                 }
-
                 scl := glm.mat4Translate(glm.vec3(0))
                 if node.has_scale {
                     scl = glm.mat4Scale(glm.vec3 { node.scale.x, node.scale.y, node.scale.z })
                 }
                 model := pos * glm.mat4FromQuat(rot) * scl
-                sigil.add(e, transform_t(model))
+                sigil.add(world, e, transform_t(model))
 
                 d := parse_gltf_mesh(node.mesh^)
                 r_data := upload_mesh(d.vertices, d.indices)
-                sigil.add(e, r_data)
+                sigil.add(world, e, r_data)
 
                 json_get_obj :: proc(value: json.Value, key: string) -> json.Value {
                     if obj, valid := value.(json.Object); valid do if ret, valid := obj[key]; valid do return ret; return nil
@@ -1103,38 +1126,32 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
 
                 for i in 0..<node.extensions_count {
                     ext := node.extensions[i]
-                    //fmt.println(ext.name)
                     if ext.name == "KHR_collision_shapes" {
-                        //fmt.println("shapes")
                         //json_str := strings.clone_from_cstring(auto_cast ext.data)
-                        //fmt.println(json_str)
                     }
                     if ext.name == "KHR_physics_rigid_bodies" {
-                        //fmt.println("physics")
                         json_str := strings.clone_from_cstring(auto_cast ext.data)
                         defer delete(json_str)
-                        //fmt.println(json_str)
                         parsed, err := json.parse(transmute([]u8)json_str)
-                        //fmt.println(parsed)
+                        defer json.destroy_value(parsed)
                         collider := json_get_obj(parsed, "collider")
                         geometry := json_get_obj(collider, "geometry")
                         shape := json_get_obj(geometry, "shape")
                         if value, exists := shape.(json.Float); exists {
                             
-                            //fmt.println("Found shape:", value)
                             switch value {
                                 // these change with more shapes, need to figure out exporting KHR_collision_shapes proper
                                 case 0: { // sphere
-                                    add_physics_shape(e, &p, &rot, &node.scale)
+                                    add_physics_shape(world, e, &p, &rot, &node.scale)
                                 }
                                 case 1: { // box
-                                    add_physics_shape(e, &p, &rot, &node.scale, auto_cast 0)
+                                    add_physics_shape(world, e, &p, &rot, &node.scale, auto_cast 0)
                                 }
                                 case 2: {
-                                    add_physics_shape(e, &p, &rot, &node.scale, auto_cast 0)
+                                    add_physics_shape(world, e, &p, &rot, &node.scale, auto_cast 0)
                                 }
                                 case 3: {
-                                    add_physics_shape(e, &p, &rot, &node.scale)
+                                    add_physics_shape(world, e, &p, &rot, &node.scale)
                                 }
                                 default: {}
                             }
@@ -1149,8 +1166,8 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a single mesh rn effectivly, gotta sort that in the future sometime
-    vertex_buffer: [dynamic]vertex_t
-    index_buffer:  [dynamic]u32
+    vertex_buffer := make([dynamic]vertex_t)
+    index_buffer :=  make([dynamic]u32)
     for prim in m.primitives {
         idx_accessor := prim.indices
         idx_buffer := cast([^]u8)idx_accessor.buffer_view.buffer.data
@@ -1158,7 +1175,6 @@ parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a s
 
         idx_count := int(idx_accessor.count)
         resize(&index_buffer, len(index_buffer) + int(idx_count))
-
 
         idx_len := len(index_buffer) - int(idx_count)
         #partial switch idx_accessor.component_type {
@@ -1624,7 +1640,7 @@ blit_imgs /* +-+-+-+-+-+-+-+ */ :: proc(
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-tick_vulkan :: proc() {
+tick_vulkan :: proc(world: ^sigil.world_t) {
     if resize_window do rebuild_swapchain()
 
     frame := &frames[current_frame]
@@ -1639,6 +1655,7 @@ tick_vulkan :: proc() {
 
     //
     __rebuild_pbr_pipeline(global_session)
+    __rebuild_shadow_pipeline(global_session)
     //
 
     img_index: u32
@@ -1710,6 +1727,15 @@ tick_vulkan :: proc() {
             },
         }
 
+        for &q, i in sigil.query(world, render_data_t, transform_t) {
+            data, transform := q.x, glm.mat4(q.y)
+            offset := u32(i * size_of(glm.mat4))
+            mem.copy(rawptr(uintptr(transform_buffer.info.pMappedData) + uintptr(offset)), &transform, size_of(glm.mat4))
+        }
+
+        render_shadow_pass(world, frame.cmd)
+        transition_img(frame.cmd, shadow_data.smap.handle, .DEPTH_STENCIL_ATTACHMENT_OPTIMAL, .SHADER_READ_ONLY_OPTIMAL)
+
         vk.CmdBeginRendering(frame.cmd, &render_info)
         {
             debug_label := vk.DebugUtilsLabelEXT {
@@ -1735,13 +1761,28 @@ tick_vulkan :: proc() {
             }
             vk.CmdSetScissor(frame.cmd, 0, 1, &scissor)
 
-            view       := get_camera_view()
-            projection := get_camera_projection()
+            view       := get_camera_view(world)
+            projection := get_camera_projection(world)
 
             gpu_scene_data.view = view
             gpu_scene_data.proj = projection
-            gpu_scene_data.view_pos = get_camera_pos()
+            gpu_scene_data.view_pos = get_camera_pos(world)
             gpu_scene_data.time = time
+            light_cam :: proc() -> (glm.mat4, glm.mat4) {
+                light_dir := glm.normalize(gpu_scene_data.sun_direction)
+                scene_center := glm.vec3 { 0, 0, 0  }
+                scene_diagonal := 5.0 * math.sqrt(f32(3.0))
+                view_distance := scene_diagonal * 2.0
+                light_position := scene_center - light_dir * view_distance
+                light_view := glm.mat4LookAt(light_position, scene_center, glm.vec3 { 0, 0, 1 })
+                ortho_size := scene_diagonal * 1.1
+                near: f32 = view_distance - scene_diagonal
+                far := view_distance + scene_diagonal
+                light_proj := glm.mat4Ortho3d(-ortho_size, ortho_size, -ortho_size, ortho_size, near, far)
+                return light_view, light_proj
+            }
+            gpu_scene_data.light_view, gpu_scene_data.light_proj = light_cam()
+            gpu_scene_data.smap_size = SHADOW_MAP_SIZE
             mem.copy(scene_allocation.info.pMappedData, &gpu_scene_data, size_of(gpu_scene_data_t))
 
             scene_descriptor.set = frame.descriptor.set
@@ -1754,16 +1795,12 @@ tick_vulkan :: proc() {
             //mem.copy(object_buffer.info.pMappedData, &object_data, size_of(object_data))
             //vk.CmdBindPipeline(frame.cmd, .COMPUTE, cull_pipeline)
             //vk.CmdBindDescriptorSets(frame.cmd, .COMPUTE, cull_pipeline_layout, 0, 1, &cull_descriptor.set, 0, nil)
-            //fmt.println(sigil.core.groups[sigil.types_hash(render_data_t, transform_t)])
-            for &q, i in sigil.query(render_data_t, transform_t) {
-                data, transform := q.x, glm.mat4(q.y)
-
-                offset := u32(i * size_of(glm.mat4))
-                mem.copy(rawptr(uintptr(transform_buffer.info.pMappedData) + uintptr(offset)), &transform, size_of(glm.mat4))
+            for &q, i in sigil.query(world, render_data_t, transform_t) {
+                data, _ := q.x, glm.mat4(q.y)
 
                 // todo: need to set up material system to enable dynamic texturing for different meshes
                 vk.CmdBindPipeline(frame.cmd, .GRAPHICS, pbr.pipeline)
-                sets := []vk.DescriptorSet { frame.descriptor.set, pbr.set, bindless.set }
+                sets := []vk.DescriptorSet { frame.descriptor.set, bindless.set, pbr.set }
                 vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, pbr.pipeline_layout, 0, u32(len(sets)), raw_data(sets), 0, nil)
                 //data.material.update_delegate(frame.cmd, data)
                 pbr_push_const.model = u32(i) // transform idx
@@ -1773,7 +1810,7 @@ tick_vulkan :: proc() {
 
                 vk.CmdDrawIndexed(frame.cmd, data.count, 1, data.first, 0, 0)
             }
-            draw_ui(frame.cmd, swapchain.views[current_frame])
+            draw_ui(world, frame.cmd, swapchain.views[current_frame])
 
             vk.CmdEndDebugUtilsLabelEXT(frame.cmd)
         }
@@ -1838,33 +1875,38 @@ tick_vulkan :: proc() {
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-terminate_vulkan :: proc() {
-    //__ensure(vk.DeviceWaitIdle(device.handle))
+terminate_vulkan :: proc(world: ^sigil.world_t) {
+    __ensure(vk.DeviceWaitIdle(device.handle))
 
-    //vk.DestroyImage(device.handle, draw_img.handle, nil)
-    //vk.DestroyImageView(device.handle, draw_img.view, nil)
+    vk.DestroyImage(device.handle, draw_img.handle, nil)
+    vk.DestroyImageView(device.handle, draw_img.view, nil)
 
-    //for img in swapchain.images do vk.DestroyImage(device.handle, img, nil)
-    //for view in swapchain.views      do vk.DestroyImageView(device.handle, view, nil)
+    for img in swapchain.images do vk.DestroyImage(device.handle, img, nil)
+    for view in swapchain.views do vk.DestroyImageView(device.handle, view, nil)
 
-    //vk.DestroySwapchainKHR(device.handle, swapchain, nil)
+    //vk.DestroySwapchainKHR(device.handle, swapchain.handle, nil)
 
-    //// destroy the rest
+    // destroy the rest
 
-    //free_imgui()
+    free_imgui()
 
-    //for &frame in frames {
-    //    vk.DestroyCommandPool(device.handle, frame.pool, nil)
-    //    vk.DestroyFence(device.handle, frame.fence, nil)
-    //    vk.DestroySemaphore(device.handle, frame.swap_sem, nil)
-    //    vk.DestroySemaphore(device, frame.render_sem, nil)
-    //}
-    //vk.DestroyCommandPool(device.handle, immediate.pool, nil)
-    //vk.DestroyFence(device.handle, immediate.fence, nil)
+    for &img in textures {
+        vk.DestroyImageView(device.handle, img, nil)
+    }
+    delete(textures)
 
-    //vk.DestroySurfaceKHR(instance, surface, nil)
-    //vk.DestroyDevice(device.handle, nil)
-    //vk.DestroyDebugUtilsMessengerEXT(instance, dbg_messenger, nil)
-    //vk.DestroyInstance(instance, nil)
+    for &frame in frames {
+        vk.DestroyCommandPool(device.handle, frame.pool, nil)
+        vk.DestroyFence(device.handle, frame.fence, nil)
+        vk.DestroySemaphore(device.handle, frame.swap_sem, nil)
+        vk.DestroySemaphore(device.handle, frame.render_sem, nil)
+    }
+    vk.DestroyCommandPool(device.handle, immediate.pool, nil)
+    vk.DestroyFence(device.handle, immediate.fence, nil)
+
+    vk.DestroySurfaceKHR(instance, surface, nil)
+    vk.DestroyDevice(device.handle, nil)
+    vk.DestroyDebugUtilsMessengerEXT(instance, dbg_messenger, nil)
+    vk.DestroyInstance(instance, nil)
 }
 

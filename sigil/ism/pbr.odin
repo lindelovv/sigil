@@ -31,7 +31,6 @@ pbr_uniform := pbr_uniform_t {
     metal_roughness = { 1, 1, 1, 1 },
 }
 
-pbr_entity: sigil.entity_t
 pbr: material_t
 pbr_push_const: pbr_push_constant_t
 current_last_write_time: os.File_Time
@@ -39,8 +38,6 @@ current_last_write_time: os.File_Time
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
-    pbr_entity = sigil.new_entity()
-
     albedo_img    := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_albedo.jpg")
     albedo_img.index = register_image(albedo_img.view)
 
@@ -93,8 +90,8 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
     }
     layouts := []vk.DescriptorSetLayout {
         scene_data.set_layout,
-        pbr.set_layout,
         bindless.set_layout,
+        pbr.set_layout,
     }
     pipeline_layout_info := vk.PipelineLayoutCreateInfo {
         sType                  = .PIPELINE_LAYOUT_CREATE_INFO,

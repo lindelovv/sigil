@@ -1,4 +1,3 @@
-
 #include "common.include"
 
 static const float  PI          = 3.141592;
@@ -60,6 +59,7 @@ vs_output_t vs_main(uint vi: SV_VertexID) {
 
 [shader("fragment")]
 fs_output_t fs_main(vs_output_t in) {
+    //float3 albedo    = shadow_map.Sample(sampler, in.uv).xyz;
     float3 albedo    = sample_texture(pc.albedo, in.uv).xyz;
     float  metalness = sample_texture(pc.metal_roughness, in.uv).r;
     float  roughness = sample_texture(pc.metal_roughness, in.uv).g;
@@ -87,13 +87,27 @@ fs_output_t fs_main(vs_output_t in) {
     float3 kD = (float3(1.0) - F) * (1.0 - metalness);
     float3 diffuse = kD * albedo / PI;
     float3 radiance = light_color * cosLi * 4.0;
-    float3 brdf = (diffuse + specular) * radiance;
-    float3 ambient = scene_data.ambient_color.rgb * albedo * ao * 0.2;
+    float shadow = calculate_shadow(in.pos);
+    float3 brdf = (diffuse + specular) * radiance * (1.0 - shadow * 0.2);
+    float3 ambient = scene_data.ambient_color.rgb * albedo * ao * 0.4;
     float3 color = ambient + brdf + emissive;
 
     fs_output_t out;
     out.color = float4(color, 1.0);
     return out;
+
+    //float4 light_view_pos = mul(scene_data.light_view, float4(in.pos, 1.0));
+    //float4 light_space_pos = mul(scene_data.light_proj, light_view_pos);
+    //light_space_pos.xyz /= light_space_pos.w;
+    //light_space_pos.x = light_space_pos.x * 0.5 + 0.5;
+    //light_space_pos.y = 1.0 - (light_space_pos.y * 0.5 + 0.5);
+    //
+    //// Sample what's actually in the shadow map
+    //float shadow_map_depth = shadow_map.Sample(sampler, light_space_pos.xy).r;
+    //
+    //fs_output_t out;
+    //out.color = float4(shadow_map_depth, shadow_map_depth, shadow_map_depth, 1.0);
+    //return out;
 }
 
 float ndfGGX(float cosLh, float roughness) {
@@ -117,3 +131,25 @@ float3 fresnelSchlick(float3 F0, float cosTheta) {
     return F0 + (float3(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
+float calculate_shadow(float3 world_pos) {
+    float4 light_view_pos = mul(scene_data.light_view, float4(world_pos, 1.0));
+    float4 light_space_pos = mul(scene_data.light_proj, light_view_pos);
+    light_space_pos.xyz /= light_space_pos.w;
+    light_space_pos.x = light_space_pos.x * 0.5 + 0.5;
+    light_space_pos.y = 1.0 - (light_space_pos.y * 0.5 + 0.5); 
+
+    float depth = shadow_map.Sample(sampler, light_space_pos.xy).r;
+    float current_depth = light_space_pos.z;
+    
+    float shadow = 0.0;
+    float2 texel_size = 1.0 / scene_data.smap_size;
+    for(int x = -1; x <= 1; ++x) {
+        for(int y = -1; y <= 1; ++y) {
+            float pcf_depth = shadow_map.Sample(sampler, light_space_pos.xy + float2(x, y) * texel_size).r;
+            float bias = 0.005;
+            shadow += (current_depth - bias > pcf_depth) ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
+    return shadow;
+}

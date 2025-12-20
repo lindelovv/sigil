@@ -6,12 +6,12 @@ import "core:math"
 import "core:math/rand"
 import glm "core:math/linalg/glsl"
 
-jolt :: proc(e: sigil.entity_t) -> typeid {
+jolt :: proc(world: ^sigil.world_t, e: sigil.entity_t) -> typeid {
     using sigil
-    add(e, name_t("jolt_module"))
-    add(e, init(init_jolt))
-    add(e, tick(tick_jolt))
-    add(e, exit(exit_jolt))
+    add(world, e, name_t("jolt_module"))
+    add(world, e, init(init_jolt))
+    add(world, e, tick(tick_jolt))
+    add(world, e, exit(exit_jolt))
     return none
 }
 
@@ -40,7 +40,7 @@ physics_id_t :: distinct jolt.BodyID
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-init_jolt :: proc() {
+init_jolt :: proc(world: ^sigil.world_t) {
     jolt.Init()
     job_system = jolt.JobSystemThreadPool_Create(nil)
     object_layer_pair_filter := jolt.ObjectLayerPairFilterTable_Create(OBJECT_LAYER_NUM)
@@ -100,12 +100,12 @@ init_jolt :: proc() {
 	jolt.PhysicsSystem_SetGravity(physics_system, &{ 0, 0, -9.8 })
 }
 
-tick_jolt :: proc() {
+tick_jolt :: proc(world: ^sigil.world_t) {
     __ensure(
 		jolt.PhysicsSystem_Update(physics_system, delta_time, 1, job_system),
 		"physics system update error"
 	)
-	for &q in sigil.query(physics_id_t, transform_t) {
+	for &q in sigil.query(world, physics_id_t, transform_t) {
         id, transform := u32(q.x), (^glm.mat4)(&q.y)
         scale := glm.vec3 { glm.length(transform[0].xyz), glm.length(transform[1].xyz), glm.length(transform[2].xyz) }
         jolt.BodyInterface_GetWorldTransform(body_interface, id, transform)
@@ -116,6 +116,7 @@ tick_jolt :: proc() {
 }
 
 add_physics_shape :: proc(
+    world       : ^sigil.world_t,
     entity      : sigil.entity_t,
     pos         : ^glm.vec3,
     rot         : ^glm.quat,
@@ -133,10 +134,10 @@ add_physics_shape :: proc(
     }
     defer jolt.BodyCreationSettings_Destroy(settings)
     id := jolt.BodyInterface_CreateAndAddBody(body_interface, settings, .JPH_Activation_Activate)
-    sigil.add(entity, physics_id_t(id))
+    sigil.add(world, entity, physics_id_t(id))
 }
 
-exit_jolt :: proc() {
+exit_jolt :: proc(world: ^sigil.world_t) {
     jolt.PhysicsSystem_Destroy(physics_system)
     jolt.JobSystem_Destroy(job_system)
     jolt.Shutdown()

@@ -82,12 +82,12 @@ init_imgui :: proc(swapchain_create_info: ^vk.SwapchainCreateInfoKHR) {
     style.Colors[imgui.Col.Border]   = imgui.Vec4 { 0, 0, 0, 0 }
 }
 
-draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
+draw_ui :: proc(world: ^sigil.world_t, cmd: vk.CommandBuffer, img_view: vk.ImageView) {
     imgui_vk.NewFrame()
     imgui_glfw.NewFrame()
     imgui.NewFrame()
 
-    cam := sigil.get_value(cam_entity, camera_t)
+    cam := sigil.get_value(world, cam_entity, camera_t)
     imgui.Begin("performance", nil, { .NoTitleBar, .NoBackground, .NoResize, .NoMove, .NoCollapse, .NoMouseInputs })
     {
         //imgui.PushStyleColor(.Text, imgui.GetColorU32(.Header))
@@ -102,12 +102,12 @@ draw_ui :: proc(cmd: vk.CommandBuffer, img_view: vk.ImageView) {
         imgui.TextUnformatted(fmt.caprintf("pitch: %.3f", cam.pitch, allocator = context.temp_allocator))
         imgui.TextUnformatted(fmt.caprintf("yaw: %.3f", cam.yaw, allocator = context.temp_allocator))
         imgui.TextUnformatted("")
-        imgui.TextUnformatted(fmt.caprintf("position: %.3f", get_camera_pos(), allocator = context.temp_allocator))
-        imgui.TextUnformatted(fmt.caprintf("velocity: %.3f", (sigil.get_value(cam_entity, velocity_t)), allocator = context.temp_allocator))
+        imgui.TextUnformatted(fmt.caprintf("position: %.3f", get_camera_pos(world), allocator = context.temp_allocator))
+        imgui.TextUnformatted(fmt.caprintf("velocity: %.3f", (sigil.get_value(world, cam_entity, velocity_t)), allocator = context.temp_allocator))
         imgui.TextUnformatted("")
-        imgui.TextUnformatted(fmt.caprintf("entities: %v", len(sigil.core.entities) - 1, allocator = context.temp_allocator))
-        imgui.TextUnformatted(fmt.caprintf("component types: %v", len(sigil.core.sets), allocator = context.temp_allocator))
-        imgui.TextUnformatted(fmt.caprintf("groups: %v", len(sigil.core.groups), allocator = context.temp_allocator))
+        imgui.TextUnformatted(fmt.caprintf("entities: %v", len(world.entities) - 1, allocator = context.temp_allocator))
+        imgui.TextUnformatted(fmt.caprintf("component types: %v", len(world.sets), allocator = context.temp_allocator))
+        imgui.TextUnformatted(fmt.caprintf("groups: %v", len(world.groups), allocator = context.temp_allocator))
         //imgui.PopStyleColor()
     }
     imgui.End()
