@@ -127,8 +127,8 @@ setup_keybinds :: proc() {
         release = proc() { get_ctrl().requested_movement.up = false },
     )
     bind_input(glfw.KEY_LEFT_SHIFT,
-        press   = proc() { get_ctrl().movement_speed = 2 },
-        release = proc() { get_ctrl().movement_speed = 1 },
+        press   = proc() { get_ctrl().movement_speed = 8 },
+        release = proc() { get_ctrl().movement_speed = 4 },
     )
     bind_input(glfw.KEY_H,
         press   = proc() { get_ctrl().requested_rotation.left = true  },

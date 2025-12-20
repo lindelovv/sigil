@@ -65,7 +65,7 @@ init_camera :: proc() {
     sigil.add(cam_entity, sigil.name_t("cam"))
     //sigil.add(cam_entity, glm.vec3{ -2.5, 2.5, 1.5 })
     sigil.add(cam_entity, camera_controller_t {
-        movement_speed    = 1,
+        movement_speed    = 6,
         mouse_sensitivity = 28,
     })
 
