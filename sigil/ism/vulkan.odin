@@ -18,19 +18,17 @@ import "vendor:stb/image"
 import "vendor:cgltf"
 import "lib:slang"
 import "core:encoding/json"
+import "lib:mikktspace"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-vulkan :: proc(e: sigil.entity_t) -> typeid {
-    using sigil
-    add(e, name_t("vulkan_module"))
-    schedule(e, init(init_vulkan))
-    schedule(e, tick(tick_vulkan))
-    schedule(e, exit(terminate_vulkan))
-    
-    //r := before { tick_vulkan }
-    //fmt.println(r)
-
-    return none
+vulkan := sigil.module_create_info_t {
+    name  = "vulkan_module",
+    setup = proc(e: sigil.entity_t) {
+        using sigil
+        add(e, init(init_vulkan))
+        add(e, tick(tick_vulkan))
+        add(e, exit(terminate_vulkan))
+    },
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -171,7 +169,6 @@ render_data_t :: struct {
     count           : u32,
     first           : u32,
     idx_buffer      : vk.Buffer,
-    transform       : u32,
     //material        : ^material_t,
     address         : vk.DeviceAddress,
     indirect_offset : vk.DeviceSize,
@@ -1074,12 +1071,10 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
         for node in scene.nodes {
             //fmt.println(node.name)
             e := sigil.new_entity()
+            append(&created, e)
+            //fmt.println(created)
             if node.mesh != nil {
                 sigil.add(e, sigil.name_t(node.name))
-
-                d := parse_gltf_mesh(node.mesh^)
-                r_data := upload_mesh(d.vertices, d.indices)
-                sigil.add(e, r_data)
 
                 p := glm.vec3 { node.translation.x, node.translation.y, node.translation.z }
                 pos := glm.mat4Translate(glm.vec3(0))
@@ -1088,8 +1083,7 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
                 }
                 rot := glm.quat(1)
                 if node.has_rotation {
-                    gltf_rot := transmute(quaternion128)node.rotation
-                    rot = glm.quatAxisAngle(glm.vec3 { 1, 0, 0 }, math.PI) * gltf_rot
+                    rot = transmute(quaternion128)node.rotation
                 }
 
                 scl := glm.mat4Translate(glm.vec3(0))
@@ -1098,6 +1092,10 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
                 }
                 model := pos * glm.mat4FromQuat(rot) * scl
                 sigil.add(e, transform_t(model))
+
+                d := parse_gltf_mesh(node.mesh^)
+                r_data := upload_mesh(d.vertices, d.indices)
+                sigil.add(e, r_data)
 
                 json_get_obj :: proc(value: json.Value, key: string) -> json.Value {
                     if obj, valid := value.(json.Object); valid do if ret, valid := obj[key]; valid do return ret; return nil
@@ -1146,7 +1144,7 @@ parse_gltf_scene :: proc(path: cstring) -> (created: [dynamic]sigil.entity_t) {
             }
         }
     }
-    return {}
+    return
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -1197,7 +1195,7 @@ parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a s
             pos_src := mem.slice_ptr(cast([^][3]f32)(&pos_buffer[pos_offset]), int(vertex_count))
 
             for i in 0 ..< vertex_count {
-                vertex_buffer[old_len + i].position = -pos_src[i]
+                vertex_buffer[old_len + i].position = pos_src[i]
             }
         }
 
@@ -1234,7 +1232,98 @@ parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a s
 
         //prim.material.pbr_metallic_roughness.base_color_texture
     }
+    if len(vertex_buffer) > 0 && len(index_buffer) > 0 {
+        success := generate_tangents_for_mesh(vertex_buffer[:], index_buffer[:])
+        if !success {
+            ensure_default_tangents(vertex_buffer[:])
+            fmt.println("Failed to generate tangets for mesh")
+        }
+    }
     return { vertex_buffer[:], index_buffer[:] }
+}
+
+MikkContext :: struct {
+    vertices: []vertex_t,
+    indices: []u32,
+    face_count: int,
+}
+
+// MikkTSpace interface implementations
+get_num_faces :: proc(pContext: ^mikktspace.Context) -> int {
+    ctx := cast(^MikkContext)pContext.user_data
+    return ctx.face_count
+}
+
+get_num_vertices_of_face :: proc(pContext: ^mikktspace.Context, iFace: int) -> int {
+    return 3 // We only handle triangles
+}
+
+get_position :: proc(pContext: ^mikktspace.Context, iFace: int, iVert: int) -> [3]f32 {
+    ctx := cast(^MikkContext)pContext.user_data
+    idx := ctx.indices[iFace * 3 + iVert]
+    vertex := &ctx.vertices[idx]
+    return vertex.position
+}
+
+get_normal :: proc(pContext: ^mikktspace.Context, iFace: int, iVert: int) -> [3]f32 {
+    ctx := cast(^MikkContext)pContext.user_data
+    idx := ctx.indices[iFace * 3 + iVert]
+    vertex := &ctx.vertices[idx]
+    return vertex.normal
+}
+
+get_tex_coord :: proc(pContext: ^mikktspace.Context, iFace: int, iVert: int) -> [2]f32 {
+    ctx := cast(^MikkContext)pContext.user_data
+    idx := ctx.indices[iFace * 3 + iVert]
+    vertex := &ctx.vertices[idx]
+    return {vertex.uv_x, vertex.uv_y}
+}
+
+set_t_space_basic :: proc(pContext: ^mikktspace.Context, fvTangent: [3]f32, fSign: f32, iFace: int, iVert: int) {
+    ctx := cast(^MikkContext)pContext.user_data
+    idx := ctx.indices[iFace * 3 + iVert]
+    vertex := &ctx.vertices[idx]
+    
+    vertex.tangent = {fvTangent.x, fvTangent.y, fvTangent.z, fSign}
+}
+
+generate_tangents_for_mesh :: proc(vertices: []vertex_t, indices: []u32) -> bool {
+    if len(vertices) == 0 || len(indices) == 0 || len(indices) % 3 != 0 {
+        return false
+    }
+
+    context_data := MikkContext{
+        vertices = vertices,
+        indices = indices,
+        face_count = len(indices) / 3,
+    }
+
+    interface := mikktspace.Interface{
+        get_num_faces = get_num_faces,
+        get_num_vertices_of_face = get_num_vertices_of_face,
+        get_position = get_position,
+        get_normal = get_normal,
+        get_tex_coord = get_tex_coord,
+        set_t_space_basic = set_t_space_basic,
+        set_t_space = nil, // We're using basic tangent space
+    }
+
+    mikk_context := mikktspace.Context{
+        interface = &interface,
+        user_data = &context_data,
+    }
+
+    return mikktspace.generate_tangents(&mikk_context)
+}
+
+// Helper to ensure all vertices have valid tangents (fallback for failed generation)
+ensure_default_tangents :: proc(vertices: []vertex_t) {
+    for i in 0..<len(vertices) {
+        if vertices[i].tangent == {0, 0, 0, 0} {
+            // Default tangent (1, 0, 0) with positive handedness
+            vertices[i].tangent = {1, 0, 0, 1}
+        }
+    }
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -1606,6 +1695,7 @@ tick_vulkan :: proc() {
             imageLayout = .DEPTH_ATTACHMENT_OPTIMAL,
             loadOp      = .CLEAR,
             storeOp     = .STORE,
+            clearValue  = vk.ClearValue { depthStencil = { depth = 0.0 } },
         }
         render_info := vk.RenderingInfo {
             sType                = .RENDERING_INFO,
@@ -1624,7 +1714,7 @@ tick_vulkan :: proc() {
         {
             debug_label := vk.DebugUtilsLabelEXT {
                 sType = .DEBUG_UTILS_LABEL_EXT,
-                pLabelName = fmt.caprintf("Frame %d", current_frame),
+                pLabelName = fmt.caprintf("Frame %d", current_frame, allocator = context.temp_allocator),
                 color = { 0, 255, 0, 255 },
             }
             vk.CmdBeginDebugUtilsLabelEXT(frame.cmd, &debug_label)
@@ -1670,14 +1760,13 @@ tick_vulkan :: proc() {
 
                 offset := u32(i * size_of(glm.mat4))
                 mem.copy(rawptr(uintptr(transform_buffer.info.pMappedData) + uintptr(offset)), &transform, size_of(glm.mat4))
-                data.transform = u32(i)
 
                 // todo: need to set up material system to enable dynamic texturing for different meshes
                 vk.CmdBindPipeline(frame.cmd, .GRAPHICS, pbr.pipeline)
                 sets := []vk.DescriptorSet { frame.descriptor.set, pbr.set, bindless.set }
                 vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, pbr.pipeline_layout, 0, u32(len(sets)), raw_data(sets), 0, nil)
                 //data.material.update_delegate(frame.cmd, data)
-                pbr_push_const.model = data.transform
+                pbr_push_const.model = u32(i) // transform idx
                 pbr_push_const.vertex_buffer = data.address
                 vk.CmdPushConstants(frame.cmd, pbr.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(pbr_push_constant_t), &pbr_push_const)
                 vk.CmdBindIndexBuffer(frame.cmd, data.idx_buffer, 0, .UINT32)

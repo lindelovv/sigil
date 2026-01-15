@@ -145,7 +145,7 @@ build_pbr_pipeline :: proc(global_session: ^slang.IGlobalSession) {
 	    	structureSize = size_of(slang.TargetDesc),
 	    	format        = .SPIRV,
 	    	flags         = { .GENERATE_SPIRV_DIRECTLY },
-	    	profile       = global_session->findProfile("spirv_1_6"),
+	    	profile       = global_session->findProfile("sm_6_3"),
 	    }
 
 	    compiler_option_entries := [?]slang.CompilerOptionEntry{
@@ -342,6 +342,9 @@ build_pbr_pipeline :: proc(global_session: ^slang.IGlobalSession) {
         pDynamicState       = &dynamic_sate,
         layout              = pbr.pipeline_layout
     }
-    __ensure(vk.CreateGraphicsPipelines(device.handle, 0, 1, &graphics_pipe_info, nil, &pbr.pipeline), "Failed to create PBR Pipeline")
+    __ensure(
+        vk.CreateGraphicsPipelines(device.handle, 0, 1, &graphics_pipe_info, nil, &pbr.pipeline),
+        msg = "Failed to create PBR Pipeline"
+    )
 }
 

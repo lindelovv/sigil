@@ -6,11 +6,14 @@ static const float  Epsilon     = 0.00001;
 static const float3 Fdielectric = float3(0.04);
 
 struct vs_output_t {
-    [[vk::location(0)]] float4 clip   : SV_Position;
-    [[vk::location(1)]] float3 pos    : POSITION;
-    [[vk::location(2)]] float3 normal : NORMAL;
-    [[vk::location(3)]] float3 color  : COLOR0;
-    [[vk::location(4)]] float2 uv     : TEXCOORD;
+    [[vk::location(0)]] float4 clip     : SV_Position;
+    [[vk::location(1)]] float3 pos      : POSITION;
+    [[vk::location(2)]] float3 normal   : NORMAL;
+    [[vk::location(3)]] float3 color    : COLOR0;
+    [[vk::location(4)]] float2 uv       : TEXCOORD;
+    [[vk::location(5)]] float3 tangent  : TANGENT;
+    [[vk::location(6)]] float3 bitanget : BITANGENT;
+    [[vk::location(7)]] float3x3 TBN    : TEXCOORD1;
 };
 
 struct fs_output_t {
@@ -37,10 +40,19 @@ vs_output_t vs_main(uint vi: SV_VertexID) {
     float4 view_pos = mul(world_pos, scene_data.view);
     float4 clip_pos = mul(view_pos, scene_data.proj);
 
+    float3x3 model3x3 = float3x3(model[0].xyz, model[1].xyz, model[2].xyz);
+    float3 world_normal = normalize(mul(v.normal, model3x3));
+    float3 world_tanget = normalize(mul(v.tangent.xyz, model3x3));
+    float3 world_bitangent = cross(world_normal, world_tanget) * v.tangent.w;
+    float3x3 TBN = float3x3(world_tanget, world_bitangent, world_normal);
+
     vs_output_t out;
     out.clip = clip_pos;
     out.pos = world_pos.xyz;
-    out.normal = mul((float3x3)model, v.normal);
+    out.normal = world_normal;
+    out.tangent = world_tanget;
+    out.bitanget = world_bitangent;
+    out.TBN = TBN;
     out.color = v.color.xyz;
     out.uv = float2(v.uv_x, v.uv_y);
     return out;
@@ -48,12 +60,12 @@ vs_output_t vs_main(uint vi: SV_VertexID) {
 
 [shader("fragment")]
 fs_output_t fs_main(vs_output_t in) {
-    float3 albedo    = sample_texture(pc.albedo, in.uv).xyz * 0.8;
+    float3 albedo    = sample_texture(pc.albedo, in.uv).xyz;
     float  metalness = sample_texture(pc.metal_roughness, in.uv).r;
     float  roughness = sample_texture(pc.metal_roughness, in.uv).g;
-    float3 normal    = normalize(in.normal * normalize(2.0 * sample_texture(pc.normal, in.uv).rgb - 1.0));
-    //float3 normal    = sample_texture(pc.normal, in.uv).rgb; // TODO: normal matrix on cpu
-    float  emissive  = sample_texture(pc.emissive, in.uv).r;
+    float3 tangent   = normalize(2.0 * sample_texture(pc.normal, in.uv).rgb - 1.0);
+    float3 normal    = mul(tangent, in.TBN);
+    float3 emissive  = sample_texture(pc.emissive, in.uv).rgb;
     float3 ao        = sample_texture(pc.ao, in.uv).xyz;
 
     float3 view_dir = normalize(scene_data.view_pos - in.pos);
@@ -76,7 +88,7 @@ fs_output_t fs_main(vs_output_t in) {
     float3 diffuse = kD * albedo / PI;
     float3 radiance = light_color * cosLi * 4.0;
     float3 brdf = (diffuse + specular) * radiance;
-    float3 ambient = scene_data.ambient_color.rgb * albedo * ao * 0.4;
+    float3 ambient = scene_data.ambient_color.rgb * albedo * ao * 0.2;
     float3 color = ambient + brdf + emissive;
 
     fs_output_t out;

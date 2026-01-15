@@ -6,7 +6,7 @@ import "core:slice"
 import "core:fmt"
 import "core:time"
 
-rect := material_t {}
+//rect := material_t {}
 
 //_____________________________
 

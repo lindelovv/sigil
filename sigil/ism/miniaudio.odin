@@ -8,14 +8,14 @@ import "core:fmt"
 
 engine: ma.engine
 audio_device: ma.device
-audio_time: f32 = 0.0
+//audio_time: f32 = 0.0
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 miniaudio :: proc(e: sigil.entity_t) -> typeid {
     using sigil
     add(e, name_t("miniaudio_module"))
-    schedule(e, init(init_miniaudio))
-    schedule(e, exit(deinit_miniaudio))
+    add(e, init(init_miniaudio))
+    add(e, exit(deinit_miniaudio))
     return none
 }
 

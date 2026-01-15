@@ -9,9 +9,9 @@ import glm "core:math/linalg/glsl"
 jolt :: proc(e: sigil.entity_t) -> typeid {
     using sigil
     add(e, name_t("jolt_module"))
-    schedule(e, init(init_jolt))
-    schedule(e, tick(tick_jolt))
-    schedule(e, exit(exit_jolt))
+    add(e, init(init_jolt))
+    add(e, tick(tick_jolt))
+    add(e, exit(exit_jolt))
     return none
 }
 
@@ -52,7 +52,7 @@ init_jolt :: proc() {
 	jolt.ObjectLayerPairFilterTable_EnableCollision(
 		object_layer_pair_filter,
 		OBJECT_LAYER_MOVING,
-		OBJECT_LAYER_NON_MOVING,
+		OBJECT_LAYER_MOVING,
 	)
 	//jolt.ObjectLayerPairFilterTable_EnableCollision(
 	//	object_layer_pair_filter,

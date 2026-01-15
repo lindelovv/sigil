@@ -9,9 +9,9 @@ import "core:fmt"
 glfw :: proc(e: sigil.entity_t) -> typeid {
     using sigil
     add(e, name_t("glfw_module"))
-    schedule(e, init(init_glfw))
-    schedule(e, tick(tick_glfw))
-    schedule(e, exit(exit_glfw))
+    add(e, init(init_glfw))
+    add(e, tick(tick_glfw))
+    add(e, exit(exit_glfw))
     return none
 }
 
@@ -45,6 +45,8 @@ init_glfw :: proc() {
     glfw.SetScrollCallback(window, glfw.ScrollProc(scroll_callback))
     glfw.MakeContextCurrent(window)
 
+    input_callbacks = make(map[Key]KeyCallback)
+    input_queue = make([dynamic]proc())
     setup_standard_bindings()
 }
 
@@ -73,7 +75,7 @@ tick_glfw :: proc() {
     for fn in input_queue do fn()
     clear(&input_queue)
 
-    sigil.request_exit = cast(bool)glfw.WindowShouldClose(window)
+    sigil.core.request_exit = cast(bool)glfw.WindowShouldClose(window)
 }
 
 //_____________________________
@@ -87,10 +89,10 @@ exit_glfw :: proc() {
 
 //_____________________________
 // Input
-input_callbacks     := make(map[Key]KeyCallback)
-input_queue         := make([dynamic]proc())
-mouse_position      :  glsl.vec2
-last_mouse_position :  glsl.vec2
+input_callbacks     : map[Key]KeyCallback
+input_queue         : [dynamic]proc()
+mouse_position      : glsl.vec2
+last_mouse_position : glsl.vec2
 
 get_mouse_movement :: proc() -> glsl.vec2 {
     return mouse_position - last_mouse_position

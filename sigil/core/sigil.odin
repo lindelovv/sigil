@@ -3,6 +3,7 @@ package __sigil
 import "core:mem"
 import "core:slice"
 import "core:math"
+import "core:fmt"
 import "core:hash"
 import "base:intrinsics"
 import "base:runtime"
@@ -22,12 +23,14 @@ entity_t :: u32
 INVALID  :: entity_t(0)
 WORLD    :: entity_t(1)
 
+// todo: explore custom allocator
 core: struct {
-    entities   : [dynamic]entity_t,
-    flags      : [dynamic]bit_array.Bit_Array,
-    sets       : map[typeid]set_t,
-    groups     : map[u64]group_t,
-    set_lookup : map[int]typeid,
+    entities     : [dynamic]entity_t,
+    flags        : [dynamic]bit_array.Bit_Array,
+    sets         : map[typeid]set_t,
+    groups       : map[u64]group_t,
+    set_lookup   : map[int]typeid,
+    request_exit : bool
 }
 
 set_t :: struct {
@@ -40,9 +43,9 @@ set_t :: struct {
 }
 
 group_t :: struct {
-    components : ^bit_array.Bit_Array,
+    components : bit_array.Bit_Array,
     range      : map[typeid]range_t,
-    id         : u64,
+    id         : u64, // figure out cool way to bit_field magic to set relation to other groups for locking (ex. depth level index)
 }
 
 range_t :: struct {
@@ -52,58 +55,15 @@ range_t :: struct {
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-name_t :: distinct string
-
-// todo: implement an actual scheduler for this, but might not be needed tbh
-
-module_create_info_t :: struct {
-    name: name_t,
-    id  : entity_t,
-}
-module :: #type proc(entity_t) -> typeid
-init :: distinct #type proc()
-tick :: distinct #type proc()
-exit :: distinct #type proc()
-none :: distinct #type proc()
-
-// later note: relations would be good to solve for all entities, then modules could just be that
-// example: before(owner, module)
-relation :: struct($topic, $target: typeid) { topic, target }
-
-tag_t :: distinct struct {} // maybe use?
-
-before :: distinct []proc()
-after  :: distinct []proc()
-
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-request_exit : bool
-
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-@(init) _init :: proc() {
-    core = {}
-    /* INVALID */ new_entity()
-    /*  WORLD  */ new_entity()
-    add(WORLD,  name_t("world"))
-}
-
-use :: #force_inline proc(setup: module) { e := new_entity(); add(e, setup(e)) }
-
-schedule :: #force_inline proc(e: entity_t, fn: $type, conditions: []union { before, after } = nil) where intrinsics.type_is_proc(type) {
-    // add require param to schedule proc depending on dependant modules
-    // as in: before(module), after(other_module)
-    // update: condition union with before and after arrays of proc addresses
-    add(e, type(fn))
-    for type in conditions do switch condition in type {
-        case before: for fn in condition {}
-        case after:  for fn in condition {}
-    }
+@(private="file", init) _init :: proc "contextless" () { 
+    context = runtime.default_context()
+    core = {}; /* INVALID ENTITY: */ 
+    new_entity()
 }
 
 run :: #force_inline proc() {
     for fn in query(init) { fn() }
-    main_loop: for !request_exit { for fn in query(tick) { fn() } free_all(context.temp_allocator) }
+    main_loop: for !core.request_exit { for fn in query(tick) { fn() } free_all(context.temp_allocator) }
     for fn in query(exit) { fn() }
 }
 
@@ -116,25 +76,46 @@ new_entity :: #force_inline proc() -> entity_t {
     return e
 }
 
-delete_entity :: #force_inline proc(entity: entity_t) {
+delete_entity :: #force_inline proc(#any_int entity: entity_t) {
     if !entity_is_valid(entity) do return
-    cont := true
     if len(core.flags) <= auto_cast entity do return
+
+    last: int
+    invalidated_groups: [dynamic]u64
+    already_swapped: [dynamic]^set_t
+
+    // todo: fix as this scrambles components currently
+    cont := true
     it := bit_array.make_iterator(&core.flags[entity])
     for cont {
         id: int
         id, cont = bit_array.iterate_by_set(&it)
         _set := &core.sets[core.set_lookup[id]]
-        remove_component(entity, _set)
+        last =_set.count - 1 
+        _swap_component_index(_set, entity, last)
+        _remove_component_index(_set, last)
+
+        // this needs to sort all groups that contain one of the removed components
+        // otherwise it will be perma broken
+        // todo: figure out nice storage for easy access and also make proper sorting impl
+        //group_iter: for id, &group in &core.groups {
+        //    if !bit_array.get(&group.components, _set.id) do continue
+        //    for s in already_swapped do if s == _set do continue group_iter
+        //    for type, &range in &group.range {
+        //        last = range.offset + range.count// - 1
+        //        range.count -= 1
+        //        __set := core.sets[type]
+        //        _swap_component_index(&__set, entity, last)
+        //        if range.count == 0 do append(&invalidated_groups, group.id)
+        //    }
+        //}
     }
+    clear(&core.groups)// nuclear option, does not work lol cus group creation does not sort in any way :-)
+    bit_array.clear(&core.flags[entity])
+    for id in invalidated_groups do delete_key(&core.groups, id)
 }
 
 get_entity :: #force_inline proc(entity: entity_t) -> entity_t {
-    for e in core.entities { if e == entity do return e }
-    return INVALID
-}
-
-_get_array_index :: #force_inline proc(arr: ^[]$type, index: int) -> entity_t {
     for e in core.entities { if e == entity do return e }
     return INVALID
 }
@@ -145,9 +126,7 @@ entity_is_valid :: proc(entity: entity_t) -> bool {
 
 has_component :: #force_inline proc(entity: entity_t, type: typeid) -> bool {
     e := get_entity(entity)
-    if e == 0 || int(e) >= len(core.flags) || core.sets[type].components == nil || &core.flags[e] == nil {
-        return false
-    }
+    if e == 0 || int(e) >= len(core.flags) || core.sets[type].components == nil || &core.flags[e] == nil do return false
     return bit_array.get(&core.flags[e], core.sets[type].id)
 }
 
@@ -184,17 +163,14 @@ add_to_entity :: #force_inline proc(to: entity_t, component: $type) -> (type, in
         set.type = type
         set.size = size_of(type)
     }
-
     data := cast(^[dynamic]type)(set.components)
-    if len(set.indices) <= int(e) do resize_dynamic_array(&set.indices, len(core.entities) + 1)
+    if len(set.indices) <= int(e) do resize_dynamic_array(&set.indices, len(core.entities) + 64)
 
     if len(data) <= int(e) || len(data) <= set.indices[e] {
         append(data, component)
         set.indices[e] = len(data) - 1
         set.count += 1
-    } else {
-        data[set.indices[e]] = component
-    }
+    } else do data[set.indices[e]] = component
     core.sets[type] = set
 
     if len(core.flags) <= int(e) do resize(&core.flags, len(core.entities) + 1)
@@ -222,7 +198,7 @@ _remove_component_set :: proc(#any_int entity: entity_t, set: ^set_t) {
     invalidated_groups: [dynamic]u64
     already_swapped: [dynamic]^set_t
     group_iter: for id, &group in &core.groups {
-        if !bit_array.get(group.components, core.sets[set.type].id) do continue
+        if !bit_array.get(&group.components, core.sets[set.type].id) do continue
 
         range := &group.range[set.type]
         last = range.offset + range.count// - 1
@@ -237,13 +213,11 @@ _remove_component_set :: proc(#any_int entity: entity_t, set: ^set_t) {
         }
 
         // todo: this is potentially swapping more than once per set -- tried fixing
-        it := bit_array.make_iterator(group.components)
+        it := bit_array.make_iterator(&group.components)
         sets: for id in bit_array.iterate_by_set(&it) {
             _set := &core.sets[core.set_lookup[id]]
             if _set.type == set.type do continue
-            for s in already_swapped do if s == _set {
-                continue sets
-            }
+            for s in already_swapped do if s == _set do continue sets
             _swap_component_index(_set, entity, last)
         }
         // combined groups of all overlapping would posibly enable max 2 swaps ? probably false ?
@@ -273,21 +247,45 @@ query_1 :: #force_inline proc($type: typeid) -> []type {
     return data
 }
 
-query_2 :: #force_inline proc($type1: typeid, $type2: typeid) -> #soa[]struct { x: type1, y: type2 } {
+query_2 :: #force_inline proc(
+    $type1: typeid,
+    $type2: typeid
+) -> #soa[]struct { 
+    x: type1,
+    y: type2
+} {
     g := get_or_declare_group(type1, type2)
     if g == nil do return {}
     get :: proc(g: ^group_t, $t: typeid) -> []t { return get_component_slice(g, t) }
     return soa_zip(get(g, type1), get(g, type2))
 }
 
-query_3 :: #force_inline proc($type1: typeid, $type2: typeid, $type3: typeid) -> #soa[]struct { x: type1, y: type2, z: type3 } {
+query_3 :: #force_inline proc(
+    $type1: typeid,
+    $type2: typeid,
+    $type3: typeid
+) -> #soa[]struct { 
+    x: type1,
+    y: type2,
+    z: type3
+} {
     g := get_or_declare_group(type1, type2, type3)
     if g == nil do return {}
     get :: proc(g: ^group_t, $t: typeid) -> []t { return get_component_slice(g, t) }
     return soa_zip(get(g, type1), get(g, type2), get(g, type3))
 }
 
-query_4 :: #force_inline proc($type1: typeid, $type2: typeid, $type3: typeid, $type4: typeid) -> #soa[]struct { x: type1, y: type2, z: type3, w: type4 } {
+query_4 :: #force_inline proc(
+    $type1: typeid,
+    $type2: typeid,
+    $type3: typeid,
+    $type4: typeid
+) -> #soa[]struct { 
+    x: type1,
+    y: type2,
+    z: type3,
+    w: type4
+} {
     g := get_or_declare_group(type1, type2, type3, type4)
     if g == nil do return {}
     get :: proc(g: ^group_t, $t: typeid) -> []t { return get_component_slice(g, t) }
@@ -373,19 +371,21 @@ get_or_declare_group_4 :: proc($type1, $type2, $type3, $type4: typeid) -> ^group
 get_or_declare_group :: proc { get_or_declare_group_2, get_or_declare_group_3, get_or_declare_group_4 }
 
 declare_group :: proc(new_group: ^group_t, sets: []set_t) -> bool {
-    new_group.components = bit_array.create(len(core.sets))
-    for set in sets do bit_array.set(new_group.components, set.id)
+    new_group.components = bit_array.create(len(core.sets))^
+    for set in sets do bit_array.set(&new_group.components, set.id)
 
     count := 0
     group_entities: [dynamic]entity_t
+    defer delete(group_entities)
     for e in core.entities {
-        if entity_is_valid(e) && has_all_components(e, new_group.components) {
+        if entity_is_valid(e) && has_all_components(e, &new_group.components) {
             append(&group_entities, e)
             count += 1
         }
     }
     if count == 0 do return false
 
+    // believe all of this might be fucked
     to_sort := make([dynamic]set_t)
     for set in sets {
         max, min := 1, max(int)

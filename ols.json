@@ -5,7 +5,7 @@
         { "name": "sigil", "path": "./sigil/core" },
         { "name": "ism", "path": "./sigil/ism" }
 	],
-	"enable_semantic_tokens": false,
+	"enable_semantic_tokens": true,
 	"enable_document_symbols": true,
     "enable_inlay_hints": true,
     "enable_rename": true,
