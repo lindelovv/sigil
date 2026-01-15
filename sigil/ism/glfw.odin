@@ -16,13 +16,13 @@ glfw :: proc(e: sigil.entity_t) -> typeid {
 }
 
 //_____________________________
-window        : glfw.WindowHandle
-fps           : f32
-ms            : f32
-time          : f32
-delta_time    : f32
+window         : glfw.WindowHandle
+fps            : f32
+ms             : f32
+time           : f32
+delta_time     : f32
 @(private="file") prev_delta : f32
-init_time     : bool
+init_time      : bool
 
 //_____________________________
 init_glfw :: proc() {

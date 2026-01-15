@@ -25,32 +25,12 @@ WORLD    :: entity_t(1)
 
 // todo: explore custom allocator
 core: struct {
-    entities     : [dynamic]entity_t,
-    flags        : [dynamic]bit_array.Bit_Array,
-    sets         : map[typeid]set_t,
-    groups       : map[u64]group_t,
-    set_lookup   : map[int]typeid,
-    request_exit : bool
-}
-
-set_t :: struct {
-    components : rawptr,
-    indices    : [dynamic]int,
-    count      : int,
-    id         : int,
-    type       : typeid,
-    size       : int,
-}
-
-group_t :: struct {
-    components : bit_array.Bit_Array,
-    range      : map[typeid]range_t,
-    id         : u64, // figure out cool way to bit_field magic to set relation to other groups for locking (ex. depth level index)
-}
-
-range_t :: struct {
-    offset : int,
-    count  : int,
+    entities       : [dynamic]entity_t,
+    flags          : [dynamic]bit_array.Bit_Array,
+    sets           : map[typeid]set_t,
+    groups         : map[u64]group_t,
+    set_lookup     : map[int]typeid,
+    request_exit   : bool,
 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -68,6 +48,20 @@ run :: #force_inline proc() {
 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+storage_vtable_t :: {
+    new_entity      : proc() -> entity_t,
+    delete_entity   : proc(#any_int entity_t),
+    get_entity      : proc(entity_t) -> entity_t,
+    is_valid_entity : proc(entity_t) -> bool,
+    get_value       : proc(entity: entity_t, $type: typeid) -> (type, bool) #optional_ok,
+    get_ref         : proc(entity: entity_t, $type: typeid) -> (^type, bool) #optional_ok,
+
+    query_1: proc($t: typeid) -> []t,
+    query_2: proc($t1: typeid, $t2: typeid) -> #soa[]struct { x: t1, y: t2 },
+    query_3: proc($t1: typeid, $t2: typeid, $t3: typeid) -> #soa[]struct { x: t1, y: t2, z: t3 },
+    query_4: proc($t1: typeid, $t2: typeid, $t3: typeid, $t4: typeid) -> #soa[]struct { x: t1, y: t2, z: t3, w: t4 },
+}
 
 new_entity :: #force_inline proc() -> entity_t {
     e := entity_t(len(core.entities))

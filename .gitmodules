@@ -13,9 +13,6 @@
 [submodule "lib/slang"]
 	path = lib/slang
 	url = https://github.com/DragosPopse/odin-slang
-[submodule "lib/back"]
-	path = lib/back
-	url = https://github.com/laytan/back/
 [submodule "lib/mikktspace"]
 	path = lib/mikktspace
 	url = https://github.com/wrapperup/odin-mikktspace
