@@ -223,19 +223,43 @@ setup_keybinds :: proc() {
     )
     bind_input(glfw.KEY_B,
         press   = proc() {
-            q1 := sigil.query(render_data_t)
-            fmt.println("before remove: ")
-            fmt.println(q1)
-
-            //sigil.remove_component(n, render_data_t)
+            hit_context_t :: struct {
+                ids:   [1024]jolt.BodyID,
+                count: int,
+            }
+            on_broadphase_hit :: proc "c" (user_data: rawptr, body_id: jolt.BodyID) -> f32 {
+                ctx := cast(^hit_context_t)user_data
+                if ctx.count < len(ctx.ids) {
+                    ctx.ids[ctx.count] = body_id
+                    ctx.count += 1
+                }
+                return 1.0
+            }
+            if id_val, ok := sigil.get_value(n, physics_id_t); ok {
+                body_id := jolt.BodyID(id_val)
+                center_of_mass: jolt.RMatrix4x4
+                jolt.BodyInterface_GetCenterOfMassTransform(body_interface, body_id, &center_of_mass)
+                shape := jolt.BodyInterface_GetShape(body_interface, body_id)
+                scale := jolt.Vec3 { 1, 1, 1 }
+                bounds: jolt.AABox
+                jolt.Shape_GetWorldSpaceBounds(shape, &center_of_mass, &scale, &bounds)
+                padding :: 0.2
+                bounds.min.x -= padding; bounds.min.y -= padding; bounds.min.z -= padding
+                bounds.max.x += padding; bounds.max.y += padding; bounds.max.z += padding
+                bp_query := jolt.PhysicsSystem_GetBroadPhaseQuery(physics_system)
+                hit_ctx: hit_context_t
+                jolt.BroadPhaseQuery_CollideAABox(
+                    bp_query,
+                    &bounds,
+                    on_broadphase_hit,
+                    &hit_ctx,
+                    nil,
+                    nil
+                )
+                for i in 0..<hit_ctx.count do jolt.BodyInterface_ActivateBody(body_interface, hit_ctx.ids[i])
+                jolt.BodyInterface_RemoveAndDestroyBody(body_interface, body_id)
+            }
             sigil.delete_entity(n)
-
-            q2 := sigil.query(render_data_t)
-            fmt.println("after remove: ")
-            fmt.println(q2)
-
-            fmt.println()
-
             n += 1
         },
     )
