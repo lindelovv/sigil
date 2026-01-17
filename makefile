@@ -1,7 +1,9 @@
 ifeq ($(OS),Windows_NT)
 	EXT=.exe
+	DBG=raddbg.exe
 else
 	EXT=
+	DBG=gdb
 endif
 
 ODIN_ROOT=$(odin root)
@@ -28,7 +30,7 @@ release:
 build c:
 	odin build ./ -out:./build/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/ -debug
 debug d:
-	gdb ./build/sigil$(EXT)
+	$(DBG) ./build/sigil$(EXT)
 web w:
 	odin build ./ -target:js_wasm32 -out:./build/web/sigil$(EXT) -collection:lib=./lib/ -collection:sigil=./sigil/ -o:size \
 		-extra-linker-flags:"--export-table --import-memory --initial-memory=131072000 --max-memory=4294967296"
