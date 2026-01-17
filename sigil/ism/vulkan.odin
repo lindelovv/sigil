@@ -97,11 +97,13 @@ transform_buffer : allocated_buffer_t
 scene_ubo        : allocated_buffer_t
 scene_descriptor : descriptor_data_t
 
-bindless         : material_t
-textures         : [dynamic]vk.ImageView
-texture_indices  : map[vk.ImageView]u32
-buffers          : [dynamic]vk.Buffer
-buffer_indices   : map[vk.Buffer]u32
+bindless           : material_t
+textures           : [dynamic]vk.ImageView
+texture_indices    : map[vk.ImageView]u32
+rw_textures        : [dynamic]vk.ImageView
+rw_texture_indices : map[vk.ImageView]u32
+buffers            : [dynamic]vk.Buffer
+buffer_indices     : map[vk.Buffer]u32
 
 materials        : [4096]material_t
 material_count   : u32
@@ -479,6 +481,7 @@ init_vulkan :: proc() {
     pool_sizes := []vk.DescriptorPoolSize {
         { type = .STORAGE_BUFFER, descriptorCount = 1 },
         { type = .SAMPLED_IMAGE,  descriptorCount = MAX_OBJECTS },
+        { type = .STORAGE_IMAGE,  descriptorCount = MAX_OBJECTS },
         { type = .SAMPLER,        descriptorCount = 100, },
     }
     bindless_desc_pool_info := vk.DescriptorPoolCreateInfo {
@@ -510,6 +513,12 @@ init_vulkan :: proc() {
         },
         {
             binding         = 2,
+            descriptorType  = .STORAGE_IMAGE,
+            descriptorCount = MAX_OBJECTS,
+            stageFlags      = vk.ShaderStageFlags_ALL,
+        },
+        {
+            binding         = 3,
             descriptorType  = .SAMPLER,
             descriptorCount = 1,
             stageFlags      = vk.ShaderStageFlags_ALL,
@@ -757,9 +766,9 @@ init_vulkan :: proc() {
     //_____________________________
     // Sampler
     sampler_info := vk.SamplerCreateInfo {
-        sType     = .SAMPLER_CREATE_INFO,
-        magFilter = .LINEAR,
-        minFilter = .LINEAR,
+        sType        = .SAMPLER_CREATE_INFO,
+        magFilter    = .LINEAR,
+        minFilter    = .LINEAR,
     }
     __ensure(
         vk.CreateSampler(device.handle, &sampler_info, nil, &sampler), 
@@ -769,7 +778,7 @@ init_vulkan :: proc() {
     sampler_write := vk.WriteDescriptorSet {
         sType           = .WRITE_DESCRIPTOR_SET,
         dstSet          = bindless.set,
-        dstBinding      = 2,
+        dstBinding      = 3,
         descriptorType  = .SAMPLER,
         pImageInfo      = &vk.DescriptorImageInfo { sampler = sampler },
         descriptorCount = 1,
@@ -1867,4 +1876,3 @@ terminate_vulkan :: proc() {
     //vk.DestroyDebugUtilsMessengerEXT(instance, dbg_messenger, nil)
     //vk.DestroyInstance(instance, nil)
 }
-
