@@ -6,13 +6,14 @@ import vk "vendor:vulkan"
 import "core:math/linalg/glsl"
 import "core:fmt"
 
-glfw :: proc(e: sigil.entity_t) -> typeid {
-    using sigil
-    add(e, name_t("glfw_module"))
-    add(e, init(init_glfw))
-    add(e, tick(tick_glfw))
-    add(e, exit(exit_glfw))
-    return none
+glfw := sigil.module_create_info_t {
+    name  = "glfw_module",
+    setup = proc(e: sigil.entity_t) {
+        using sigil
+        add(e, init(init_glfw))
+        add(e, tick(tick_glfw))
+        add(e, exit(exit_glfw))
+    },
 }
 
 //_____________________________

@@ -6,13 +6,14 @@ import "core:math"
 import "core:math/rand"
 import glm "core:math/linalg/glsl"
 
-jolt :: proc(e: sigil.entity_t) -> typeid {
-    using sigil
-    add(e, name_t("jolt_module"))
-    add(e, init(init_jolt))
-    add(e, tick(tick_jolt))
-    add(e, exit(exit_jolt))
-    return none
+jolt := sigil.module_create_info_t {
+    name  = "jolt_module",
+    setup = proc(e: sigil.entity_t) {
+        using sigil
+        add(e, init(init_jolt))
+        add(e, tick(tick_jolt))
+        add(e, exit(exit_jolt))
+    },
 }
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+

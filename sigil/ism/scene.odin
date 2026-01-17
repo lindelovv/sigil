@@ -7,12 +7,13 @@ import "core:fmt"
 import "core:math"
 import "lib:jolt"
 
-scene :: proc(e: sigil.entity_t) -> typeid {
-    using sigil
-    add(e, name_t("scene_module"))
-    add(e, init(init_scene))
-    add(e, tick(tick_scene))
-    return none
+scene := sigil.module_create_info_t {
+    name  = "scene_module",
+    setup = proc(e: sigil.entity_t) {
+        using sigil
+        add(e, init(init_scene))
+        add(e, tick(tick_scene))
+    },
 }
 
 follow : bool

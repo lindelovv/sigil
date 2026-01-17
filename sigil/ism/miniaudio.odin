@@ -6,18 +6,20 @@ import "vendor:glfw"
 import "core:math"
 import "core:fmt"
 
+miniaudio := sigil.module_create_info_t {
+    name  = "miniaudio_module",
+    setup = proc(e: sigil.entity_t) {
+        using sigil
+        add(e, init(init_miniaudio))
+        add(e, exit(deinit_miniaudio))
+    },
+}
+
 engine: ma.engine
 audio_device: ma.device
 //audio_time: f32 = 0.0
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-miniaudio :: proc(e: sigil.entity_t) -> typeid {
-    using sigil
-    add(e, name_t("miniaudio_module"))
-    add(e, init(init_miniaudio))
-    add(e, exit(deinit_miniaudio))
-    return none
-}
 
 //sine_callback :: proc "c" (device: ^ma.device, output: rawptr, input: rawptr, frame_count: u32) {
 //    samples := ([^]f32)(output)
