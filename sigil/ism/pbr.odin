@@ -34,7 +34,7 @@ pbr_uniform := pbr_uniform_t {
 pbr_entity: sigil.entity_t
 pbr: material_t
 pbr_push_const: pbr_push_constant_t
-current_last_write_time: os.File_Time
+pbr_current_last_write_time: os.File_Time
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
@@ -127,13 +127,13 @@ pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
     pbr_push_const.emissive        = emissive_img.index
     pbr_push_const.ao              = ao_img.index
 
-	current_last_write_time, _ := os.last_write_time_by_name("sigil/ism/shaders/pbr.slang")
+	pbr_current_last_write_time, _ := os.last_write_time_by_name("sigil/ism/shaders/pbr.slang")
 }
 
 @(disabled=!ODIN_DEBUG) __rebuild_pbr_pipeline :: proc(gs: ^slang.IGlobalSession) {
 	last_write_time, file_err := os.last_write_time_by_name("sigil/ism/shaders/pbr.slang")
-	if file_err == nil && current_last_write_time != last_write_time {
-	    current_last_write_time = last_write_time
+	if file_err == nil && pbr_current_last_write_time != last_write_time {
+	    pbr_current_last_write_time = last_write_time
         build_pbr_pipeline(gs)
     }
 }
