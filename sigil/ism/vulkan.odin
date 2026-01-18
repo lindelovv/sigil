@@ -25,9 +25,9 @@ vulkan := sigil.module_create_info_t {
     name  = "vulkan_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
         using sigil
-        add(world, e, init(init_vulkan))
-        add(world, e, tick(tick_vulkan))
-        add(world, e, exit(terminate_vulkan))
+        add_component(world, e, init(init_vulkan))
+        add_component(world, e, tick(tick_vulkan))
+        add_component(world, e, exit(terminate_vulkan))
     },
 }
 
@@ -1083,7 +1083,7 @@ parse_gltf_scene :: proc(world: ^sigil.world_t, path: cstring) -> (created: [dyn
             append(&created, e)
             //fmt.println(created)
             if node.mesh != nil {
-                sigil.add(world, e, sigil.name_t(node.name))
+                sigil.add_component(world, e, sigil.name_t(node.name))
 
                 p := glm.vec3 { node.translation.x, node.translation.y, node.translation.z }
                 pos := glm.mat4Translate(glm.vec3(0))
@@ -1100,11 +1100,11 @@ parse_gltf_scene :: proc(world: ^sigil.world_t, path: cstring) -> (created: [dyn
                     scl = glm.mat4Scale(glm.vec3 { node.scale.x, node.scale.y, node.scale.z })
                 }
                 model := pos * glm.mat4FromQuat(rot) * scl
-                sigil.add(world, e, transform_t(model))
+                sigil.add_component(world, e, transform_t(model))
 
                 d := parse_gltf_mesh(node.mesh^)
                 r_data := upload_mesh(d.vertices, d.indices)
-                sigil.add(world, e, r_data)
+                sigil.add_component(world, e, r_data)
 
                 json_get_obj :: proc(value: json.Value, key: string) -> json.Value {
                     if obj, valid := value.(json.Object); valid do if ret, valid := obj[key]; valid do return ret; return nil

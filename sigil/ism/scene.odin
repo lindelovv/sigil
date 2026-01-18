@@ -11,8 +11,8 @@ scene := sigil.module_create_info_t {
     name  = "scene_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
         using sigil
-        add(world, e, init(init_scene))
-        add(world, e, tick(tick_scene))
+        add_component(world, e, init(init_scene))
+        add_component(world, e, tick(tick_scene))
     },
 }
 
@@ -48,7 +48,7 @@ init_scene :: proc(world: ^sigil.world_t) {
     jolt.BodyInterface_SetObjectLayer(body_interface, id, OBJECT_LAYER_MOVING)
     jolt.BodyInterface_SetPosition(body_interface, id, cast(^[3]f32)sigil.get_ref(world, cam_entity, position_t), .JPH_Activation_Activate)
 	//sigil.add(cam_entity, rotation_t(0))
-	sigil.add(world, cam_entity, physics_id_t(id))
+	sigil.add_component(world, cam_entity, physics_id_t(id))
 
 	jolt.PhysicsSystem_OptimizeBroadPhase(physics_system)
 }

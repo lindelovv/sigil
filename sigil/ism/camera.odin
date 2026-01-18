@@ -50,7 +50,7 @@ cam_cube_e: sigil.entity_t
 init_camera :: proc(world: ^sigil.world_t) {
     cam_entity = sigil.new_entity(world)
 
-    cam, _ := sigil.add(world, cam_entity, camera_t {
+    cam, _ := sigil.add_component(world, cam_entity, camera_t {
         fov     = 70.0,
         up      = WORLD_UP,
         near    = 0.1,
@@ -59,12 +59,12 @@ init_camera :: proc(world: ^sigil.world_t) {
         yaw     = 225,
         roll    = 0,
     })
-    sigil.add(world, cam_entity, position_t(glm.vec3{ -11, -11, 13 }))
-    sigil.add(world, cam_entity, rotation_t(0))
-    sigil.add(world, cam_entity, velocity_t(0))
-    sigil.add(world, cam_entity, sigil.name_t("cam"))
+    sigil.add_component(world, cam_entity, position_t(glm.vec3{ -11, -11, 13 }))
+    sigil.add_component(world, cam_entity, rotation_t(0))
+    sigil.add_component(world, cam_entity, velocity_t(0))
+    sigil.add_component(world, cam_entity, sigil.name_t("cam"))
     //sigil.add(cam_entity, glm.vec3{ -2.5, 2.5, 1.5 })
-    sigil.add(world, cam_entity, camera_controller_t {
+    sigil.add_component(world, cam_entity, camera_controller_t {
         movement_speed    = 6,
         mouse_sensitivity = 28,
     })

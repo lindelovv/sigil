@@ -10,8 +10,8 @@ miniaudio := sigil.module_create_info_t {
     name  = "miniaudio_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
         using sigil
-        add(world, e, init(init_miniaudio))
-        add(world, e, exit(deinit_miniaudio))
+        add_component(world, e, init(init_miniaudio))
+        add_component(world, e, exit(deinit_miniaudio))
     },
 }
 

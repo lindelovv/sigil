@@ -10,9 +10,9 @@ jolt := sigil.module_create_info_t {
     name  = "jolt_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
         using sigil
-        add(world, e, init(init_jolt))
-        add(world, e, tick(tick_jolt))
-        add(world, e, exit(exit_jolt))
+        add_component(world, e, init(init_jolt))
+        add_component(world, e, tick(tick_jolt))
+        add_component(world, e, exit(exit_jolt))
     },
 }
 
@@ -135,7 +135,7 @@ add_physics_shape :: proc(
     }
     defer jolt.BodyCreationSettings_Destroy(settings)
     id := jolt.BodyInterface_CreateAndAddBody(body_interface, settings, .JPH_Activation_Activate)
-    sigil.add(world, entity, physics_id_t(id))
+    sigil.add_component(world, entity, physics_id_t(id))
 }
 
 exit_jolt :: proc(world: ^sigil.world_t) {

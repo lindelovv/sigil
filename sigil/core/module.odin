@@ -31,7 +31,7 @@ none :: distinct #type proc(^world_t)
 
 setup_module :: #force_inline proc(world: ^world_t, module: module_create_info_t) {
     e := new_entity(world);
-    add(world, e, module.name)
+    add_component(world, e, module.name)
     module.setup(world, e)
 }
 

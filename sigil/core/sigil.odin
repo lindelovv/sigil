@@ -21,7 +21,6 @@ PATCH_V :: 4
 
 entity_t :: u32
 INVALID  :: entity_t(0)
-WORLD    :: entity_t(1)
 
 world_t :: struct {
     entities       : [dynamic]entity_t,
@@ -54,16 +53,8 @@ group_t :: struct {
 
 init_world :: proc(modules: []module_create_info_t) -> (world: ^world_t) {
     world = new(world_t)
-    world.entities = {}
-    world.flags = {}
-    world.sets = {}
-    world.groups = {}
-    world.owners = {}
-    world.set_lookup = {}
     new_entity(world) /* INVALID */
-    for module in modules {
-        setup_module(world, module)
-    }
+    for module in modules { setup_module(world, module) }
     return
 }
 
@@ -140,8 +131,7 @@ get_ref :: proc(world: ^world_t, #any_int entity: entity_t, $type: typeid) -> (^
     return &data[idx], true
 }
 
-add_to_world :: #force_inline proc(world: ^world_t, component: $type) -> (type, int) { return add_to_entity(world, WORLD, component) }
-add_to_entity :: proc(world: ^world_t, #any_int to: entity_t, component: $type) -> (type, int) {
+add_component :: proc(world: ^world_t, #any_int to: entity_t, component: $type) -> (type, int) {
     if to == INVALID do return {}, 0
     type_id := typeid_of(type)
     if !(type_id in world.sets) do world.sets[type_id] = {}
@@ -154,7 +144,6 @@ add_to_entity :: proc(world: ^world_t, #any_int to: entity_t, component: $type) 
     world.owners[type_id] = nil 
     return component, idx
 }
-add :: proc { add_to_world, add_to_entity }
 
 remove_component :: proc(world: ^world_t, #any_int entity: entity_t, type: typeid) {
     if !has_component(world, entity, type) do return

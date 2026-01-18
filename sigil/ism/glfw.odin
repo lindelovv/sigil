@@ -10,13 +10,15 @@ glfw := sigil.module_create_info_t {
     name  = "glfw_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
         using sigil
-        add(world, e, init(init_glfw))
-        add(world, e, tick(tick_glfw))
-        add(world, e, exit(exit_glfw))
+        add_component(world, e, init(init_glfw))
+        add_component(world, e, tick(tick_glfw))
+        add_component(world, e, exit(exit_glfw))
+        glfw_entity = e
     },
 }
 
 //_____________________________
+glfw_entity   : sigil.entity_t
 window        : glfw.WindowHandle
 fps           : f32
 ms            : f32
@@ -36,7 +38,7 @@ init_glfw :: proc(world: ^sigil.world_t) {
     glfw.WindowHint(glfw.DECORATED, glfw.FALSE)
     main := glfw.GetVideoMode(glfw.GetPrimaryMonitor())
     window = glfw.CreateWindow(main.width, main.height, sigil.TITLE, nil, nil)
-    sigil.add(world, window)
+    sigil.add_component(world, glfw_entity, window)
     __ensure(window, "GLFW CreateWindow Failed")
     
     glfw.SetFramebufferSizeCallback(window, glfw.FramebufferSizeProc(on_resize))
