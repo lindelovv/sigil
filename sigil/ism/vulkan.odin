@@ -1,7 +1,6 @@
 package ism
 
 import sigil "sigil:core"
-import "core:dynlib"
 import "core:slice"
 import "core:strings"
 import "base:runtime"
@@ -12,7 +11,6 @@ import "core:os"
 import "core:fmt"
 import "core:mem"
 import "core:math"
-import "core:math/linalg"
 import glm "core:math/linalg/glsl"
 import "vendor:stb/image"
 import "vendor:cgltf"
@@ -25,10 +23,9 @@ import "lib:mikktspace"
 vulkan := sigil.module_create_info_t {
     name  = "vulkan_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
-        using sigil
-        add_component(world, e, init(init_vulkan))
-        add_component(world, e, tick(tick_vulkan))
-        add_component(world, e, exit(terminate_vulkan))
+        sigil.add_component(world, e, sigil.init(init_vulkan))
+        sigil.add_component(world, e, sigil.tick(tick_vulkan))
+        sigil.add_component(world, e, sigil.exit(terminate_vulkan))
     },
 }
 
@@ -987,14 +984,14 @@ upload_mesh /* +-+-+-+-+-+-+-+ */ :: proc(
     }
     address := vk.GetBufferDeviceAddress(device.handle, &device_address_info)
 
-    min_pos := glm.vec3 { math.F32_MAX, math.F32_MAX, math.F32_MAX }
-    max_pos := glm.vec3 { math.F32_MIN, math.F32_MIN, math.F32_MIN }
-    for v in vertex_buffer {
-        min_pos = glm.min(min_pos, v.position)
-        max_pos = glm.max(max_pos, v.position)
-    }
-    center := (min_pos + max_pos) * 0.5
-    radius := glm.length(max_pos - center)
+    //min_pos := glm.vec3 { math.F32_MAX, math.F32_MAX, math.F32_MAX }
+    //max_pos := glm.vec3 { math.F32_MIN, math.F32_MIN, math.F32_MIN }
+    //for v in vertex_buffer {
+    //    min_pos = glm.min(min_pos, v.position)
+    //    max_pos = glm.max(max_pos, v.position)
+    //}
+    //center := (min_pos + max_pos) * 0.5
+    //radius := glm.length(max_pos - center)
     
     data.address    = address
     data.idx_buffer = index.handle
@@ -1108,7 +1105,10 @@ parse_gltf_scene :: proc(world: ^sigil.world_t, path: cstring) -> (created: [dyn
                 sigil.add_component(world, e, r_data)
 
                 json_get_obj :: proc(value: json.Value, key: string) -> json.Value {
-                    if obj, valid := value.(json.Object); valid do if ret, valid := obj[key]; valid do return ret; return nil
+                    if obj, cast_ok := value.(json.Object); cast_ok {
+                        if ret, valid := obj[key]; valid do return ret
+                    }
+                    return nil
                 }
 
                 for i in 0..<node.extensions_count {
@@ -1124,7 +1124,7 @@ parse_gltf_scene :: proc(world: ^sigil.world_t, path: cstring) -> (created: [dyn
                         json_str := strings.clone_from_cstring(auto_cast ext.data)
                         defer delete(json_str)
                         //fmt.println(json_str)
-                        parsed, err := json.parse(transmute([]u8)json_str)
+                        parsed, _ := json.parse(transmute([]u8)json_str)
                         //fmt.println(parsed)
                         collider := json_get_obj(parsed, "collider")
                         geometry := json_get_obj(collider, "geometry")

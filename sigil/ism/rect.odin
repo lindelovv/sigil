@@ -1,11 +1,5 @@
 package ism
 
-import vk "vendor:vulkan"
-//import "lib:odin-slang/slang"
-import "core:slice"
-import "core:fmt"
-import "core:time"
-
 //rect := material_t {}
 
 //_____________________________

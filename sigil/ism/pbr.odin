@@ -127,7 +127,7 @@ pbr_declare :: proc(world: ^sigil.world_t, global_session: ^slang.IGlobalSession
     pbr_push_const.emissive        = emissive_img.index
     pbr_push_const.ao              = ao_img.index
 
-	pbr_current_last_write_time, _ := os.last_write_time_by_name("sigil/ism/shaders/pbr.slang")
+	pbr_current_last_write_time, _ = os.last_write_time_by_name("sigil/ism/shaders/pbr.slang")
 }
 
 @(disabled=!ODIN_DEBUG) __rebuild_pbr_pipeline :: proc(gs: ^slang.IGlobalSession) {
@@ -140,7 +140,7 @@ pbr_declare :: proc(world: ^sigil.world_t, global_session: ^slang.IGlobalSession
 
 build_pbr_pipeline :: proc(global_session: ^slang.IGlobalSession) {
     when ODIN_DEBUG {
-        code, diagnostics: ^slang.IBlob
+        _, diagnostics: ^slang.IBlob
         target_desc := slang.TargetDesc {
 	    	structureSize = size_of(slang.TargetDesc),
 	    	format        = .SPIRV,

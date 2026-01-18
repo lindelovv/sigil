@@ -1,13 +1,9 @@
 package __sigil
 
 import "core:mem"
-import "core:slice"
-import "core:math"
-import "core:fmt"
 import "core:hash"
 import "base:intrinsics"
 import "base:runtime"
-import "core:sys/info"
 import "core:container/bit_array"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -62,7 +58,10 @@ init_world :: proc(modules: []module_create_info_t) -> (world: ^world_t) {
 
 run :: #force_inline proc(world: ^world_t) {
     for fn in query(world, init) { fn(world) }
-    main_loop: for !world.request_exit { for fn in query(world, tick) { fn(world) } free_all(context.temp_allocator) }
+    main_loop: for !world.request_exit {
+        for fn in query(world, tick) { fn(world) }
+        free_all(context.temp_allocator)
+    }
     #reverse for fn in query(world, exit) { fn(world) }
 }
 
@@ -271,9 +270,9 @@ query :: proc { _query_1, _query_2, _query_3, _query_4 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
-_get_group_slice :: #force_inline proc(world: ^world_t, g: ^group_t, $T: typeid) -> []T {
-    set := world.sets[T]
-    data := (cast(^[dynamic]T)(set.components))
+_get_group_slice :: #force_inline proc(world: ^world_t, g: ^group_t, $type: typeid) -> []type {
+    set := world.sets[type]
+    data := (cast(^[dynamic]type)(set.components))
     return data[:g.count]
 }
 
@@ -286,7 +285,11 @@ _get_or_declare_group_3 :: proc(world: ^world_t, $type1, $type2, $type3: typeid)
 _get_or_declare_group_4 :: proc(world: ^world_t, $type1, $type2, $type3, $type4: typeid) -> ^group_t {
     return _get_or_create_group(world, { type1, type2, type3, type4 })
 }
-get_or_declare_group :: proc { _get_or_declare_group_2, _get_or_declare_group_3, _get_or_declare_group_4 }
+get_or_declare_group :: proc {
+    _get_or_declare_group_2,
+    _get_or_declare_group_3,
+    _get_or_declare_group_4
+}
 
 _get_or_create_group :: proc(world: ^world_t, types: []typeid) -> ^group_t {
     h := u64(0)

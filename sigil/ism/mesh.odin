@@ -1,9 +1,5 @@
 package ism
 
-import vk "vendor:vulkan"
-import glm "core:math/linalg/glsl"
-import "core:slice"
-
 mesh_data_t :: struct {
     vertices: []vertex_t,
     indices : []u32,

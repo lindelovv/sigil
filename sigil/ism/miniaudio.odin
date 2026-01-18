@@ -3,17 +3,14 @@ package ism
 import sigil "sigil:core"
 import ma "vendor:miniaudio"
 import "vendor:glfw"
-import "core:math"
-import "core:fmt"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 miniaudio := sigil.module_create_info_t {
     name  = "miniaudio_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
-        using sigil
-        add_component(world, e, init(init_miniaudio))
-        add_component(world, e, exit(deinit_miniaudio))
+        sigil.add_component(world, e, sigil.init(init_miniaudio))
+        sigil.add_component(world, e, sigil.exit(deinit_miniaudio))
     },
 }
 

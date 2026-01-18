@@ -2,9 +2,6 @@ package ism
 
 import sigil "../core"
 import glm "core:math/linalg/glsl"
-import "core:math/linalg"
-import "core:math"
-import "core:fmt"
 import "lib:jolt"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */

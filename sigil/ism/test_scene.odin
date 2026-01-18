@@ -9,12 +9,11 @@ import "lib:jolt"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
-scene := sigil.module_create_info_t {
+test_scene := sigil.module_create_info_t {
     name  = "scene_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
-        using sigil
-        add_component(world, e, init(init_scene))
-        add_component(world, e, tick(tick_scene))
+        sigil.add_component(world, e, sigil.init(init_scene))
+        sigil.add_component(world, e, sigil.tick(tick_scene))
     },
 }
 
@@ -34,12 +33,12 @@ init_scene :: proc(world: ^sigil.world_t) {
     //    sigil.add(mesh_e, transform_t(0))
     //    sigil.add(mesh_e, r_data)
     //}
-    scene := parse_gltf_scene(world, "res/models/scene.glb")
+    /*scene := */parse_gltf_scene(world, "res/models/scene.glb")
 
 	box_shape := jolt.SphereShape_Create(0.8)//(&{ 1, 1, 1 }, jolt.DEFAULT_CONVEX_RADIUS)
 	box_settings := jolt.BodyCreationSettings_Create3(
 		cast(^jolt.Shape)box_shape,
-		cast(^[3]f32)&{0,0,0},
+		&{ 0,0,0 },
 		nil,
 		.JPH_MotionType_Dynamic,
 		OBJECT_LAYER_MOVING,
@@ -235,11 +234,11 @@ tick_scene :: proc(world: ^sigil.world_t) {
         cam_id := sigil.get_value(world, cam_entity, physics_id_t)
 	    jolt.BodyInterface_GetPosition(body_interface, u32(cam_id), &target)
         for &q in sigil.query(world, transform_t, physics_id_t) {
-            transform, id := &q.x, u32(q.y)
+            _, id := &q.x, u32(q.y)
 
             pos: [3]f32
 	        jolt.BodyInterface_GetPosition(body_interface, id, &pos)
-            z := pos.z
+            //z := pos.z
             movement := move_towards(pos, target, 0.01)
             //movement.z = pos.z
 	    	jolt.BodyInterface_SetPosition(body_interface, id, &movement, .JPH_Activation_Activate)

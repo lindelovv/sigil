@@ -9,7 +9,7 @@ main :: proc() { /* سيجيل */
         ism.vulkan,
         ism.miniaudio,
         ism.jolt,
-        ism.scene,
+        ism.test_scene,
     })
     sigil.run(world)
 }

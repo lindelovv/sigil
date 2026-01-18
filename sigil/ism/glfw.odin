@@ -2,19 +2,16 @@ package ism
 
 import sigil "sigil:core"
 import "vendor:glfw"
-import vk "vendor:vulkan"
 import "core:math/linalg/glsl"
-import "core:fmt"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 glfw := sigil.module_create_info_t {
     name  = "glfw_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
-        using sigil
-        add_component(world, e, init(init_glfw))
-        add_component(world, e, tick(tick_glfw))
-        add_component(world, e, exit(exit_glfw))
+        sigil.add_component(world, e, sigil.init(init_glfw))
+        sigil.add_component(world, e, sigil.tick(tick_glfw))
+        sigil.add_component(world, e, sigil.exit(exit_glfw))
         glfw_entity = e
     },
 }
@@ -59,7 +56,7 @@ init_glfw :: proc(world: ^sigil.world_t) {
 }
 
 on_resize :: proc() {
-    w, h := glfw.GetWindowSize(window)
+    glfw.GetWindowSize(window)
     resize_window = true
 }
 

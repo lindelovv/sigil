@@ -2,8 +2,6 @@ package ism
 
 import sigil "sigil:core"
 import "lib:jolt"
-import "core:math"
-import "core:math/rand"
 import glm "core:math/linalg/glsl"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -11,10 +9,9 @@ import glm "core:math/linalg/glsl"
 jolt := sigil.module_create_info_t {
     name  = "jolt_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
-        using sigil
-        add_component(world, e, init(init_jolt))
-        add_component(world, e, tick(tick_jolt))
-        add_component(world, e, exit(exit_jolt))
+        sigil.add_component(world, e, sigil.init(init_jolt))
+        sigil.add_component(world, e, sigil.tick(tick_jolt))
+        sigil.add_component(world, e, sigil.exit(exit_jolt))
     },
 }
 

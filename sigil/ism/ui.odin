@@ -1,7 +1,6 @@
 package ism
 
 import vk "vendor:vulkan"
-import "core:math/linalg/glsl"
 
 //_____________________________
 ui : struct { using _ : material_t }
@@ -42,7 +41,7 @@ ui_declare :: proc() {
     }
     __ensure(vk.CreatePipelineLayout(device.handle, &pipeline_layout_info, nil, &ui.pipeline_layout), "Failed to create graphics pipeline layout")
     
-    desc := descriptor_data_t { set = ui.set }
+    //desc := descriptor_data_t { set = ui.set }
     ui_writes := []vk.WriteDescriptorSet {}
     vk.UpdateDescriptorSets(device.handle, u32(len(ui_writes)), raw_data(ui_writes), 0, nil)
 

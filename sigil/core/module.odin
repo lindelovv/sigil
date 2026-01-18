@@ -1,7 +1,7 @@
 package __sigil
 
-import "core:dynlib"
-import "core:os"
+//import "core:dynlib"
+//import "core:os"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
