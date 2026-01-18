@@ -10,17 +10,19 @@ import "base:runtime"
 import "core:sys/info"
 import "core:container/bit_array"
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 TITLE   :: "__sigil_"
 MAJOR_V :: 0
 MINOR_V :: 0
 PATCH_V :: 4
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 entity_t :: u32
 INVALID  :: entity_t(0)
+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 world_t :: struct {
     entities       : [dynamic]entity_t,
@@ -49,7 +51,7 @@ group_t :: struct {
     count      : int, 
 }
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 init_world :: proc(modules: []module_create_info_t) -> (world: ^world_t) {
     world = new(world_t)
@@ -63,6 +65,8 @@ run :: #force_inline proc(world: ^world_t) {
     main_loop: for !world.request_exit { for fn in query(world, tick) { fn(world) } free_all(context.temp_allocator) }
     #reverse for fn in query(world, exit) { fn(world) }
 }
+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 new_entity :: #force_inline proc(world: ^world_t) -> entity_t {
     e := entity_t(len(world.entities))
@@ -136,7 +140,7 @@ add_component :: proc(world: ^world_t, #any_int to: entity_t, component: $type) 
     type_id := typeid_of(type)
     if !(type_id in world.sets) do world.sets[type_id] = {}
     set := &world.sets[type_id]
-    if set.components == nil do _init_set(world, set, typeid_of(type))
+    if set.components == nil do _set_init(world, set, typeid_of(type))
     idx := _set_add(world, set, to, component)
     if len(world.flags) <= int(to) do resize(&world.flags, int(len(world.entities)) + 1)
     if &world.flags[to] == nil do world.flags[to] = bit_array.create(len(world.sets))^
@@ -145,12 +149,168 @@ add_component :: proc(world: ^world_t, #any_int to: entity_t, component: $type) 
     return component, idx
 }
 
-remove_component :: proc(world: ^world_t, #any_int entity: entity_t, type: typeid) {
-    if !has_component(world, entity, type) do return
+remove_component :: proc(world: ^world_t, #any_int entity: entity_t, type: typeid) -> bool {
+    if !has_component(world, entity, type) do return false
     set := &world.sets[type]
     _set_remove(world, set, entity)
     bit_array.unset(&world.flags[entity], set.id)
     world.owners[type] = nil
+    return true
+}
+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
+_set_init :: proc(world: ^world_t, set: ^set_t, type: typeid) {
+    set.components = new(runtime.Raw_Dynamic_Array)
+    set.type = type
+    ti := type_info_of(type)
+    set.size = ti.size
+    set.id = len(world.sets) - 1
+    world.set_lookup[set.id] = set.type
+    if len(set.indices) < len(world.entities) do resize(&set.indices, len(world.entities) + 64)
+}
+
+_set_add :: proc(world: ^world_t, set: ^set_t, #any_int entity: entity_t, component: $type) -> int {
+    data := cast(^[dynamic]type)(set.components)
+    if len(set.indices) <= int(entity) do resize(&set.indices, len(world.entities) + 64)
+    idx := len(data)
+    append(data, component)
+    append(&set.entities, entity)
+    set.indices[entity] = idx
+    set.count += 1
+    return idx
+}
+
+_set_remove :: proc(world: ^world_t, set: ^set_t, #any_int entity: entity_t) {
+    idx := set.indices[entity]
+    last_idx := set.count - 1
+    if idx != last_idx do _set_swap(world, set, idx, last_idx)
+    data := (^runtime.Raw_Dynamic_Array)(set.components)
+    data.len -= 1
+    pop(&set.entities)
+    set.indices[entity] = 0
+    set.count -= 1
+}
+
+_set_swap :: proc(world: ^world_t, set: ^set_t, idx_a, idx_b: int) {
+    if idx_a == idx_b do return
+    entity_a := set.entities[idx_a]
+    entity_b := set.entities[idx_b]
+    set.entities[idx_a], set.entities[idx_b] = set.entities[idx_b], set.entities[idx_a]
+    raw_array := (^runtime.Raw_Dynamic_Array)(set.components)
+    data_ptr  := uintptr(raw_array.data)
+    ptr_a := rawptr(data_ptr + uintptr(idx_a * set.size))
+    ptr_b := rawptr(data_ptr + uintptr(idx_b * set.size))
+    _mem_swap(ptr_a, ptr_b, set.size)
+    set.indices[entity_a] = idx_b
+    set.indices[entity_b] = idx_a
+}
+
+_mem_swap :: proc(a, b: rawptr, size: int) {
+    if size == 0 do return
+    tmp := make([]byte, size, context.temp_allocator)
+    mem.copy(raw_data(tmp), a, size)
+    mem.copy(a, b, size)
+    mem.copy(b, raw_data(tmp), size)
+}
+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
+_query_1 :: #force_inline proc(world: ^world_t, $type: typeid) -> []type {
+    set := world.sets[type]
+    if set.components == nil do return nil
+    data := (cast(^[dynamic]type)(set.components))
+    return data[:]
+}
+
+_query_2 :: #force_inline proc(world: ^world_t, $type1, $type2: typeid)->
+#soa[] struct   {
+    x: type1,
+    y: type2,
+} /* +-+-+-+ */ {
+    g := get_or_declare_group(world, type1, type2)
+    _ensure_group_valid(world, g) // todo: move these to add/delete or group creation instead
+    return soa_zip(
+        _get_group_slice(world, g, type1),
+        _get_group_slice(world, g, type2)
+    )
+}
+
+_query_3 :: #force_inline proc(world: ^world_t, $type1, $type2, $type3: typeid)->
+#soa[] struct   {
+    x: type1,
+    y: type2,
+    z: type3,
+} /* +-+-+-+ */ {
+    g := get_or_declare_group(world, type1, type2, type3)
+    _ensure_group_valid(world, g) // todo: move these to add/delete or group creation instead
+    return soa_zip(
+        _get_group_slice(world, g, type1),
+        _get_group_slice(world, g, type2),
+        _get_group_slice(world, g, type3),
+    )
+}
+
+_query_4 :: #force_inline proc(world: ^world_t, $type1, $type2, $type3, $type4: typeid)->
+#soa[] struct   {
+    x: type1,
+    y: type2,
+    z: type3,
+    w: type4,
+} /* +-+-+-+ */ {
+    g := get_or_declare_group(world, type1, type2, type3, type4)
+    _ensure_group_valid(world, g) // todo: move these to add/delete or group creation instead
+    return soa_zip(
+        _get_group_slice(world, g, type1),
+        _get_group_slice(world, g, type2),
+        _get_group_slice(world, g, type3),
+        _get_group_slice(world, g, type4),
+    )
+}
+query :: proc { _query_1, _query_2, _query_3, _query_4 }
+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
+_get_group_slice :: #force_inline proc(world: ^world_t, g: ^group_t, $T: typeid) -> []T {
+    set := world.sets[T]
+    data := (cast(^[dynamic]T)(set.components))
+    return data[:g.count]
+}
+
+_get_or_declare_group_2 :: proc(world: ^world_t, $type1, $type2: typeid) -> ^group_t {
+    return _get_or_create_group(world, { type1, type2 })
+}
+_get_or_declare_group_3 :: proc(world: ^world_t, $type1, $type2, $type3: typeid) -> ^group_t {
+    return _get_or_create_group(world, { type1, type2, type3 })
+}
+_get_or_declare_group_4 :: proc(world: ^world_t, $type1, $type2, $type3, $type4: typeid) -> ^group_t {
+    return _get_or_create_group(world, { type1, type2, type3, type4 })
+}
+get_or_declare_group :: proc { _get_or_declare_group_2, _get_or_declare_group_3, _get_or_declare_group_4 }
+
+_get_or_create_group :: proc(world: ^world_t, types: []typeid) -> ^group_t {
+    h := u64(0)
+    for t in types {
+        bytes := mem.any_to_bytes(t)
+        h = hash.fnv64a(bytes, h)
+    }
+    if g, ok := world.groups[h]; ok do return g
+    g := new(group_t)
+    g.id = h
+    g.types = make([dynamic]typeid, len(types))
+    g.components = bit_array.create(len(world.sets))^
+    for t, i in types {
+        g.types[i] = t
+        if !(t in world.sets) { world.sets[t] = {} }
+        if world.sets[t].components == nil {
+             set := &world.sets[t]
+             _set_init(world, set, t)
+        }
+        set_id := world.sets[t].id
+        bit_array.set(&g.components, set_id)
+    }
+    world.groups[h] = g
+    return g
 }
 
 _ensure_group_valid :: proc(world: ^world_t, g: ^group_t) {
@@ -205,132 +365,4 @@ _ensure_group_valid :: proc(world: ^world_t, g: ^group_t) {
         }
         world.owners[t] = g
     }
-}
-
-_init_set :: proc(world: ^world_t, set: ^set_t, type: typeid) {
-    set.components = new(runtime.Raw_Dynamic_Array)
-    set.type = type
-    ti := type_info_of(type)
-    set.size = ti.size
-    set.id = len(world.sets) - 1
-    world.set_lookup[set.id] = set.type
-    if len(set.indices) < len(world.entities) do resize(&set.indices, len(world.entities) + 64)
-}
-
-_set_add :: proc(world: ^world_t, set: ^set_t, #any_int entity: entity_t, component: $type) -> int {
-    data := cast(^[dynamic]type)(set.components)
-    if len(set.indices) <= int(entity) do resize(&set.indices, len(world.entities) + 64)
-    idx := len(data)
-    append(data, component)
-    append(&set.entities, entity)
-    set.indices[entity] = idx
-    set.count += 1
-    return idx
-}
-
-_set_remove :: proc(world: ^world_t, set: ^set_t, #any_int entity: entity_t) {
-    idx := set.indices[entity]
-    last_idx := set.count - 1
-    if idx != last_idx do _set_swap(world, set, idx, last_idx)
-    data := (^runtime.Raw_Dynamic_Array)(set.components)
-    data.len -= 1
-    pop(&set.entities)
-    set.indices[entity] = 0
-    set.count -= 1
-}
-
-_set_swap :: proc(world: ^world_t, set: ^set_t, idx_a, idx_b: int) {
-    if idx_a == idx_b do return
-    entity_a := set.entities[idx_a]
-    entity_b := set.entities[idx_b]
-    set.entities[idx_a], set.entities[idx_b] = set.entities[idx_b], set.entities[idx_a]
-    raw_array := (^runtime.Raw_Dynamic_Array)(set.components)
-    data_ptr  := uintptr(raw_array.data)
-    ptr_a := rawptr(data_ptr + uintptr(idx_a * set.size))
-    ptr_b := rawptr(data_ptr + uintptr(idx_b * set.size))
-    _mem_swap(ptr_a, ptr_b, set.size)
-    set.indices[entity_a] = idx_b
-    set.indices[entity_b] = idx_a
-}
-
-_mem_swap :: proc(a, b: rawptr, size: int) {
-    if size == 0 do return
-    tmp := make([]byte, size, context.temp_allocator)
-    mem.copy(raw_data(tmp), a, size)
-    mem.copy(a, b, size)
-    mem.copy(b, raw_data(tmp), size)
-}
-
-query_1 :: #force_inline proc(world: ^world_t, $type: typeid) -> []type {
-    set := world.sets[type]
-    if set.components == nil do return nil
-    data := (cast(^[dynamic]type)(set.components))
-    return data[:]
-}
-
-query_2 :: #force_inline proc(world: ^world_t, $T1, $T2: typeid) -> #soa[]struct{x: T1, y: T2} {
-    g := get_or_declare_group(world, T1, T2)
-    _ensure_group_valid(world, g)
-    return soa_zip(
-        _get_group_slice(world, g, T1),
-        _get_group_slice(world, g, T2)
-    )
-}
-
-query_3 :: #force_inline proc(world: ^world_t, $T1, $T2, $T3: typeid) -> #soa[]struct{x: T1, y: T2, z: T3} {
-    g := get_or_declare_group(world, T1, T2, T3)
-    _ensure_group_valid(world, g)
-    return soa_zip(
-        _get_group_slice(world, g, T1),
-        _get_group_slice(world, g, T2),
-        _get_group_slice(world, g, T3)
-    )
-}
-
-query_4 :: #force_inline proc(world: ^world_t, $T1, $T2, $T3, $T4: typeid) -> #soa[]struct{x: T1, y: T2, z: T3, w: T4} {
-    g := get_or_declare_group(world, T1, T2, T3, T4)
-    _ensure_group_valid(world, g)
-    return soa_zip(
-        _get_group_slice(world, g, T1),
-        _get_group_slice(world, g, T2),
-        _get_group_slice(world, g, T3),
-        _get_group_slice(world, g, T4)
-    )
-}
-query :: proc { query_1, query_2, query_3, query_4 }
-
-_get_group_slice :: #force_inline proc(world: ^world_t, g: ^group_t, $T: typeid) -> []T {
-    set := world.sets[T]
-    data := (cast(^[dynamic]T)(set.components))
-    return data[:g.count]
-}
-
-get_or_declare_group_2 :: proc(world: ^world_t, $T1, $T2: typeid) -> ^group_t { return _get_or_create_group(world, {T1, T2}) }
-get_or_declare_group_3 :: proc(world: ^world_t, $T1, $T2, $T3: typeid) -> ^group_t { return _get_or_create_group(world, {T1, T2, T3}) }
-get_or_declare_group_4 :: proc(world: ^world_t, $T1, $T2, $T3, $T4: typeid) -> ^group_t { return _get_or_create_group(world, {T1, T2, T3, T4}) }
-get_or_declare_group :: proc { get_or_declare_group_2, get_or_declare_group_3, get_or_declare_group_4 }
-
-_get_or_create_group :: proc(world: ^world_t, types: []typeid) -> ^group_t {
-    h := u64(0)
-    for t in types {
-        bytes := mem.any_to_bytes(t)
-        h = hash.fnv64a(bytes, h)
-    }
-    if g, ok := world.groups[h]; ok do return g
-    g := new(group_t)
-    g.id = h
-    g.types = make([dynamic]typeid, len(types))
-    g.components = bit_array.create(len(world.sets))^
-    for t, i in types {
-        g.types[i] = t
-        if !(t in world.sets) { world.sets[t] = {} }
-        if world.sets[t].components == nil {
-             set := &world.sets[t]
-             _init_set(world, set, t)
-        }
-        set_id := world.sets[t].id
-        bit_array.set(&g.components, set_id)
-    }
-    world.groups[h] = g
-    return g
 }

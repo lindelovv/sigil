@@ -21,6 +21,7 @@ import "core:encoding/json"
 import "lib:mikktspace"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 vulkan := sigil.module_create_info_t {
     name  = "vulkan_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {

@@ -7,6 +7,8 @@ import "core:fmt"
 import "core:math"
 import "lib:jolt"
 
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 scene := sigil.module_create_info_t {
     name  = "scene_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {

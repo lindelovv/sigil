@@ -8,7 +8,7 @@ import "core:fmt"
 import "core:os"
 import sigil "sigil:core"
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 pbr_push_constant_t :: struct #align(16) {
     vertex_buffer   : vk.DeviceAddress,
@@ -36,7 +36,7 @@ pbr: material_t
 pbr_push_const: pbr_push_constant_t
 pbr_current_last_write_time: os.File_Time
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 pbr_declare :: proc(world: ^sigil.world_t, global_session: ^slang.IGlobalSession) {
     pbr_entity = sigil.new_entity(world)

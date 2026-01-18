@@ -3,6 +3,8 @@ package __sigil
 import "core:dynlib"
 import "core:os"
 
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 name_t :: distinct string
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -34,4 +36,3 @@ setup_module :: #force_inline proc(world: ^world_t, module: module_create_info_t
     add_component(world, e, module.name)
     module.setup(world, e)
 }
-

@@ -6,6 +6,8 @@ import "vendor:glfw"
 import "core:math"
 import "core:fmt"
 
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 miniaudio := sigil.module_create_info_t {
     name  = "miniaudio_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {

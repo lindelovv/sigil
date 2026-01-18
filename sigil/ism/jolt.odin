@@ -6,6 +6,8 @@ import "core:math"
 import "core:math/rand"
 import glm "core:math/linalg/glsl"
 
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 jolt := sigil.module_create_info_t {
     name  = "jolt_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
@@ -16,7 +18,7 @@ jolt := sigil.module_create_info_t {
     },
 }
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 OBJECT_LAYER_NON_MOVING: jolt.ObjectLayer = 0
 OBJECT_LAYER_MOVING: jolt.ObjectLayer = 1
@@ -27,7 +29,7 @@ BROAD_PHASE_LAYER_NON_MOVING: jolt.BroadPhaseLayer = 0
 BROAD_PHASE_LAYER_MOVING: jolt.BroadPhaseLayer = 1
 BROAD_PHASE_LAYER_NUM :: 2
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 physics_system     : ^jolt.PhysicsSystem
 job_system         : ^jolt.JobSystem
@@ -39,7 +41,7 @@ box_e: sigil.entity_t
 
 physics_id_t :: distinct jolt.BodyID
 
-//-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 init_jolt :: proc(world: ^sigil.world_t) {
     jolt.Init()

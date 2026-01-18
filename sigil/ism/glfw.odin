@@ -6,6 +6,8 @@ import vk "vendor:vulkan"
 import "core:math/linalg/glsl"
 import "core:fmt"
 
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 glfw := sigil.module_create_info_t {
     name  = "glfw_module",
     setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
@@ -17,7 +19,8 @@ glfw := sigil.module_create_info_t {
     },
 }
 
-//_____________________________
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 glfw_entity   : sigil.entity_t
 window        : glfw.WindowHandle
 fps           : f32
@@ -27,7 +30,8 @@ delta_time    : f32
 @(private="file") prev_delta : f32
 init_time     : bool
 
-//_____________________________
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 init_glfw :: proc(world: ^sigil.world_t) {
     when ODIN_OS == .Linux {
         glfw.InitHint(glfw.PLATFORM, glfw.PLATFORM_X11) // needed for renderdoc on wayland lol
@@ -54,13 +58,11 @@ init_glfw :: proc(world: ^sigil.world_t) {
     setup_standard_bindings()
 }
 
-//_____________________________
 on_resize :: proc() {
     w, h := glfw.GetWindowSize(window)
     resize_window = true
 }
 
-//_____________________________
 tick_glfw :: proc(world: ^sigil.world_t) {
     if !init_time { glfw.SetTime(0); init_time = true }
     last_mouse_position = mouse_position
@@ -82,7 +84,6 @@ tick_glfw :: proc(world: ^sigil.world_t) {
     world.request_exit = cast(bool)glfw.WindowShouldClose(window)
 }
 
-//_____________________________
 exit_glfw :: proc(world: ^sigil.world_t) {
     //for i in sigil.query(type_of(vulkan)) {
     //    fmt.printf("%v", i)
@@ -91,17 +92,14 @@ exit_glfw :: proc(world: ^sigil.world_t) {
     glfw.Terminate()
 }
 
-//_____________________________
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 // Input
 input_callbacks     : map[Key]KeyCallback
 input_queue         : [dynamic]proc(^sigil.world_t)
 mouse_position      : glsl.vec2
 last_mouse_position : glsl.vec2
 input_world_ptr     : ^sigil.world_t // tmp until better solution
-
-get_mouse_movement :: proc() -> glsl.vec2 {
-    return mouse_position - last_mouse_position
-}
 
 Key :: i32
 KeyCallback :: struct {
@@ -112,35 +110,38 @@ KeyCallback :: struct {
 MOUSE_SCROLL_DOWN :: 349
 MOUSE_SCROLL_UP   :: 350
 
-//_____________________________
-bind_input :: proc {
-    bind_input_keycallback,
-    bind_input_press,
-    bind_input_press_release,
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
+get_mouse_movement :: proc() -> glsl.vec2 {
+    return mouse_position - last_mouse_position
 }
 
-bind_input_keycallback :: proc(key: Key, callbacks: KeyCallback) {
+_bind_input_keycallback :: proc(key: Key, callbacks: KeyCallback) {
     if _, exists := input_callbacks[key]; !exists {
         input_callbacks[key] = {}
     }
     input_callbacks[key] = callbacks
 }
-
-bind_input_press :: proc(key: Key, press: proc(^sigil.world_t)) {
+_bind_input_press :: proc(key: Key, press: proc(^sigil.world_t)) {
     if _, exists := input_callbacks[key]; !exists {
         input_callbacks[key] = {}
     }
     input_callbacks[key] = KeyCallback { press = press }
 }
-
-bind_input_press_release :: proc(key: Key, press: proc(^sigil.world_t), release: proc(^sigil.world_t)) {
+_bind_input_press_release :: proc(key: Key, press: proc(^sigil.world_t), release: proc(^sigil.world_t)) {
     if _, exists := input_callbacks[key]; !exists {
         input_callbacks[key] = {}
     }
     input_callbacks[key] = KeyCallback { press = press, release = release }
 }
+bind_input :: proc {
+    _bind_input_keycallback,
+    _bind_input_press,
+    _bind_input_press_release,
+}
 
-//_____________________________
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 keyboard_callback :: proc(window: glfw.WindowHandle, key: i32, scancode: i32, action: i32, mods: i32) {
     if callback, exists := input_callbacks[key]; exists {
         if action == glfw.PRESS   { if callback.press != nil   { append(&input_queue, callback.press)   } }
@@ -148,7 +149,6 @@ keyboard_callback :: proc(window: glfw.WindowHandle, key: i32, scancode: i32, ac
     }
 }
 
-//_____________________________
 mouse_callback :: proc(window: glfw.WindowHandle, button: i32, action: i32, mods: i32) {
     if callback, exists := input_callbacks[button]; exists {
         if action == glfw.PRESS   { if callback.press != nil   { callback.press(input_world_ptr)   } }
@@ -156,7 +156,6 @@ mouse_callback :: proc(window: glfw.WindowHandle, button: i32, action: i32, mods
     }
 }
 
-//_____________________________
 scroll_callback :: proc(window: glfw.WindowHandle, x, y: f64) {
     button : i32 = 0
     if y > 0 do button = MOUSE_SCROLL_UP
@@ -167,9 +166,9 @@ scroll_callback :: proc(window: glfw.WindowHandle, x, y: f64) {
     }
 }
 
-//_____________________________
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 setup_standard_bindings :: proc() {
     bind_input(glfw.KEY_T,      press = proc(^sigil.world_t) { __log("test") })
     bind_input(glfw.KEY_ESCAPE, press = proc(^sigil.world_t) { glfw.SetWindowShouldClose(window, true) })
 }
-

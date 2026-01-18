@@ -7,6 +7,8 @@ import "core:math"
 import "core:fmt"
 import "lib:jolt"
 
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 WORLD_UP :: glm.vec3 { 0, 0, 1 }
 
 request_movement_t :: struct {
@@ -47,6 +49,8 @@ camera_t :: struct {
 cam_entity: sigil.entity_t
 cam_cube_e: sigil.entity_t
 
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
+
 init_camera :: proc(world: ^sigil.world_t) {
     cam_entity = sigil.new_entity(world)
 
@@ -63,7 +67,6 @@ init_camera :: proc(world: ^sigil.world_t) {
     sigil.add_component(world, cam_entity, rotation_t(0))
     sigil.add_component(world, cam_entity, velocity_t(0))
     sigil.add_component(world, cam_entity, sigil.name_t("cam"))
-    //sigil.add(cam_entity, glm.vec3{ -2.5, 2.5, 1.5 })
     sigil.add_component(world, cam_entity, camera_controller_t {
         movement_speed    = 6,
         mouse_sensitivity = 28,
