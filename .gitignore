@@ -2,6 +2,13 @@
 /models/model.obj
 /textures/model_texture.png
 /.cache
+/.idea
+compile_commands.json
 core
-!/src/core
+!/sigil/core
+/subprojects/*
+!/subprojects/imgui.wrap
+!/subprojects/packagefiles
+!/subprojects/vulkan-memory-allocator.wrap
+!/subprojects/VulkanMemoryAllocator-Hpp.wrap
 

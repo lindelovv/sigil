@@ -1,0 +1,36 @@
+struct vertex_t {
+    float3 position;
+    float  uv_x;
+    float3 normal;
+    float  uv_y;
+    float4 tangent;
+    float4 color;
+};
+
+struct scene_data_t {
+    float4x4 view;
+    float4x4 proj;
+    float4   ambient_color;
+    float4   sunlight_color;
+    float4   sunlight_direction;
+    float3   view_pos;
+    float    time;
+};
+
+struct material_data_t {
+    float4 albedo_factors;
+    float4 metal_roughness_factors;
+};
+
+[[vk::binding(0, 0)]] ConstantBuffer<scene_data_t>    scene_data;
+[[vk::binding(1, 0)]] ConstantBuffer<material_data_t> material_data;
+
+[[vk::binding(0, 2)]] StructuredBuffer<float4x4> transforms;
+[[vk::binding(1, 2)]] Texture2D textures[];
+[[vk::binding(2, 2)]] RWTexture2D rw_textures[];
+[[vk::binding(3, 2)]] SamplerState sampler;
+
+#define get_transform(index) transforms[index]
+#define sample_texture(index, uv) textures[NonUniformResourceIndex(index)].Sample(sampler, uv)
+#define get_rw_texture(index) rw_textures[NonUniformResourceIndex(index)]
+
