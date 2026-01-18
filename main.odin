@@ -5,12 +5,12 @@ import       "sigil:ism"
 
 main :: proc() { /* سيجيل */
 
-    using sigil
-        use(ism.glfw)
-        use(ism.vulkan)
-        use(ism.miniaudio)
-        use(ism.jolt)
-        use(ism.scene)
-        run()
+    world := sigil.init_world({
+        ism.glfw,
+        ism.vulkan,
+        ism.miniaudio,
+        ism.jolt,
+        ism.scene,
+    /* +-+-+-+-+-+-+-+-+ */  })
+    sigil.run(world)
 }
-

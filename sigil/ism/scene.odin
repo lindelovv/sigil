@@ -9,16 +9,16 @@ import "lib:jolt"
 
 scene := sigil.module_create_info_t {
     name  = "scene_module",
-    setup = proc(e: sigil.entity_t) {
+    setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
         using sigil
-        add(e, init(init_scene))
-        add(e, tick(tick_scene))
+        add(world, e, init(init_scene))
+        add(world, e, tick(tick_scene))
     },
 }
 
 follow : bool
 
-init_scene :: proc() {
+init_scene :: proc(world: ^sigil.world_t) {
     setup_keybinds()
 
     //_____________________________
@@ -32,42 +32,7 @@ init_scene :: proc() {
     //    sigil.add(mesh_e, transform_t(0))
     //    sigil.add(mesh_e, r_data)
     //}
-    scene := parse_gltf_scene("res/models/scene.glb")
-
-    //e_e := sigil.new_entity()
-    //cube_data = upload_mesh(cube_vertices, cube_indices)
-    //sigil.add(e_e, cube_data)
-    //_, e_e_trans_idx := sigil.add(e_e, transform_t(glm.mat4Translate({ -1, -1, 1 })))
-
-    //rect_e := sigil.new_entity()
-    //rect_data := upload_mesh(rect_vertices, rect_indices)
-    //sigil.add(rect_e, rect_data)
-    //_, rect_e_trans_idx := sigil.add(rect_e, transform_t(glm.mat4Translate(glm.vec3 { 0, 0, 0 }) * glm.mat4Scale(glm.vec3(100))))
-
-	//floor_shape := jolt.BoxShape_Create(&{10, 10, 0.5}, jolt.DEFAULT_CONVEX_RADIUS)
-
-	//floor_settings := jolt.BodyCreationSettings_Create3(
-	//	cast(^jolt.Shape)floor_shape,
-	//	&{0, 0, -1},
-	//	nil,
-	//	.JPH_MotionType_Static,
-	//	OBJECT_LAYER_NON_MOVING,
-	//)
-	//defer jolt.BodyCreationSettings_Destroy(floor_settings)
-
-	//jolt.BodyCreationSettings_SetRestitution(floor_settings, 0.5)
-	//jolt.BodyCreationSettings_SetFriction(floor_settings, 0.5)
-
-	//floor_id = jolt.BodyInterface_CreateAndAddBody(body_interface, floor_settings, .JPH_Activation_DontActivate)
-
-    //cube_e := sigil.new_entity()
-    //c_data := upload_mesh(cube_vertices, cube_indices)
-    //sigil.add(cube_e, c_data)
-    //sigil.add(cube_e, transform_t(0))
-	//pos, _ := sigil.add(cube_e, position_t { 4, 4, 4 })
-	//sigil.add(cube_e, rotation_t(0))
-	//sigil.add(cube_e, velocity_t(0))
-	//sigil.add(cube_e, sigil.name("phys cube"))
+    scene := parse_gltf_scene(world, "res/models/scene.glb")
 
 	box_shape := jolt.SphereShape_Create(0.8)//(&{ 1, 1, 1 }, jolt.DEFAULT_CONVEX_RADIUS)
 	box_settings := jolt.BodyCreationSettings_Create3(
@@ -79,100 +44,90 @@ init_scene :: proc() {
 	)
 	defer jolt.BodyCreationSettings_Destroy(box_settings)
 
-    //e : sigil.entity_t = 9
-    //for x in -2..=2 do for y in -2..=2 do for z in 3..=6 {    
-    //    //x, y, z := 0, 0, 5
-	//    id := jolt.BodyInterface_CreateAndAddBody(body_interface, box_settings, .JPH_Activation_Activate)
-    //    jolt.BodyInterface_SetPosition(body_interface, id, &{ f32(x) * 3, f32(y) * 3, f32(z) * 3}, .JPH_Activation_Activate)
-	//    sigil.add(e, physics_id_t(id))
-	//    sigil.add(e, position_t(0))
-	//    sigil.add(e, rotation_t(0))
-    //    e += 1
-    //}
 	id := jolt.BodyInterface_CreateAndAddBody(body_interface, box_settings, .JPH_Activation_Activate)
     jolt.BodyInterface_SetObjectLayer(body_interface, id, OBJECT_LAYER_MOVING)
-    jolt.BodyInterface_SetPosition(body_interface, id, cast(^[3]f32)sigil.get_ref(cam_entity, position_t), .JPH_Activation_Activate)
+    jolt.BodyInterface_SetPosition(body_interface, id, cast(^[3]f32)sigil.get_ref(world, cam_entity, position_t), .JPH_Activation_Activate)
 	//sigil.add(cam_entity, rotation_t(0))
-	sigil.add(cam_entity, physics_id_t(id))
+	sigil.add(world, cam_entity, physics_id_t(id))
 
 	jolt.PhysicsSystem_OptimizeBroadPhase(physics_system)
 }
 
-get_ctrl :: #force_inline proc() -> ^camera_controller_t {
-    return sigil.get_ref(cam_entity, camera_controller_t)
+get_ctrl :: #force_inline proc(world: ^sigil.world_t) -> ^camera_controller_t {
+    return sigil.get_ref(world, cam_entity, camera_controller_t)
 }
 
 setup_keybinds :: proc() {
     bind_input(glfw.KEY_W,
-        press   = proc() { get_ctrl().requested_movement.forward = true  },
-        release = proc() { get_ctrl().requested_movement.forward = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.forward = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.forward = false },
     )
     bind_input(glfw.KEY_S,
-        press   = proc() { get_ctrl().requested_movement.back = true  },
-        release = proc() { get_ctrl().requested_movement.back = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.back = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.back = false },
     )
     bind_input(glfw.KEY_A,
-        press   = proc() { get_ctrl().requested_movement.left = true  },
-        release = proc() { get_ctrl().requested_movement.left = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.left = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.left = false },
     )
     bind_input(glfw.KEY_D,
-        press   = proc() { get_ctrl().requested_movement.right = true  },
-        release = proc() { get_ctrl().requested_movement.right = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.right = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.right = false },
     )
     bind_input(glfw.KEY_Q,
-        press   = proc() { get_ctrl().requested_movement.down = true  },
-        release = proc() { get_ctrl().requested_movement.down = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.down = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.down = false },
     )
     bind_input(glfw.KEY_E,
-        press   = proc() { get_ctrl().requested_movement.up = true  },
-        release = proc() { get_ctrl().requested_movement.up = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.up = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_movement.up = false },
     )
     bind_input(glfw.KEY_LEFT_SHIFT,
-        press   = proc() { get_ctrl().movement_speed = 8 },
-        release = proc() { get_ctrl().movement_speed = 4 },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).movement_speed = 8 },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).movement_speed = 4 },
     )
     bind_input(glfw.KEY_H,
-        press   = proc() { get_ctrl().requested_rotation.left = true  },
-        release = proc() { get_ctrl().requested_rotation.left = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_rotation.left = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_rotation.left = false },
     )
     bind_input(glfw.KEY_J,
-        press   = proc() { get_ctrl().requested_rotation.down = true  },
-        release = proc() { get_ctrl().requested_rotation.down = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_rotation.down = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_rotation.down = false },
     )
     bind_input(glfw.KEY_K,
-        press   = proc() { get_ctrl().requested_rotation.up = true  },
-        release = proc() { get_ctrl().requested_rotation.up = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_rotation.up = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_rotation.up = false },
     )
     bind_input(glfw.KEY_L,
-        press   = proc() { get_ctrl().requested_rotation.right = true  },
-        release = proc() { get_ctrl().requested_rotation.right = false },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).requested_rotation.right = true  },
+        release = proc(world: ^sigil.world_t) { get_ctrl(world).requested_rotation.right = false },
     )
     bind_input(MOUSE_SCROLL_UP,
-        press   = proc() { get_ctrl().movement_speed += 0.3 },
+        press   = proc(world: ^sigil.world_t) { get_ctrl(world).movement_speed += 0.3 },
     )
     bind_input(MOUSE_SCROLL_DOWN,
-        press   = proc() {
-            speed := &get_ctrl().movement_speed
+        press   = proc(world: ^sigil.world_t) {
+            speed := &get_ctrl(world).movement_speed
             speed^ = max(speed^ - 0.3, 0.1)
         },
     )
     bind_input(glfw.MOUSE_BUTTON_RIGHT,
-        press = proc() {
+        press = proc(world: ^sigil.world_t) {
             glfw.SetInputMode(window, glfw.CURSOR, glfw.CURSOR_DISABLED)
-            get_ctrl().follow_mouse = true
+            get_ctrl(world).follow_mouse = true
         },
-        release = proc() {
+        release = proc(world: ^sigil.world_t) {
             glfw.SetInputMode(window, glfw.CURSOR, glfw.CURSOR_NORMAL)
-            get_ctrl().follow_mouse = false
+            get_ctrl(world).follow_mouse = false
         }
     )
     bind_input(glfw.KEY_V,//glfw.MOUSE_BUTTON_LEFT,
-        press = proc() {
+        press = proc(world: ^sigil.world_t) {
             npq := jolt.PhysicsSystem_GetNarrowPhaseQuery(physics_system)
-            cam := sigil.get_value(cam_entity, camera_t)
+            cam := sigil.get_value(world, cam_entity, camera_t)
             // this is fucked, tried fucking it more to fix it but no luck it seems
             forward := glm.normalize(cam.forward)
-            origin := get_camera_pos()
+            origin := get_camera_pos(world)
             // todo: figure out why cam is being weird, likely mistake in calculations
             //es := parse_gltf_scene("res/models/DamagedHelmet.glb")
             ////model := glm.quatMulVec3(glm.dot_quat(glm.quat(1), forward), origin)
@@ -190,11 +145,11 @@ setup_keybinds :: proc() {
             dir := origin - forward
             if collided := jolt.NarrowPhaseQuery_CastRay(npq, &origin, &dir, &hit, nil, filter, nil); collided {
                 fmt.println("cast hit")
-                set := sigil.core.sets[physics_id_t]
+                set := world.sets[physics_id_t]
                 fmt.printfln("%v", set)
                 owner: sigil.entity_t
                 fmt.printfln("bodyID: %v", hit.bodyID)
-                for id, i in sigil.query(physics_id_t) {
+                for id, i in sigil.query(world, physics_id_t) {
                     fmt.printfln("q id: %v", id)
                     fmt.printfln("q i: %v", i)
                     fmt.printfln("q idc: %v", set.indices[i+1])
@@ -205,7 +160,7 @@ setup_keybinds :: proc() {
                     }
                 }
                 fmt.printfln("owner: %v", owner)
-                sigil.delete_entity(owner)
+                sigil.delete_entity(world, owner)
                 //sigil.remove_component(owner, render_data_t)
                 //sigil.remove_component(owner, transform_t)
                 //sigil.remove_component(owner, physics_id_t)
@@ -215,15 +170,15 @@ setup_keybinds :: proc() {
         },
     )
     bind_input(glfw.KEY_M,
-        press   = proc() { 
-            fmt.printfln("%#v", sigil.query(position_t, render_data_t))
+        press   = proc(world: ^sigil.world_t) { 
+            fmt.printfln("%#v", sigil.query(world, position_t, render_data_t))
         },
     )
     bind_input(glfw.KEY_F,
-        press   = proc() { follow = !follow  },
+        press   = proc(world: ^sigil.world_t) { follow = !follow  },
     )
     bind_input(glfw.KEY_B,
-        press   = proc() {
+        press   = proc(world: ^sigil.world_t) {
             hit_context_t :: struct {
                 ids:   [1024]jolt.BodyID,
                 count: int,
@@ -236,7 +191,7 @@ setup_keybinds :: proc() {
                 }
                 return 1.0
             }
-            if id_val, ok := sigil.get_value(n, physics_id_t); ok {
+            if id_val, ok := sigil.get_value(world, n, physics_id_t); ok {
                 body_id := jolt.BodyID(id_val)
                 center_of_mass: jolt.RMatrix4x4
                 jolt.BodyInterface_GetCenterOfMassTransform(body_interface, body_id, &center_of_mass)
@@ -260,31 +215,24 @@ setup_keybinds :: proc() {
                 for i in 0..<hit_ctx.count do jolt.BodyInterface_ActivateBody(body_interface, hit_ctx.ids[i])
                 jolt.BodyInterface_RemoveAndDestroyBody(body_interface, body_id)
             }
-            sigil.delete_entity(n)
+            sigil.delete_entity(world, n)
             n += 1
         },
     )
-    //bind_input(glfw.KEY_V,
-    //    press   = proc() {
-    //        sigil.delete_entity(auto_cast m)
-    //        m += 1
-    //    }
-    //)
 }
 n := 9
-m := 9
 
-tick_scene :: proc() {
-    update_camera(delta_time)
+tick_scene :: proc(world: ^sigil.world_t) {
+    update_camera(world, delta_time)
 
     wave := math.sin(3.0 * math.PI * 0.1 + time) * 0.001
     gpu_scene_data.sun_direction += glm.vec3 { wave, -wave, wave }
 
     if follow {
         target: [3]f32
-        cam_id := sigil.get_value(cam_entity, physics_id_t)
+        cam_id := sigil.get_value(world, cam_entity, physics_id_t)
 	    jolt.BodyInterface_GetPosition(body_interface, u32(cam_id), &target)
-        for &q in sigil.query(transform_t, physics_id_t) {
+        for &q in sigil.query(world, transform_t, physics_id_t) {
             transform, id := &q.x, u32(q.y)
 
             pos: [3]f32

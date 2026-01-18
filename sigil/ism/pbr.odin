@@ -38,8 +38,8 @@ pbr_current_last_write_time: os.File_Time
 
 //-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-pbr_declare :: proc(global_session: ^slang.IGlobalSession) {
-    pbr_entity = sigil.new_entity()
+pbr_declare :: proc(world: ^sigil.world_t, global_session: ^slang.IGlobalSession) {
+    pbr_entity = sigil.new_entity(world)
 
     albedo_img    := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_albedo.jpg")
     albedo_img.index = register_image(albedo_img.view)
@@ -247,7 +247,7 @@ build_pbr_pipeline :: proc(global_session: ^slang.IGlobalSession) {
         msg = "failed to create shader module"
     )
 
-    fmt.printfln("+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+")
+    //fmt.printfln("+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+")
 
     stages := []vk.PipelineShaderStageCreateInfo {
         vk.PipelineShaderStageCreateInfo {

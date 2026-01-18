@@ -11,7 +11,7 @@ name_t :: distinct string
 module_create_info_t :: struct {
     id    : entity_t,
     data  : rawptr,
-    setup : proc(e: entity_t),
+    setup : proc(world: ^world_t, e: entity_t),
     name  : name_t,
 
     // todo: add per module hot reload
@@ -22,16 +22,16 @@ module_create_info_t :: struct {
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
-init :: distinct #type proc()
-tick :: distinct #type proc()
-exit :: distinct #type proc()
-none :: distinct #type proc()
+init :: distinct #type proc(^world_t)
+tick :: distinct #type proc(^world_t)
+exit :: distinct #type proc(^world_t)
+none :: distinct #type proc(^world_t)
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
-use :: #force_inline proc(module: module_create_info_t) {
-    e := new_entity();
-    add(e, module.name)
-    module.setup(e)
+setup_module :: #force_inline proc(world: ^world_t, module: module_create_info_t) {
+    e := new_entity(world);
+    add(world, e, module.name)
+    module.setup(world, e)
 }
 

@@ -8,10 +8,10 @@ import "core:fmt"
 
 miniaudio := sigil.module_create_info_t {
     name  = "miniaudio_module",
-    setup = proc(e: sigil.entity_t) {
+    setup = proc(world: ^sigil.world_t, e: sigil.entity_t) {
         using sigil
-        add(e, init(init_miniaudio))
-        add(e, exit(deinit_miniaudio))
+        add(world, e, init(init_miniaudio))
+        add(world, e, exit(deinit_miniaudio))
     },
 }
 
@@ -34,7 +34,7 @@ audio_device: ma.device
 //    u_ptr^ = time
 //}
 
-init_miniaudio :: proc() {
+init_miniaudio :: proc(world: ^sigil.world_t) {
     //conf := ma.device_config_init(.playback)
     //conf.playback.format    = ma.format.f32
     //conf.playback.channels  = 1
@@ -46,13 +46,13 @@ init_miniaudio :: proc() {
 
     __ensure(ma.engine_init(nil, &engine), "failed to initialize miniaudio")
     bind_input(glfw.KEY_P,
-        press   = proc() {
+        press   = proc(^sigil.world_t) {
             __ensure(ma.engine_play_sound(&engine, "res/test.mp3", nil), "failed play sound")
         },
     )
 }
 
-deinit_miniaudio :: proc() {
+deinit_miniaudio :: proc(world: ^sigil.world_t) {
     //ma.device_uninit(&audio_device)
     ma.engine_uninit(&engine)
 }
