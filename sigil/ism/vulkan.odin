@@ -76,14 +76,26 @@ queue_t :: struct {
 
 swapchain_t :: struct {
     handle : vk.SwapchainKHR,
-    images : [dynamic]vk.Image,
-    views  : [dynamic]vk.ImageView,
     extent : vk.Extent2D,
+    frames : [dynamic]frame_t,
+    current_frame : u32
+}
+frame_t :: struct {
+    image      : vk.Image,
+    view       : vk.ImageView,
+    render_sem : vk.Semaphore,
+
+    pool       : vk.CommandPool,
+    cmd        : vk.CommandBuffer,
+    fence      : vk.Fence,
+    swap_sem   : vk.Semaphore,
+
+    descriptor : descriptor_data_t,
+    desc_pool  : vk.DescriptorPool,
+    scene_alloc: allocated_buffer_t,
 }
 
-frames           : [2]frame_t
-current_frame    : u32
-
+/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 desc_pool        : vk.DescriptorPool
 draw_img         : allocated_image_t
 draw_descriptor  : vk.DescriptorSet
@@ -113,20 +125,9 @@ material_count   : u32
 global_session   : ^slang.IGlobalSession
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-error_image      : allocated_image_t
-scene_data       : scene_data_t
-gpu_scene_data   : gpu_scene_data_t
-scene_allocation : allocated_buffer_t
-
-/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-frame_t :: struct {
-    pool       : vk.CommandPool,
-    cmd        : vk.CommandBuffer,
-    fence      : vk.Fence,
-    swap_sem   : vk.Semaphore,
-    render_sem : vk.Semaphore,
-    descriptor : descriptor_data_t,
-}
+error_image       : allocated_image_t
+scene_desc_layout : vk.DescriptorSetLayout
+gpu_scene_data    : gpu_scene_data_t
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 immediate_submit_t :: struct {
@@ -213,14 +214,6 @@ descriptor_buffer_info_t :: struct {
     offset  : vk.DeviceSize,
 }
 
-/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-scene_data_t :: struct {
-    set_layout      : vk.DescriptorSetLayout,
-    set             : vk.DescriptorSet,
-    pool            : vk.DescriptorPool,
-    pipeline        : vk.Pipeline,
-    pipeline_layout : vk.PipelineLayout,
-}
 gpu_scene_data_t :: struct #align(16) {
     view          : glm.mat4,
     proj          : glm.mat4,
@@ -385,8 +378,13 @@ init_vulkan :: proc(world: ^sigil.world_t) {
         queueCount       = 1,
         pQueuePriorities = &queue_priorities,
     }
+    features_vk_1_1 := vk.PhysicalDeviceVulkan11Features {
+        sType     = .PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        shaderDrawParameters = true,
+    }
     features_vk_1_2 := vk.PhysicalDeviceVulkan12Features {
         sType     = .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        pNext                         = &features_vk_1_1,
         bufferDeviceAddress                       = true,
         descriptorIndexing                        = true,
         runtimeDescriptorArray                    = true,
@@ -430,6 +428,27 @@ init_vulkan :: proc(world: ^sigil.world_t) {
     )
 
     //_____________________________
+    // Scene Descriptor Layout
+    scene_data_layout_bindings := []vk.DescriptorSetLayoutBinding {
+        {
+            binding         = 0,
+            descriptorType  = .UNIFORM_BUFFER,
+            descriptorCount = 1,
+            stageFlags      = { .VERTEX, .FRAGMENT },
+        },
+    }
+    scene_data_layout_info := vk.DescriptorSetLayoutCreateInfo {
+        sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        flags        = {},
+        bindingCount = u32(len(scene_data_layout_bindings)),
+        pBindings    = raw_data(scene_data_layout_bindings),
+    }
+    __ensure(
+        vk.CreateDescriptorSetLayout(device.handle, &scene_data_layout_info, nil, &scene_desc_layout), 
+        msg = "Failed to create scene descriptor set layout"
+    )
+
+    //_____________________________
     // Swapchain
     capabilities: vk.SurfaceCapabilitiesKHR
     vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(device.physical, surface, &capabilities)
@@ -454,27 +473,37 @@ init_vulkan :: proc(world: ^sigil.world_t) {
     )
 
     //_____________________________
-    // Images
+    // Frames
     swapchain_img_count: u32
     vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &swapchain_img_count, nil)
-    swapchain.images = make([dynamic]vk.Image, swapchain_img_count)
-    vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &swapchain_img_count, raw_data(swapchain.images))
+    swapchain.frames = make([dynamic]frame_t, swapchain_img_count)
+    tmp_imgs := make([]vk.Image, swapchain_img_count, context.temp_allocator)
+    vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &swapchain_img_count, raw_data(tmp_imgs))
 
+    gpu_scene_data = gpu_scene_data_t {
+        view          = glm.mat4(1),
+        proj          = glm.mat4(1),
+        sun_color     = { .4, .4, .6, 1  },
+        ambient_color = {  1,  1,  1, 1  },
+        sun_direction = {  0,  3,  5  },
+        view_pos      = get_camera_pos(world),
+    }
     for i: u32 = 0; i < swapchain_img_count; i += 1 {
-        img_view: vk.ImageView
+        frame := &swapchain.frames[i]
+        frame.image = tmp_imgs[i]
         img_view_create_info := vk.ImageViewCreateInfo {
             sType            = .IMAGE_VIEW_CREATE_INFO,
             viewType         = .D2,
             format           = .B8G8R8A8_UNORM,
-            image            = swapchain.images[i],
+            image            = frame.image,
             subresourceRange = {
                 aspectMask      = { .COLOR },
                 layerCount      = 1,
                 levelCount      = 1
             }
         }
-        vk.CreateImageView(device.handle, &img_view_create_info, nil, &img_view)
-        append(&swapchain.views, img_view)
+        vk.CreateImageView(device.handle, &img_view_create_info, nil, &frame.view)
+        init_frame_resources(frame, &scene_desc_layout)
     }
 
     //_____________________________
@@ -562,117 +591,6 @@ init_vulkan :: proc(world: ^sigil.world_t) {
     depth_img = create_image(.D32_SFLOAT, { .DEPTH_STENCIL_ATTACHMENT }, extent)
 
     //_____________________________
-    // Frames
-    for &frame in frames {
-        pool_create_info := vk.CommandPoolCreateInfo {
-            sType            = .COMMAND_POOL_CREATE_INFO,
-            queueFamilyIndex = queue.family,
-            flags            = { .RESET_COMMAND_BUFFER },
-        }
-        __ensure(
-            vk.CreateCommandPool(device.handle, &pool_create_info, nil, &frame.pool),
-            msg = "Failed to create command pool"
-        )
-
-        cmd_create_info := vk.CommandBufferAllocateInfo {
-            sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
-            commandPool        = frame.pool,
-            level              = .PRIMARY,
-            commandBufferCount = 1
-        }
-        __ensure(
-            vk.AllocateCommandBuffers(device.handle, &cmd_create_info, &frame.cmd),
-            msg = "Failed to create command buffer"
-        )
-
-        fence_create_info := vk.FenceCreateInfo {
-            sType = .FENCE_CREATE_INFO,
-            flags = { .SIGNALED }
-        }
-        __ensure(
-            vk.CreateFence(device.handle, &fence_create_info, nil, &frame.fence),
-            msg = "Failed to create fence"
-        )
-
-        semaphore_create_info := vk.SemaphoreCreateInfo {
-            sType = .SEMAPHORE_CREATE_INFO
-        }
-        __ensure(
-            vk.CreateSemaphore(device.handle, &semaphore_create_info, nil, &frame.swap_sem),
-            msg = "Failed to create swap semaphore"
-        )
-        __ensure(
-            vk.CreateSemaphore(device.handle, &semaphore_create_info, nil, &frame.render_sem),
-            msg = "Failed to create render semaphore"
-        )
-
-        //_____________________________
-        // Descriptor Pool
-        size := vk.DescriptorPoolSize {
-            type            = .UNIFORM_BUFFER, 
-            descriptorCount = 1,
-        }
-        desc_pool_info := vk.DescriptorPoolCreateInfo {
-            sType         = .DESCRIPTOR_POOL_CREATE_INFO,
-            flags         = {},
-            maxSets       = 1,
-            poolSizeCount = 1,
-            pPoolSizes    = &size,
-        }
-        __ensure(
-            vk.CreateDescriptorPool(device.handle, &desc_pool_info, nil, &desc_pool),
-            msg = "Failed to create frame descriptor pool"
-        )
-
-        //_____________________________
-        // Descriptor Layout
-        binding := vk.DescriptorSetLayoutBinding {
-            binding         = 0, 
-            descriptorType  = .UNIFORM_BUFFER, 
-            descriptorCount = 1, 
-            stageFlags      = { .VERTEX, .FRAGMENT }
-        }
-        set_layout_info := vk.DescriptorSetLayoutCreateInfo {
-            sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            flags        = {},
-            bindingCount = 1,
-            pBindings    = &binding,
-        }
-        layout: vk.DescriptorSetLayout
-        vk.CreateDescriptorSetLayout(device.handle, &set_layout_info, nil, &layout)
-
-        //_____________________________
-        // Allocate Descriptor Set
-        allocate_info := vk.DescriptorSetAllocateInfo {
-            sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
-            descriptorPool     = desc_pool,
-            descriptorSetCount = 1,
-            pSetLayouts        = &layout
-        }
-        vk.AllocateDescriptorSets(device.handle, &allocate_info, &frame.descriptor.set)
-
-        //_____________________________
-        // Update Descriptor Data
-        gpu_scene_data = gpu_scene_data_t {
-            view          = glm.mat4(1),
-            proj          = glm.mat4(1),
-            sun_color     = { .4, .4, .6, 1  },
-            ambient_color = {  1,  1,  1, 1  },
-            sun_direction = {  0,  3,  5  },
-            view_pos      = get_camera_pos(world),
-        }
-        scene_allocation = create_buffer(size_of(gpu_scene_data_t), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
-        scene_unifrom_data := cast(^gpu_scene_data_t)scene_allocation.info.pMappedData
-        scene_unifrom_data = &gpu_scene_data
-
-        scene_descriptor = descriptor_data_t { set = frame.descriptor.set }
-        scene_writes := []vk.WriteDescriptorSet {
-            write_descriptor(&scene_descriptor, 0, .UNIFORM_BUFFER, descriptor_buffer_info_t { scene_allocation, size_of(gpu_scene_data_t), 0 }),
-        }
-        vk.UpdateDescriptorSets(device.handle, u32(len(scene_writes)), raw_data(scene_writes), 0, nil)
-    }
-
-    //_____________________________
     // Immediate Submit
 
     pool_create_info := vk.CommandPoolCreateInfo {
@@ -725,13 +643,12 @@ init_vulkan :: proc(world: ^sigil.world_t) {
     )
 
     //_____________________________
-    // Descriptor Layout
+    // Descriptor Layout (For compute/draw)
     img_info := vk.DescriptorImageInfo {
         sampler     = sampler,
         imageView   = draw_img.view,
         imageLayout = .GENERAL,
     }
-
     bindings: []vk.DescriptorSetLayoutBinding = {
         { binding = 0, descriptorType = .STORAGE_IMAGE, descriptorCount = 1, stageFlags = { .COMPUTE } }
     }
@@ -799,37 +716,6 @@ init_vulkan :: proc(world: ^sigil.world_t) {
     error_image = create_image_from_buffer(&pixels, { 16, 16, 1 }, .R8G8B8A8_UNORM, { .SAMPLED })
     error_image.index = register_image(error_image.view)
 
-    //_____________________________
-    // Graphics Pipeline
-    scene_data_layout_bindings := []vk.DescriptorSetLayoutBinding {
-        vk.DescriptorSetLayoutBinding {
-            binding         = 0,
-            descriptorType  = .UNIFORM_BUFFER,
-            descriptorCount = 1,
-            stageFlags      = { .VERTEX, .FRAGMENT },
-        },
-    }
-    scene_data_layout_info := vk.DescriptorSetLayoutCreateInfo {
-        sType        = .DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-        flags        = {},
-        bindingCount = u32(len(scene_data_layout_bindings)),
-        pBindings    = raw_data(scene_data_layout_bindings),
-    }
-    __ensure(
-        vk.CreateDescriptorSetLayout(device.handle, &scene_data_layout_info, nil, &scene_data.set_layout), 
-        msg = "Failed to create descriptor set"
-    )
-    scene_data_allocate_info := vk.DescriptorSetAllocateInfo {
-        sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
-        descriptorPool     = desc_pool,
-        descriptorSetCount = 1,
-        pSetLayouts        = &scene_data.set_layout,
-    }
-    __ensure(
-        vk.AllocateDescriptorSets(device.handle, &scene_data_allocate_info, &scene_data.set), 
-        msg = "Failed to allocate descriptor set"
-    )
-
     __ensure(
         slang.createGlobalSession(slang.API_VERSION, &global_session),
         msg = "Failed to create global slang session"
@@ -857,15 +743,15 @@ rebuild_swapchain :: proc() {
         vk.QueueWaitIdle(queue.handle), 
         msg = "Waiting for queue failed"
     )
-
+    for frame in swapchain.frames {
+        vk.DestroyImageView(device.handle, frame.view, nil)
+    }
     vk.DestroySwapchainKHR(device.handle, swapchain.handle, nil)
-
     capabilities: vk.SurfaceCapabilitiesKHR
     vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(device.physical, surface, &capabilities)
 
     width, height := glfw.GetFramebufferSize(window)
     swapchain.extent = vk.Extent2D { u32(width), u32(height) }
-
     swapchain_create_info := vk.SwapchainCreateInfoKHR {
         sType            = .SWAPCHAIN_CREATE_INFO_KHR,
         presentMode      = .IMMEDIATE,
@@ -873,7 +759,7 @@ rebuild_swapchain :: proc() {
         imageArrayLayers = 1,
         imageColorSpace  = .SRGB_NONLINEAR,
         surface          = surface,
-        imageUsage       = { .TRANSFER_DST, .COLOR_ATTACHMENT },
+        imageUsage       = { .TRANSFER_DST, .COLOR_ATTACHMENT, .STORAGE },
         imageFormat      = .B8G8R8A8_UNORM,
         preTransform     = capabilities.currentTransform,
         imageExtent      = swapchain.extent,
@@ -883,30 +769,100 @@ rebuild_swapchain :: proc() {
         vk.CreateSwapchainKHR(device.handle, &swapchain_create_info, nil, &swapchain.handle), 
         msg = "Failed to create swapchain"
     )
-
-    //_____________________________
-    // Images
     swapchain_img_count: u32
     vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &swapchain_img_count, nil)
-    swapchain.images = make([dynamic]vk.Image, swapchain_img_count)
-    vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &swapchain_img_count, raw_data(swapchain.images))
+    old_count := u32(len(swapchain.frames))
+    
+    if swapchain_img_count > old_count {
+        resize(&swapchain.frames, int(swapchain_img_count))
+        for i in old_count..<swapchain_img_count {
+            init_frame_resources(&swapchain.frames[i], &scene_desc_layout)
+        }
+    } else if swapchain_img_count < old_count {
+        for i in swapchain_img_count..<old_count {
+            frame := swapchain.frames[i]
+            vk.DestroyCommandPool(device.handle, frame.pool, nil)
+            vk.DestroyFence(device.handle, frame.fence, nil)
+            vk.DestroySemaphore(device.handle, frame.swap_sem, nil)
+            vk.DestroySemaphore(device.handle, frame.render_sem, nil)
+            vk.DestroyDescriptorPool(device.handle, frame.desc_pool, nil)
+            destroy_buffer(frame.scene_alloc)
+        }
+        resize(&swapchain.frames, int(swapchain_img_count))
+    }
+    tmp_imgs := make([]vk.Image, swapchain_img_count, context.temp_allocator)
+    vk.GetSwapchainImagesKHR(device.handle, swapchain.handle, &swapchain_img_count, raw_data(tmp_imgs))
 
     for i: u32 = 0; i < swapchain_img_count; i += 1 {
-        img_view: vk.ImageView
+        swapchain.frames[i].image = tmp_imgs[i]
         img_view_create_info := vk.ImageViewCreateInfo {
             sType            = .IMAGE_VIEW_CREATE_INFO,
             viewType         = .D2,
             format           = .B8G8R8A8_UNORM,
-            image            = swapchain.images[i],
+            image            = swapchain.frames[i].image,
             subresourceRange = {
                 aspectMask      = { .COLOR },
                 layerCount      = 1,
                 levelCount      = 1
             }
         }
-        vk.CreateImageView(device.handle, &img_view_create_info, nil, &img_view)
-        append(&swapchain.views, img_view)
+        vk.CreateImageView(device.handle, &img_view_create_info, nil, &swapchain.frames[i].view)
     }
+}
+
+init_frame_resources :: proc(frame: ^frame_t, layout: ^vk.DescriptorSetLayout) {
+    pool_create_info := vk.CommandPoolCreateInfo {
+        sType            = .COMMAND_POOL_CREATE_INFO,
+        queueFamilyIndex = queue.family,
+        flags            = { .RESET_COMMAND_BUFFER },
+    }
+    vk.CreateCommandPool(device.handle, &pool_create_info, nil, &frame.pool)
+    
+    cmd_create_info := vk.CommandBufferAllocateInfo {
+        sType              = .COMMAND_BUFFER_ALLOCATE_INFO,
+        commandPool        = frame.pool,
+        level              = .PRIMARY,
+        commandBufferCount = 1
+    }
+    vk.AllocateCommandBuffers(device.handle, &cmd_create_info, &frame.cmd)
+
+    fence_create_info := vk.FenceCreateInfo{ sType = .FENCE_CREATE_INFO, flags = { .SIGNALED } }
+    vk.CreateFence(device.handle, &fence_create_info, nil, &frame.fence)
+    
+    sem_info := vk.SemaphoreCreateInfo{ sType = .SEMAPHORE_CREATE_INFO }
+    vk.CreateSemaphore(device.handle, &sem_info, nil, &frame.swap_sem)
+    vk.CreateSemaphore(device.handle, &sem_info, nil, &frame.render_sem)
+
+    size := vk.DescriptorPoolSize{ type = .UNIFORM_BUFFER, descriptorCount = 1 }
+    desc_pool_info := vk.DescriptorPoolCreateInfo {
+        sType         = .DESCRIPTOR_POOL_CREATE_INFO,
+        maxSets       = 1,
+        poolSizeCount = 1,
+        pPoolSizes    = &size,
+    }
+    vk.CreateDescriptorPool(device.handle, &desc_pool_info, nil, &frame.desc_pool)
+
+    allocate_info := vk.DescriptorSetAllocateInfo {
+        sType              = .DESCRIPTOR_SET_ALLOCATE_INFO,
+        descriptorPool     = frame.desc_pool,
+        descriptorSetCount = 1,
+        pSetLayouts        = layout,
+    }
+    vk.AllocateDescriptorSets(device.handle, &allocate_info, &frame.descriptor.set)
+
+    frame.scene_alloc = create_buffer(size_of(gpu_scene_data_t), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
+    mem.copy(frame.scene_alloc.info.pMappedData, &gpu_scene_data, size_of(gpu_scene_data_t))
+    
+    buffer_info := vk.DescriptorBufferInfo{ buffer = frame.scene_alloc.handle, offset = 0, range = size_of(gpu_scene_data_t) }
+    scene_write := vk.WriteDescriptorSet {
+        sType           = .WRITE_DESCRIPTOR_SET,
+        dstSet          = frame.descriptor.set,
+        dstBinding      = 0,
+        descriptorCount = 1,
+        descriptorType  = .UNIFORM_BUFFER,
+        pBufferInfo     = &buffer_info,
+    }
+    vk.UpdateDescriptorSets(device.handle, 1, &scene_write, 0, nil)
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -1158,7 +1114,7 @@ parse_gltf_scene :: proc(world: ^sigil.world_t, path: cstring) -> (created: [dyn
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
-parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a single mesh rn effectivly, gotta sort that in the future sometime
+parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) {
     vertex_buffer: [dynamic]vertex_t
     index_buffer:  [dynamic]u32
     for prim in m.primitives {
@@ -1168,7 +1124,6 @@ parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a s
 
         idx_count := int(idx_accessor.count)
         resize(&index_buffer, len(index_buffer) + int(idx_count))
-
 
         idx_len := len(index_buffer) - int(idx_count)
         #partial switch idx_accessor.component_type {
@@ -1185,14 +1140,14 @@ parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a s
         }
         
         pos_accessor: ^cgltf.accessor
+        col_accessor: ^cgltf.accessor
         nor_accessor: ^cgltf.accessor
         tex_accessor: ^cgltf.accessor
-        col_accessor: ^cgltf.accessor
         for attr in prim.attributes do #partial switch attr.type {
             case .position: pos_accessor = attr.data
+            case .color:    col_accessor = attr.data
             case .normal:   nor_accessor = attr.data
             case .texcoord: tex_accessor = attr.data
-            case .color:    col_accessor = attr.data
         }
 
         vertex_count := int(pos_accessor.count)
@@ -1206,6 +1161,16 @@ parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a s
 
             for i in 0 ..< vertex_count {
                 vertex_buffer[old_len + i].position = pos_src[i]
+            }
+        }
+
+        if col_accessor != nil {
+            col_buffer := cast([^]u8)col_accessor.buffer_view.buffer.data
+            col_offset := col_accessor.offset + col_accessor.buffer_view.offset
+            col_src    := mem.slice_ptr(cast([^][4]f32)(&col_buffer[col_offset]), int(vertex_count))
+
+            for i in 0 ..< vertex_count {
+                vertex_buffer[old_len + i].color = col_src[i]
             }
         }
 
@@ -1230,22 +1195,16 @@ parse_gltf_mesh :: proc(m: cgltf.mesh) -> (mesh_data: mesh_data_t) { // only a s
             }
         }
 
-        if col_accessor != nil {
-            col_buffer := cast([^]u8)col_accessor.buffer_view.buffer.data
-            col_offset := col_accessor.offset + col_accessor.buffer_view.offset
-            col_src    := mem.slice_ptr(cast([^][4]f32)(&col_buffer[col_offset]), int(vertex_count))
-
-            for i in 0 ..< vertex_count {
-                vertex_buffer[old_len + i].color = col_src[i]
-            }
-        }
-
-        //prim.material.pbr_metallic_roughness.base_color_texture
+        //prim.material.pbr_metallic_roughness.base_color_texture.texture.image_
     }
     if len(vertex_buffer) > 0 && len(index_buffer) > 0 {
         success := generate_tangents_for_mesh(vertex_buffer[:], index_buffer[:])
         if !success {
-            ensure_default_tangents(vertex_buffer[:])
+            for i in 0..<len(vertex_buffer) {
+                if vertex_buffer[i].tangent == {0, 0, 0, 0} {
+                    vertex_buffer[i].tangent = {1, 0, 0, 1}
+                }
+            }
             fmt.println("Failed to generate tangets for mesh")
         }
     }
@@ -1301,13 +1260,11 @@ generate_tangents_for_mesh :: proc(vertices: []vertex_t, indices: []u32) -> bool
     if len(vertices) == 0 || len(indices) == 0 || len(indices) % 3 != 0 {
         return false
     }
-
     context_data := MikkContext{
         vertices = vertices,
         indices = indices,
         face_count = len(indices) / 3,
     }
-
     interface := mikktspace.Interface{
         get_num_faces = get_num_faces,
         get_num_vertices_of_face = get_num_vertices_of_face,
@@ -1315,25 +1272,13 @@ generate_tangents_for_mesh :: proc(vertices: []vertex_t, indices: []u32) -> bool
         get_normal = get_normal,
         get_tex_coord = get_tex_coord,
         set_t_space_basic = set_t_space_basic,
-        set_t_space = nil, // We're using basic tangent space
+        set_t_space = nil,
     }
-
     mikk_context := mikktspace.Context{
         interface = &interface,
         user_data = &context_data,
     }
-
     return mikktspace.generate_tangents(&mikk_context)
-}
-
-// Helper to ensure all vertices have valid tangents (fallback for failed generation)
-ensure_default_tangents :: proc(vertices: []vertex_t) {
-    for i in 0..<len(vertices) {
-        if vertices[i].tangent == {0, 0, 0, 0} {
-            // Default tangent (1, 0, 0) with positive handedness
-            vertices[i].tangent = {1, 0, 0, 1}
-        }
-    }
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
@@ -1637,65 +1582,58 @@ blit_imgs /* +-+-+-+-+-+-+-+ */ :: proc(
 tick_vulkan :: proc(world: ^sigil.world_t) {
     if resize_window do rebuild_swapchain()
 
-    frame := &frames[current_frame]
-    err := vk.WaitForFences(device.handle, 1, &frame.fence, true, max(u64)); if err == .ERROR_DEVICE_LOST {
+    cpu_frame := &swapchain.frames[swapchain.current_frame]
+    err := vk.WaitForFences(device.handle, 1, &cpu_frame.fence, true, max(u64))
+    if err == .ERROR_DEVICE_LOST {
         __log("Wait for fences failed. Device Lost!")
         glfw.SetWindowShouldClose(window, true)
     }
-    __ensure(
-        vk.WaitForFences(device.handle, 1, &frame.fence, true, max(u64)), 
-        msg = "WaitForFences failed"
-    )
-
-    //
-    __rebuild_pbr_pipeline(global_session)
-    //
 
     img_index: u32
-    result := vk.AcquireNextImageKHR(device.handle, swapchain.handle, max(u64), frame.swap_sem, {}, &img_index)
-    if result == .ERROR_OUT_OF_DATE_KHR || result == .SUBOPTIMAL_KHR { resize_window = true }
-    swap_img := swapchain.images[img_index]
+    result := vk.AcquireNextImageKHR(device.handle, swapchain.handle, max(u64), cpu_frame.swap_sem, {}, &img_index)
+    if result == .ERROR_OUT_OF_DATE_KHR {
+        resize_window = true
+        return
+    }
+    if result == .SUBOPTIMAL_KHR do resize_window = true
 
-    __ensure(
-        vk.ResetFences(device.handle, 1, &frame.fence), 
-        msg = "Reset fence failed"
-    )
-    vk.ResetCommandBuffer(frame.cmd, {})
+    gpu_frame := &swapchain.frames[img_index]
+
+    vk.ResetFences(device.handle, 1, &cpu_frame.fence)
+    vk.ResetCommandBuffer(cpu_frame.cmd, {})
 
     cmd_begin_info := vk.CommandBufferBeginInfo {
         sType = .COMMAND_BUFFER_BEGIN_INFO,
         flags = { .ONE_TIME_SUBMIT },
     }
-    draw_extent.width  = math.min(swapchain.extent.width, draw_img.extent.width);
-    draw_extent.height = math.min(swapchain.extent.width, draw_img.extent.height);
-    __ensure(vk.BeginCommandBuffer(frame.cmd, &cmd_begin_info), "Begin cmd failed")
-    {
-        transition_img(frame.cmd, draw_img.handle, .UNDEFINED, .GENERAL)
+    
+    draw_extent.width  = math.min(swapchain.extent.width, draw_img.extent.width)
+    draw_extent.height = math.min(swapchain.extent.height, draw_img.extent.height)
 
-        //________________
-        // draw backgrund
+    __ensure(vk.BeginCommandBuffer(cpu_frame.cmd, &cmd_begin_info), "Begin cmd failed")
+    {
+        transition_img(cpu_frame.cmd, draw_img.handle, .UNDEFINED, .GENERAL)
         vk.CmdClearColorImage(
-            frame.cmd,
+            cpu_frame.cmd,
             draw_img.handle,
             .GENERAL,
-            &vk.ClearColorValue { float32 = { .066, .066, .066, 1 } },
+            &vk.ClearColorValue {
+                float32 = { .066, .066, .066, 1 }
+            },
             1,
             &vk.ImageSubresourceRange {
-                aspectMask      = { .COLOR },
-                layerCount      = 1,
-                levelCount      = 1
-            },
+                aspectMask = { .COLOR },
+                layerCount = 1,
+                levelCount = 1
+            }
         )
+        transition_img(cpu_frame.cmd, draw_img.handle, .GENERAL, .COLOR_ATTACHMENT_OPTIMAL)
+        transition_img(cpu_frame.cmd, depth_img.handle, .UNDEFINED, .DEPTH_ATTACHMENT_OPTIMAL)
 
-        transition_img(frame.cmd, draw_img.handle, .GENERAL, .COLOR_ATTACHMENT_OPTIMAL)
-        transition_img(frame.cmd, depth_img.handle, .UNDEFINED, .DEPTH_ATTACHMENT_OPTIMAL)
-
-        //________________
-        // draw geometry
         draw_attach_info := vk.RenderingAttachmentInfo {
             sType       = .RENDERING_ATTACHMENT_INFO,
             imageView   = draw_img.view,
-            imageLayout = .GENERAL,
+            imageLayout = .COLOR_ATTACHMENT_OPTIMAL,
             loadOp      = .LOAD,
             storeOp     = .STORE,
         }
@@ -1713,52 +1651,25 @@ tick_vulkan :: proc(world: ^sigil.world_t) {
             colorAttachmentCount = 1,
             pColorAttachments    = &draw_attach_info,
             pDepthAttachment     = &depth_attach_info,
-            pStencilAttachment   = nil,
-            renderArea           = {
-                offset = { 0, 0 },
-                extent = draw_extent,
-            },
+            renderArea           = { offset = { 0, 0 }, extent = draw_extent },
         }
 
-        vk.CmdBeginRendering(frame.cmd, &render_info)
+        vk.CmdBeginRendering(cpu_frame.cmd, &render_info)
         {
-            debug_label := vk.DebugUtilsLabelEXT {
-                sType = .DEBUG_UTILS_LABEL_EXT,
-                pLabelName = fmt.caprintf("Frame %d", current_frame, allocator = context.temp_allocator),
-                color = { 0, 255, 0, 255 },
-            }
-            vk.CmdBeginDebugUtilsLabelEXT(frame.cmd, &debug_label)
+            viewport := vk.Viewport { x = 0, y = 0, width = f32(draw_extent.width), height = f32(draw_extent.height), minDepth = 1, maxDepth = 0 }
+            vk.CmdSetViewport(cpu_frame.cmd, 0, 1, &viewport)
+            scissor := vk.Rect2D { offset = { 0, 0 }, extent = draw_extent }
+            vk.CmdSetScissor(cpu_frame.cmd, 0, 1, &scissor)
 
-            viewport := vk.Viewport {
-                x        = 0,
-                y        = 0,
-                width    = f32(draw_extent.width),
-                height   = f32(draw_extent.height),
-                minDepth = 1,
-                maxDepth = 0,
-            }
-            vk.CmdSetViewport(frame.cmd, 0, 1, &viewport)
-
-            scissor := vk.Rect2D {
-                offset = { 0, 0 },
-                extent = draw_extent,
-            }
-            vk.CmdSetScissor(frame.cmd, 0, 1, &scissor)
-
-            view       := get_camera_view(world)
-            projection := get_camera_projection(world)
-
-            gpu_scene_data.view = view
-            gpu_scene_data.proj = projection
+            gpu_scene_data.view = get_camera_view(world)
+            gpu_scene_data.proj = get_camera_projection(world)
             gpu_scene_data.view_pos = get_camera_pos(world)
             gpu_scene_data.time = time
-            mem.copy(scene_allocation.info.pMappedData, &gpu_scene_data, size_of(gpu_scene_data_t))
+            mem.copy(cpu_frame.scene_alloc.info.pMappedData, &gpu_scene_data, size_of(gpu_scene_data_t))
 
-            scene_descriptor.set = frame.descriptor.set
-            scene_data_writes := []vk.WriteDescriptorSet {
-                write_descriptor(&scene_descriptor, 0, .UNIFORM_BUFFER, descriptor_buffer_info_t { scene_allocation, size_of(gpu_scene_data_t), 0 }),
-            }
-            vk.UpdateDescriptorSets(device.handle, u32(len(scene_data_writes)), raw_data(scene_data_writes), 0, nil)
+            vk.CmdBindPipeline(cpu_frame.cmd, .GRAPHICS, pbr.pipeline)
+            sets := []vk.DescriptorSet { cpu_frame.descriptor.set, pbr.set, bindless.set }
+            vk.CmdBindDescriptorSets(cpu_frame.cmd, .GRAPHICS, pbr.pipeline_layout, 0, u32(len(sets)), raw_data(sets), 0, nil)
 
             // todo: impl comp culling
             //mem.copy(object_buffer.info.pMappedData, &object_data, size_of(object_data))
@@ -1767,113 +1678,107 @@ tick_vulkan :: proc(world: ^sigil.world_t) {
             //fmt.println(sigil.core.groups[sigil.types_hash(render_data_t, transform_t)])
             for &q, i in sigil.query(world, render_data_t, transform_t) {
                 data, transform := q.x, glm.mat4(q.y)
-
                 offset := u32(i * size_of(glm.mat4))
                 mem.copy(rawptr(uintptr(transform_buffer.info.pMappedData) + uintptr(offset)), &transform, size_of(glm.mat4))
 
                 // todo: need to set up material system to enable dynamic texturing for different meshes
-                vk.CmdBindPipeline(frame.cmd, .GRAPHICS, pbr.pipeline)
-                sets := []vk.DescriptorSet { frame.descriptor.set, pbr.set, bindless.set }
-                vk.CmdBindDescriptorSets(frame.cmd, .GRAPHICS, pbr.pipeline_layout, 0, u32(len(sets)), raw_data(sets), 0, nil)
-                //data.material.update_delegate(frame.cmd, data)
-                pbr_push_const.model = u32(i) // transform idx
+                pbr_push_const.model = u32(i)
                 pbr_push_const.vertex_buffer = data.address
-                vk.CmdPushConstants(frame.cmd, pbr.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(pbr_push_constant_t), &pbr_push_const)
-                vk.CmdBindIndexBuffer(frame.cmd, data.idx_buffer, 0, .UINT32)
-
-                vk.CmdDrawIndexed(frame.cmd, data.count, 1, data.first, 0, 0)
+                vk.CmdPushConstants(cpu_frame.cmd, pbr.pipeline_layout, { .VERTEX, .FRAGMENT }, 0, size_of(pbr_push_constant_t), &pbr_push_const)
+                vk.CmdBindIndexBuffer(cpu_frame.cmd, data.idx_buffer, 0, .UINT32)
+                vk.CmdDrawIndexed(cpu_frame.cmd, data.count, 1, data.first, 0, 0)
             }
-            draw_ui(world, frame.cmd, swapchain.views[current_frame])
-
-            vk.CmdEndDebugUtilsLabelEXT(frame.cmd)
+            draw_ui(world, cpu_frame.cmd, gpu_frame.view)
         }
-        vk.CmdEndRendering(frame.cmd)
+        vk.CmdEndRendering(cpu_frame.cmd)
 
-        //________________
-        // prepare for present
-        transition_img(frame.cmd, draw_img.handle, .COLOR_ATTACHMENT_OPTIMAL, .TRANSFER_SRC_OPTIMAL)
-        transition_img(frame.cmd, swap_img, .UNDEFINED, .TRANSFER_DST_OPTIMAL)
+        transition_img(cpu_frame.cmd, draw_img.handle, .COLOR_ATTACHMENT_OPTIMAL, .TRANSFER_SRC_OPTIMAL)
+        transition_img(cpu_frame.cmd, gpu_frame.image, .UNDEFINED, .TRANSFER_DST_OPTIMAL)
 
-        blit_imgs(frame.cmd, draw_img.handle, swap_img, draw_extent, swapchain.extent)
+        blit_imgs(cpu_frame.cmd, draw_img.handle, gpu_frame.image, draw_extent, swapchain.extent)
 
-        transition_img(frame.cmd, swap_img, .TRANSFER_DST_OPTIMAL, .PRESENT_SRC_KHR)
+        transition_img(cpu_frame.cmd, gpu_frame.image, .TRANSFER_DST_OPTIMAL, .PRESENT_SRC_KHR)
     }
-    __ensure(
-        vk.EndCommandBuffer(frame.cmd), 
-        msg = "End cmd failed"
-    )
+    __ensure(vk.EndCommandBuffer(cpu_frame.cmd), msg = "End cmd failed")
 
     submit_info := vk.SubmitInfo2 {
         sType                    = .SUBMIT_INFO_2,
         waitSemaphoreInfoCount   = 1,
         pWaitSemaphoreInfos      = &vk.SemaphoreSubmitInfo {
             sType       = .SEMAPHORE_SUBMIT_INFO,
-            semaphore   = frame.swap_sem,
+            semaphore   = cpu_frame.swap_sem,
             value       = 1,
             stageMask   = { .COLOR_ATTACHMENT_OUTPUT },
-            deviceIndex = 0,
         },
         commandBufferInfoCount   = 1,
         pCommandBufferInfos      = &vk.CommandBufferSubmitInfo {
             sType         = .COMMAND_BUFFER_SUBMIT_INFO,
-            commandBuffer = frame.cmd,
-            deviceMask    = 0,
+            commandBuffer = cpu_frame.cmd,
         },
         signalSemaphoreInfoCount = 1,
         pSignalSemaphoreInfos    = &vk.SemaphoreSubmitInfo {
             sType       = .SEMAPHORE_SUBMIT_INFO,
-            semaphore   = frame.render_sem,
+            semaphore   = gpu_frame.render_sem,
             value       = 1,
             stageMask   = { .ALL_GRAPHICS },
-            deviceIndex = 0,
         },
     }
-    __ensure(
-        vk.QueueSubmit2(queue.handle, 1, &submit_info, frame.fence), 
-        msg = "Queue submit failed"
-    )
+    __ensure(vk.QueueSubmit2(queue.handle, 1, &submit_info, cpu_frame.fence), msg = "Queue submit failed")
 
     present_info := vk.PresentInfoKHR {
         sType              = .PRESENT_INFO_KHR,
         waitSemaphoreCount = 1,
-        pWaitSemaphores    = &frame.render_sem,
+        pWaitSemaphores    = &gpu_frame.render_sem, // Wait on GPU render sem
         pImageIndices      = &img_index,
         swapchainCount     = 1,
         pSwapchains        = &swapchain.handle,
     }
-    res := vk.QueuePresentKHR(queue.handle, &present_info); if res == .ERROR_OUT_OF_DATE_KHR || res == .SUBOPTIMAL_KHR {
-        resize_window = true
-    }
-    current_frame = (current_frame >= (len(frames) - 1)) ? 0 : current_frame + 1
+    
+    res := vk.QueuePresentKHR(queue.handle, &present_info)
+    if res == .ERROR_OUT_OF_DATE_KHR || res == .SUBOPTIMAL_KHR do resize_window = true
+
+    swapchain.current_frame = (swapchain.current_frame + 1) % u32(len(swapchain.frames))
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 terminate_vulkan :: proc(world: ^sigil.world_t) {
-    //__ensure(vk.DeviceWaitIdle(device.handle))
+    __ensure(vk.DeviceWaitIdle(device.handle), msg = "Failed waiting for device idle")
 
-    //vk.DestroyImage(device.handle, draw_img.handle, nil)
-    //vk.DestroyImageView(device.handle, draw_img.view, nil)
+    pbr_destroy()
+    free_imgui()
 
-    //for img in swapchain.images do vk.DestroyImage(device.handle, img, nil)
-    //for view in swapchain.views      do vk.DestroyImageView(device.handle, view, nil)
+    vma.DestroyImage(vma_allocator, draw_img.handle, draw_img.allocation)
+    vk.DestroyImageView(device.handle, draw_img.view, nil)
+    vma.DestroyImage(vma_allocator, depth_img.handle, depth_img.allocation)
+    vk.DestroyImageView(device.handle, depth_img.view, nil)
 
-    //vk.DestroySwapchainKHR(device.handle, swapchain, nil)
+    for frame in swapchain.frames {
+        vk.DestroyImageView(device.handle, frame.view, nil)
+        vk.DestroyCommandPool(device.handle, frame.pool, nil)
+        vk.DestroyFence(device.handle, frame.fence, nil)
+        vk.DestroySemaphore(device.handle, frame.swap_sem, nil)
+        vk.DestroySemaphore(device.handle, frame.render_sem, nil)
+        vk.DestroyDescriptorPool(device.handle, frame.desc_pool, nil)
+        destroy_buffer(frame.scene_alloc)
+    }
+    delete(swapchain.frames)
 
-    //// destroy the rest
+    vk.DestroySwapchainKHR(device.handle, swapchain.handle, nil)
 
-    //free_imgui()
+    vk.DestroyCommandPool(device.handle, immediate.pool, nil)
+    vk.DestroyFence(device.handle, immediate.fence, nil)
 
-    //for &frame in frames {
-    //    vk.DestroyCommandPool(device.handle, frame.pool, nil)
-    //    vk.DestroyFence(device.handle, frame.fence, nil)
-    //    vk.DestroySemaphore(device.handle, frame.swap_sem, nil)
-    //    vk.DestroySemaphore(device, frame.render_sem, nil)
-    //}
-    //vk.DestroyCommandPool(device.handle, immediate.pool, nil)
-    //vk.DestroyFence(device.handle, immediate.fence, nil)
+    vk.DestroyDescriptorSetLayout(device.handle, scene_desc_layout, nil) // Cleaned up!
+    vk.DestroyDescriptorPool(device.handle, desc_pool, nil)
+    vk.DestroyDescriptorPool(device.handle, bindless.pool, nil)
+    vk.DestroyDescriptorSetLayout(device.handle, bindless.set_layout, nil)
+    vk.DestroySampler(device.handle, sampler, nil)
 
-    //vk.DestroySurfaceKHR(instance, surface, nil)
-    //vk.DestroyDevice(device.handle, nil)
-    //vk.DestroyDebugUtilsMessengerEXT(instance, dbg_messenger, nil)
-    //vk.DestroyInstance(instance, nil)
+    vma.DestroyAllocator(vma_allocator)
+    vk.DestroySurfaceKHR(instance, surface, nil)
+    vk.DestroyDevice(device.handle, nil)
+    when ODIN_DEBUG {
+        vk.DestroyDebugUtilsMessengerEXT(instance, dbg_messenger, nil)
+    }
+    vk.DestroyInstance(instance, nil)
 }

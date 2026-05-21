@@ -1,6 +1,7 @@
 package ism
 
 import vk "vendor:vulkan"
+import vma "lib:odin-vma"
 import glm "core:math/linalg/glsl"
 import "lib:slang"
 import "core:slice"
@@ -10,6 +11,12 @@ import sigil "sigil:core"
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
+pbr_buffer : allocated_buffer_t
+pbr_albedo_img : allocated_image_t
+pbr_normal_img : allocated_image_t
+pbr_mtl_rough_img : allocated_image_t
+pbr_emissive_img : allocated_image_t
+pbr_ao_img : allocated_image_t
 pbr_push_constant_t :: struct #align(16) {
     vertex_buffer   : vk.DeviceAddress,
     model           : u32,
@@ -41,20 +48,20 @@ pbr_current_last_write_time: os.File_Time
 pbr_declare :: proc(world: ^sigil.world_t, global_session: ^slang.IGlobalSession) {
     pbr_entity = sigil.new_entity(world)
 
-    albedo_img    := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_albedo.jpg")
-    albedo_img.index = register_image(albedo_img.view)
+    pbr_albedo_img       = load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_albedo.jpg")
+    pbr_albedo_img.index = register_image(pbr_albedo_img.view)
 
-    normal_img    := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_normal.jpg")
-    normal_img.index = register_image(normal_img.view)
+    pbr_normal_img       = load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_normal.jpg")
+    pbr_normal_img.index = register_image(pbr_normal_img.view)
 
-    mtl_rough_img := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_metalRoughness.jpg")
-    mtl_rough_img.index = register_image(mtl_rough_img.view)
+    pbr_mtl_rough_img       = load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_metalRoughness.jpg")
+    pbr_mtl_rough_img.index = register_image(pbr_mtl_rough_img.view)
 
-    emissive_img  := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_emissive.jpg")
-    emissive_img.index = register_image(emissive_img.view)
+    pbr_emissive_img       = load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_emissive.jpg")
+    pbr_emissive_img.index = register_image(pbr_emissive_img.view)
 
-    ao_img        := load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_AO.jpg")
-    ao_img.index = register_image(ao_img.view)
+    pbr_ao_img       = load_image(.R8G8B8A8_UNORM, { .SAMPLED }, "res/textures/Default_AO.jpg")
+    pbr_ao_img.index = register_image(pbr_ao_img.view)
 
     pbr_layout_bindings := []vk.DescriptorSetLayoutBinding {
         vk.DescriptorSetLayoutBinding {
@@ -92,7 +99,7 @@ pbr_declare :: proc(world: ^sigil.world_t, global_session: ^slang.IGlobalSession
         size       = size_of(pbr_push_constant_t),
     }
     layouts := []vk.DescriptorSetLayout {
-        scene_data.set_layout,
+        scene_desc_layout,
         pbr.set_layout,
         bindless.set_layout,
     }
@@ -108,7 +115,7 @@ pbr_declare :: proc(world: ^sigil.world_t, global_session: ^slang.IGlobalSession
         msg = "Failed to create graphics pipeline layout"
     )
 
-    pbr_buffer := create_buffer(size_of(pbr_uniform_t), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
+    pbr_buffer = create_buffer(size_of(pbr_uniform_t), { .UNIFORM_BUFFER }, .CPU_TO_GPU)
     pbr_buffer_data := cast(^pbr_uniform_t)pbr_buffer.info.pMappedData
     pbr_buffer_data.color_factors   = { 1, 1, 1, 1 }
     pbr_buffer_data.metal_roughness = { 0, 0, 0, 0 }
@@ -121,11 +128,11 @@ pbr_declare :: proc(world: ^sigil.world_t, global_session: ^slang.IGlobalSession
 
     build_pbr_pipeline(global_session)
     
-    pbr_push_const.albedo          = albedo_img.index
-    pbr_push_const.metal_roughness = mtl_rough_img.index
-    pbr_push_const.normal          = normal_img.index
-    pbr_push_const.emissive        = emissive_img.index
-    pbr_push_const.ao              = ao_img.index
+    pbr_push_const.albedo          = pbr_albedo_img.index
+    pbr_push_const.metal_roughness = pbr_mtl_rough_img.index
+    pbr_push_const.normal          = pbr_normal_img.index
+    pbr_push_const.emissive        = pbr_emissive_img.index
+    pbr_push_const.ao              = pbr_ao_img.index
 
 	pbr_current_last_write_time, _ := os.last_write_time_by_name("sigil/ism/shaders/pbr.slang")
 }
@@ -348,3 +355,25 @@ build_pbr_pipeline :: proc(global_session: ^slang.IGlobalSession) {
     )
 }
 
+pbr_destroy :: proc() {
+    vk.DestroyPipeline(device.handle, pbr.pipeline, nil)
+    vk.DestroyPipelineLayout(device.handle, pbr.pipeline_layout, nil)
+    vk.DestroyDescriptorSetLayout(device.handle, pbr.set_layout, nil)
+
+    destroy_buffer(pbr_buffer)
+
+    vma.DestroyImage(vma_allocator, pbr_albedo_img.handle, pbr_albedo_img.allocation)
+    vk.DestroyImageView(device.handle, pbr_albedo_img.view, nil)
+
+    vma.DestroyImage(vma_allocator, pbr_normal_img.handle, pbr_normal_img.allocation)
+    vk.DestroyImageView(device.handle, pbr_normal_img.view, nil)
+
+    vma.DestroyImage(vma_allocator, pbr_mtl_rough_img.handle, pbr_mtl_rough_img.allocation)
+    vk.DestroyImageView(device.handle, pbr_mtl_rough_img.view, nil)
+
+    vma.DestroyImage(vma_allocator, pbr_emissive_img.handle, pbr_emissive_img.allocation)
+    vk.DestroyImageView(device.handle, pbr_emissive_img.view, nil)
+
+    vma.DestroyImage(vma_allocator, pbr_ao_img.handle, pbr_ao_img.allocation)
+    vk.DestroyImageView(device.handle, pbr_ao_img.view, nil)
+}

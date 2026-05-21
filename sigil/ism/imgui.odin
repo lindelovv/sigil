@@ -13,6 +13,7 @@ imgui_pool       : vk.DescriptorPool
 init_imgui :: proc(swapchain_create_info: ^vk.SwapchainCreateInfoKHR) {
     imgui_pool_sizes := []vk.DescriptorPoolSize {
         { .SAMPLER,                1000 },
+        { .COMBINED_IMAGE_SAMPLER, 1000 },
         { .SAMPLED_IMAGE,          1000 },
         { .STORAGE_IMAGE,          1000 },
         { .UNIFORM_TEXEL_BUFFER,   1000 },
@@ -126,10 +127,10 @@ draw_ui :: proc(world: ^sigil.world_t, cmd: vk.CommandBuffer, img_view: vk.Image
 }
 
 free_imgui :: proc() {
-    vk.DestroyDescriptorPool(device.handle, imgui_pool, nil)
     imgui_vk.DestroyFontsTexture()
     imgui_vk.Shutdown()
     imgui_glfw.Shutdown()
     imgui.DestroyContext()
+    vk.DestroyDescriptorPool(device.handle, imgui_pool, nil)
 }
 
