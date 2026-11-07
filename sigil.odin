@@ -57,12 +57,6 @@ exclude :: struct($type: typeid) { _: [0]type }
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 name_t :: distinct string
-init :: distinct #type proc(^world_t)
-tick :: distinct #type proc(^world_t)
-exit :: distinct #type proc(^world_t)
-none :: distinct #type proc(^world_t)
-
-/* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
 
 // todo: implement an actual cross module scheduler for this, but might not be needed tbh
 module_create_info_t :: struct {
@@ -90,12 +84,6 @@ init_world :: proc(modules: []module_create_info_t) -> (world: ^world_t) {
     new_entity(world) /* INVALID */
     for module in modules { setup_module(world, module) }
     return
-}
-
-run :: #force_inline proc(world: ^world_t) {
-    for fn in query(world, init) { fn(world) }
-    main_loop: for !world.request_exit { for fn in query(world, tick) { fn(world) } free_all(context.temp_allocator) }
-    #reverse for fn in query(world, exit) { fn(world) }
 }
 
 /* +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ */
